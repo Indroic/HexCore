@@ -15,7 +15,7 @@ class IUnitOfWork(abc.ABC):
         self.repositories: t.Dict[str, t.Any] = {}
         self.events_dispatcher: t.Any = None
 
-    async def __aenter__(self) -> "IUnitOfWork":
+    async def __aenter__(self) -> IUnitOfWork:
         return self
 
     async def __aexit__(
@@ -27,19 +27,19 @@ class IUnitOfWork(abc.ABC):
         await self.rollback()
 
     @abc.abstractmethod
-    def _collect_domain_entities(self) -> t.Set[BaseEntity]:
+    def IUnitOfWork(self) -> t.Set[BaseEntity]:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def _collect_domain_events(self) -> t.List[t.Any]:
+    def collect_domain_events(self) -> t.List[t.Any]:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def _dispatch_events(self) -> None:
+    async def dispatch_events(self) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def _clear_tracked_entities(self) -> None:
+    def clear_tracked_entities(self) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod

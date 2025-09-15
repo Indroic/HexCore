@@ -31,6 +31,7 @@ hexcore = "hexcore.__main__:app"
 [dependency-groups]
 dev = [
     "bumpver>=2025.1131",
+    "commitizen>=4.9.1",
     "mypy>=1.17.1",
     "ruff>=0.12.11",
 ]
@@ -60,3 +61,11 @@ push = true
 
 [tool.setuptools.packages.find]
 where = ["."]
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+tag_format = "$version"
+version_scheme = "pep440"
+version_provider = "uv"
+update_changelog_on_bump = true
+major_version_zero = true

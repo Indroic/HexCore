@@ -9,23 +9,23 @@ from uuid import UUID
 T = t.TypeVar('T', bound=BaseEntity)
 
 class DomainEvent(BaseModel):
-    event_id: UUID
-    occurred_on: datetime
+    event_id: UUID = ...
+    occurred_on: datetime = ...
     @computed_field
     @property
     def event_name(self) -> str: ...
-    model_config: Incomplete
+    model_config: Incomplete = ...
 
 class EntityCreatedEvent(DomainEvent, t.Generic[T]):
-    entity_id: UUID
-    entity_data: T
+    entity_id: UUID = ...
+    entity_data: T = ...
 
 class EntityUpdatedEvent(DomainEvent, t.Generic[T]):
-    entity_id: UUID
-    entity_data: T
+    entity_id: UUID = ...
+    entity_data: T = ...
 
 class EntityDeletedEvent(DomainEvent):
-    entity_id: UUID
+    entity_id: UUID = ...
 EventHandler = t.Callable[[DomainEvent], t.Awaitable[None]]
 
 class IEventDispatcher(abc.ABC, metaclass=abc.ABCMeta):
