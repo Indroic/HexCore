@@ -1,3 +1,9 @@
+## 1.2.0 (2025-09-15)
+
+### Feat
+
+- **cli.py**: new argument in init_project
+
 ## 1.1.0 (2025-09-15)
 
 ### Fix
