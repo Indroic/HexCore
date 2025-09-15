@@ -6,6 +6,7 @@ Módulo base para compartir funcionalidades del kernel.
 from .hexcore.infrastructure import cli
 from .hexcore import (
     IBaseRepository,
+    IBaseTenantAwareRepository,
     DomainEvent,
     EntityCreatedEvent,
     EntityDeletedEvent,
@@ -13,12 +14,12 @@ from .hexcore import (
     DTO,
     TokenClaims,
     BaseEntity,
-    PermissionsRegistry
-
+    PermissionsEnum,
 )
 
 __all__ = [
     "BaseEntity",
+    "PermissionsEnum",
     "TokenClaims",
     "DTO",
     "DomainEvent",
@@ -26,6 +27,6 @@ __all__ = [
     "EntityDeletedEvent",
     "EntityUpdatedEvent",
     "IBaseRepository",
+    "IBaseTenantAwareRepository",
     "cli",
-    "PermissionsRegistry",
 ]

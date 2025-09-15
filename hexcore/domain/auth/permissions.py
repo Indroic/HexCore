@@ -1,71 +1,73 @@
 from __future__ import annotations
-
 from enum import Enum
-from typing import Set, Dict, Optional
+
+# --- Prefijos de Permisos ---
+_ROLES = "roles"
+_USERS = "users"
+_TENANTS = "tenants"
+
+_LOGISTICS_INVENTORY = "logistics.inventory"
+_LOGISTICS_PRODUCTS = "logistics.products"
+
+# --- Sufijos Comunes ---
+
+_VIEW = "view"
+_CREATE = "create"
+_EDIT = "edit"
+_DELETE = "delete"
 
 
-
-"""
-Infraestructura orientada a objetos para registro y consulta dinámica de permisos.
-
-Este módulo NO define permisos concretos. Cada proyecto/servidor debe registrar sus propios permisos
-usando el método register_permission() de la clase PermissionsRegistry al iniciar.
-
-Provee utilidades para:
-- Registrar permisos (register_permission)
-- Consultar permisos registrados (get_permissions_registry, get_all_permission_values, get_permission_by_name)
-- Construir un Enum dinámico si se requiere (build_permissions_enum)
-
-Ejemplo de uso:
-    from hexcore.domain.auth.permissions import PermissionsRegistry
-    permissions = PermissionsRegistry()
-    permissions.register_permission("USERS_VIEW", "users.view")
-    ...
-    todos = permissions.get_all_permission_values()
-"""
-
-
-class PermissionsRegistry:
+class PermissionsEnum(str, Enum):
     """
-    Clase para registrar y consultar permisos de forma dinámica.
-    Cada instancia mantiene su propio registro de permisos.
+    Catálogo central de todos los permisos del sistema.
+    Esta es la ÚNICA fuente de la verdad para los permisos.
+    El valor (string) es lo que se almacena en la base de datos.
+    El formato es: <dominio>.<entidad>.<accion>
     """
-    def __init__(self):
-        self._permissions_registry: Dict[str, str] = {}
 
-    def register_permission(self, name: str, value: Optional[str] = None):
-        """
-        Registra un nuevo permiso en el sistema.
-        name: nombre identificador (ej: 'USERS_INVITE')
-        value: valor string (ej: 'users.invite'). Si no se pasa, se usa name.lower().
-        """
-        if value is None:
-            value = name.lower()
-        self._permissions_registry[name] = value
+    # -- SUPERUSER PERMISSION --
 
-    def register_permissions(self, permissions: Dict[str, Optional[str]]):
-        """
-        Registra múltiples permisos en el sistema.
-        """
-        for name, value in permissions.items():
-            self.register_permission(name, value)
+    SUPERUSER = "__all__"  # Permiso especial que otorga todos los permisos del sistema
 
-    def get_permissions_registry(self) -> Dict[str, str]:
-        """Devuelve el registro actual de permisos (nombre: valor)."""
-        return dict(self._permissions_registry)
+    # --- Dominio: IAM (Identidad y Acceso) ---
+    ROLES_VIEW = f"{_ROLES}.{_VIEW}"
+    ROLES_CREATE = f"{_ROLES}.{_CREATE}"
+    ROLES_EDIT = f"{_ROLES}.{_EDIT}"
+    ROLES_DELETE = f"{_ROLES}.{_DELETE}"
 
-    def get_all_permission_values(self) -> Set[str]:
-        """
-        Devuelve un conjunto con todos los valores de los permisos registrados.
-        """
-        return set(self._permissions_registry.values())
+    USERS_CREATE = f"{_USERS}.{_CREATE}"
+    USERS_VIEW = f"{_USERS}.{_VIEW}"
+    USERS_INVITE = f"{_USERS}.invite"
+    USERS_EDIT = f"{_USERS}.{_EDIT}"
+    USERS_DELETE = f"{_USERS}.{_DELETE}"
+    USERS_ADD_ROLE = f"{_USERS}.add.rol"
 
-    def get_permission_by_name(self, name: str) -> Optional[str]:
-        """Devuelve el valor del permiso por su nombre."""
-        return self._permissions_registry.get(name)
+    TENANTS_VIEW = f"{_TENANTS}.{_VIEW}"
+    TENANTS_EDIT = f"{_TENANTS}.{_EDIT}"
 
-    def build_permissions_enum(self) -> Enum:
-        """
-        Construye un Enum dinámico con los permisos actuales.
-        """
-        return Enum("PermissionsEnum", {k: v for k, v in self._permissions_registry.items()}, type=str)
+    # --- Dominio: Logistics (Logística) ---
+    LOGISTICS_INVENTORY_VIEW = f"{_LOGISTICS_INVENTORY}.{_VIEW}"
+    LOGISTICS_INVENTORY_ADJUST = f"{_LOGISTICS_INVENTORY}.adjust"
+    LOGISTICS_PRODUCTS_MANAGE = f"{_LOGISTICS_PRODUCTS}.manage"
+
+
+# Permisos que No puede tener un propietario
+OWNER_EXCLUDED_PERMISSIONS = {
+    PermissionsEnum.TENANTS_EDIT,
+    PermissionsEnum.TENANTS_VIEW,
+}
+
+
+def get_all_permission_values() -> set[str]:
+    """
+    Devuelve un conjunto con todos los valores de los permisos definidos en PermissionsEnum.
+    Ideal para usar en el comando de sincronización.
+    """
+    return {p.value for p in PermissionsEnum}
+
+
+def get_owner_permissions() -> set[str]:
+    """
+    Devuelve los permisos de un propietario.
+    """
+    return {p.value for p in PermissionsEnum} - OWNER_EXCLUDED_PERMISSIONS

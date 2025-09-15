@@ -209,6 +209,8 @@ def create_domain_module(
 
         # Crear archivo de test para entidades
         test_entities_path = test_module_path / f"test_{module_name}_entities.py"
+        test_content = _get_test_entities_template(module_name, class_name)
+        test_entities_path.write_text(test_content.strip(), encoding="utf-8")
         typer.secho(
             f"  -> Archivo de test creado: {test_entities_path}", fg=typer.colors.GREEN
         )
@@ -366,6 +368,28 @@ from euphoria_kernel.events import EntityCreatedEvent
 #     Un Evento de Creación de ejemplo.
 #     \"\"\"
 #   pass
+"""
+
+
+def _get_test_entities_template(module_name: str, class_name: str) -> str:
+    return f"""
+from __future__ import annotations
+import pytest
+from uuid import uuid4
+
+from src.domain.{module_name}.entities import {class_name}
+
+
+def test_crear_{module_name}_entidad_exitosa():
+    \"\"\"
+    Prueba la creación exitosa de la entidad {class_name}.
+    \"\"\"
+    tenant_id = uuid4()
+    entidad = {class_name}(tenant_id=tenant_id, nombre="Test {class_name}")
+
+    assert entidad.nombre == "Test {class_name}"
+    assert entidad.tenant_id == tenant_id
+    assert entidad.is_active is True
 """
 
 

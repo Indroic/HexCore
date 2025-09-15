@@ -39,3 +39,13 @@ class IBaseRepository(abc.ABC, t.Generic[T]):
     @abc.abstractmethod
     async def delete(self, entity: T) -> None:
         raise NotImplementedError
+
+
+class IBaseTenantAwareRepository(IBaseRepository[T], abc.ABC, t.Generic[T]):
+    """
+    Interfaz base para repositorios de entidades conscientes del tenant.
+    """
+
+    @abc.abstractmethod
+    async def list_by_tenant(self, tenant_id: UUID) -> t.List[T]:
+        raise NotImplementedError
