@@ -40,7 +40,7 @@ class BaseEntity(BaseModel):
         frozen=False,
     )
 
-    def register_event(self, event: DomainEvent):
+    def register_event(self, event: DomainEvent) -> None:
         """Añade un evento a la lista de la entidad."""
         self._domain_events.append(event)
 
@@ -50,11 +50,11 @@ class BaseEntity(BaseModel):
         self._domain_events.clear()
         return events
 
-    def clear_domain_events(self):
+    def clear_domain_events(self) -> None:
         """Limpia la lista de eventos sin entregarlos."""
         self._domain_events.clear()
 
-    async def deactivate(self):
+    async def deactivate(self) -> None:
         """Desactiva la Entidad(Borrado Logico)"""
         self.is_active = False
 

@@ -35,14 +35,14 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         Confirma la transacción y despacha los eventos.
         """
         await self.session.commit()
-        await self._dispatch_events()
-        self._clear_tracked_entities()
+        await self.dispatch_events()
+        self.clear_tracked_entities()
 
     async def rollback(self):
         await self.session.rollback()
-        self._clear_tracked_entities()
+        self.clear_tracked_entities()
 
-    def _collect_domain_entities(self) -> t.Set[BaseEntity]:
+    def collect_domain_entities(self) -> t.Set[BaseEntity]:
         """
         Recolecta todas las entidades de dominio rastreadas por la sesión de SQLAlchemy.
         """
@@ -57,17 +57,17 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
                 domain_entities.add(entity)
         return domain_entities
 
-    def _collect_domain_events(self) -> t.List[DomainEvent]:
+    def collect_domain_events(self) -> t.List[DomainEvent]:
         events: t.List[DomainEvent] = []
-        for entity in self._collect_domain_entities():
+        for entity in self.collect_domain_entities():
             events.extend(entity.pull_domain_events())
         return events
 
-    async def _dispatch_events(self):
-        for event in self._collect_domain_events():
+    async def dispatch_events(self):
+        for event in self.collect_domain_events():
             await self.events_dispatcher.dispatch(event)
 
-    def _clear_tracked_entities(self):
+    def clear_tracked_entities(self):
         # No es necesario limpiar entidades en SQL, pero se mantiene para simetría
         pass
 
@@ -93,29 +93,29 @@ class NoSqlUnitOfWork(IUnitOfWork):
             await self.rollback()
 
     async def commit(self):
-        await self._dispatch_events()
-        self._clear_tracked_entities()
+        await self.dispatch_events()
+        self.clear_tracked_entities()
 
     async def rollback(self):
         for entity in self._entities:
             entity.clear_domain_events()
-        self._clear_tracked_entities()
+        self.clear_tracked_entities()
 
     def collect_entity(self, entity: BaseEntity):
         self._entities.add(entity)
 
-    def _collect_domain_entities(self) -> t.Set[BaseEntity]:
+    def collect_domain_entities(self) -> t.Set[BaseEntity]:
         return set(self._entities)
 
-    def _collect_domain_events(self) -> t.List[DomainEvent]:
+    def collect_domain_events(self) -> t.List[DomainEvent]:
         events: t.List[DomainEvent] = []
-        for entity in self._collect_domain_entities():
+        for entity in self.collect_domain_entities():
             events.extend(entity.pull_domain_events())
         return events
 
-    async def _dispatch_events(self):
-        for event in self._collect_domain_events():
+    async def dispatch_events(self):
+        for event in self.collect_domain_events():
             await self.events_dispatcher.dispatch(event)
 
-    def _clear_tracked_entities(self):
+    def clear_tracked_entities(self):
         self._entities.clear()

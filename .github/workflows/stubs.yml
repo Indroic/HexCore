@@ -28,6 +28,13 @@ jobs:
       - name: Generate stub files
         run: |
           make stubs
+      - name: Fix Pyi Files
+        run: |
+          python -m scripts.main fix-pyi-defaults .
+
+      - name: Fix type aliases in stubs
+        run: |
+          python -m scripts.main fix-types-pyi-aliases ./hexcore/types.pyi ./hexcore/types
 
       - name: Commit and push stubs if changed
         run: |
