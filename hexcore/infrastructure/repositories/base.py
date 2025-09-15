@@ -10,9 +10,14 @@ from hexcore.domain.uow import IUnitOfWork
 T = t.TypeVar("T", bound=BaseEntity)
 
 
-class BaseSQLRepository(IBaseRepository[T], abc.ABC, t.Generic[T]):
+class BaseSQLAlchemyRepository(IBaseRepository[T], abc.ABC, t.Generic[T]):
     def __init__(self, uow: IUnitOfWork):
-        # Si la UOW tiene sesión (SQL), la usamos; si no, ignoramos
         self._session: t.Optional[AsyncSession] = getattr(uow, "session", None)
 
         super().__init__(uow)
+        
+    @property
+    def session(self) -> AsyncSession:
+        if self._session is None:
+            raise ValueError("El repositorio no está asociado a una sesión de base de datos.")
+        return self._session

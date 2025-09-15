@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload, RelationshipProperty
 
 from hexcore.types import FieldResolversType
 
-from .alchemy import BaseModel
+from . import BaseModel
 
 from hexcore.domain.base import BaseEntity
 

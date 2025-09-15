@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
-from hexcore.infrastructure.repositories.orms.sql.session import AsyncSessionLocal
+from hexcore.infrastructure.repositories.orms.sqlalchemy.session import AsyncSessionLocal
 from hexcore.infrastructure.uow import SqlAlchemyUnitOfWork, NoSqlUnitOfWork
 
 

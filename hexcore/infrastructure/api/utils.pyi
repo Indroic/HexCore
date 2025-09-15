@@ -1,6 +1,6 @@
 from _typeshed import Incomplete
 from collections.abc import Generator
-from hexcore.infrastructure.repositories.orms.sql.session import AsyncSessionLocal as AsyncSessionLocal
+from hexcore.infrastructure.repositories.orms.sqlalchemy.session import AsyncSessionLocal as AsyncSessionLocal
 from hexcore.infrastructure.uow import NoSqlUnitOfWork as NoSqlUnitOfWork, SqlAlchemyUnitOfWork as SqlAlchemyUnitOfWork
 from sqlalchemy.ext.asyncio import AsyncSession as AsyncSession
 

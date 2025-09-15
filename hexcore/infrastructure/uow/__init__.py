@@ -5,8 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hexcore.domain.uow import IUnitOfWork
 from hexcore.domain.base import BaseEntity
 from hexcore.domain.events import DomainEvent
-from hexcore.infrastructure.repositories.orms.sql.alchemy import (
-    BaseModel as SQLAlchemyBaseModel,
+from hexcore.infrastructure.repositories.orms.sqlalchemy import (
+    BaseModel,
 )
 
 
@@ -51,7 +51,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
             self.session.new, self.session.dirty, self.session.deleted
         )
         for model in all_tracked_models:
-            if isinstance(model, SQLAlchemyBaseModel):
+            if isinstance(model, BaseModel):
                 entity: BaseEntity = model.get_domain_entity()  # type: ignore
                 assert isinstance(entity, BaseEntity)
                 domain_entities.add(entity)

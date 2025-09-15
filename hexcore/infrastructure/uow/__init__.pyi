@@ -4,6 +4,7 @@ from _typeshed import Incomplete
 from hexcore.domain.base import BaseEntity as BaseEntity
 from hexcore.domain.events import DomainEvent as DomainEvent
 from hexcore.domain.uow import IUnitOfWork as IUnitOfWork
+from hexcore.infrastructure.repositories.orms.sqlalchemy import BaseModel as BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession as AsyncSession
 
 class SqlAlchemyUnitOfWork(IUnitOfWork, metaclass=abc.ABCMeta):

@@ -5,22 +5,22 @@ from uuid import UUID
 from hexcore.infrastructure.uow.decorators import register_entity_on_uow
 from hexcore.types import FieldResolversType, FieldSerializersType
 
-from .base import T, BaseSQLRepository, IBaseRepository
+from .base import T, BaseSQLAlchemyRepository, IBaseRepository
 from .utils import to_entity_from_model_or_document
 
 # Utilidades para operaciones comunes con SQLAlchemy
-from .orms.sql.utils import (
+from .orms.sqlalchemy.utils import (
     db_get as sql_db_get,
     db_list as sql_db_list,
     save_entity as sql_save_entity,
     logical_delete as sql_logical_delete,
 )
-from .orms.sql.alchemy import BaseModel
+from .orms.sqlalchemy import BaseModel
 
 
 # Utilidades para operaciones comunes con Beanie
-from .orms.nosql.beanie import BaseDocument
-from .orms.nosql.utils import (
+from .orms.beanie import BaseDocument
+from .orms.beanie.utils import (
     db_get as nosql_db_get,
     db_list as nosql_db_list,
     save_entity as nosql_save_entity,
@@ -45,22 +45,21 @@ class HasBasicArgs(t.Generic[T, A]):
     @property
     def fields_serializers(self) -> FieldSerializersType[T]:
         """
-        Resolvedores para campos complejos en la conversión entre entidad y documento.
-        Debe ser implementado por cada repositorio específico.
+        Serializadores para campos complejos en la conversión entre Entidad -> Documento/Modelo.
         """
         return {}
 
     @property
     def fields_resolvers(self) -> FieldResolversType[A]:
         """
-        Resolvedores para campos complejos en la conversión entre entidad y documento.
+        Resolvedores para campos complejos en la conversión entre Documento/Modelo -> Entidad.
         Debe ser implementado por cada repositorio específico.
         """
         return {}
 
 
-class SqlCommonImplementationsRepo(
-    BaseSQLRepository[T], HasBasicArgs[T, M], t.Generic[T, M]
+class SQLAlchemyCommonImplementationsRepo(
+    BaseSQLAlchemyRepository[T], HasBasicArgs[T, M], t.Generic[T, M]
 ):
     """
     Implementaciones comunes para repositorios SQL usando SQLAlchemy.
@@ -87,12 +86,9 @@ class SqlCommonImplementationsRepo(
         raise NotImplementedError("Debe implementar la propiedad document_cls")
 
     async def get_by_id(self, entity_id: UUID) -> T:
-        if not self._session:
-            raise RuntimeError(
-                "La sesión de la base de datos no está disponible en este momento."
-            )
+
         model = await sql_db_get(
-            self._session,
+            self.session,
             self.model_cls,
             entity_id,
             self.not_found_exception(entity_id),
@@ -102,11 +98,8 @@ class SqlCommonImplementationsRepo(
         )
 
     async def list_all(self) -> t.List[T]:
-        if not self._session:
-            raise RuntimeError(
-                "La sesión de la base de datos no está disponible en este momento."
-            )
-        models = await sql_db_list(self._session, self.model_cls)
+
+        models = await sql_db_list(self.session, self.model_cls)
         return [
             await to_entity_from_model_or_document(
                 model, self.entity_cls, self.fields_resolvers
@@ -115,12 +108,9 @@ class SqlCommonImplementationsRepo(
         ]
 
     async def save(self, entity: T) -> T:
-        if not self._session:
-            raise RuntimeError(
-                "La sesión de la base de datos no está disponible en este momento."
-            )
+
         saved = await sql_save_entity(
-            self._session,
+            self.session,
             entity,
             self.model_cls,
             fields_serializers=self.fields_serializers,
@@ -130,18 +120,15 @@ class SqlCommonImplementationsRepo(
         )
 
     async def delete(self, entity: T) -> None:
-        if not self._session:
-            raise RuntimeError(
-                "La sesión de la base de datos no está disponible en este momento."
-            )
-        await sql_logical_delete(self._session, entity, self.model_cls)
+
+        await sql_logical_delete(self.session, entity, self.model_cls)
 
 
-class NoSQLCommonImplementationsRepo(
+class BeanieODMCommonImplementationsRepo(
     IBaseRepository[T], HasBasicArgs[T, D], t.Generic[T, D]
 ):
     """
-    Implementaciones comunes para repositorios NoSQL usando Beanie.
+    Implementaciones comunes para repositorios usando Beanie.
     Proporciona métodos CRUD genéricos que pueden ser reutilizados por repositorios específicos.
     Requiere que se especifiquen las clases de entidad y documento, así como la excepción a lanzar cuando no se encuentra una entidad.
     - entity_cls: La clase de la entidad de dominio.

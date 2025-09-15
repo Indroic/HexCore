@@ -1,5 +1,5 @@
 import typing as t
-from .beanie import BaseDocument as BaseDocument
+from . import BaseDocument as BaseDocument
 from hexcore.config import LazyConfig as LazyConfig
 from hexcore.domain.base import BaseEntity as BaseEntity
 from hexcore.infrastructure.repositories.utils import get_all_concrete_subclasses as get_all_concrete_subclasses

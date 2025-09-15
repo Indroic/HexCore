@@ -14,7 +14,7 @@ from .domain.events import (
 )
 from .domain.repositories import IBaseRepository
 from .infrastructure.repositories.base import (
-    BaseSQLRepository,
+    BaseSQLAlchemyRepository,
 )
 from .infrastructure import cli
 from .infrastructure import cache
@@ -31,7 +31,7 @@ __all__ = [
     "EntityDeletedEvent",
     "EntityUpdatedEvent",
     "IBaseRepository",
-    "BaseSQLRepository",
+    "BaseSQLAlchemyRepository",
     "cli",
     "cache",
     "config",

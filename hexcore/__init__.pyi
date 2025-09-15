@@ -6,6 +6,6 @@ from .domain.base import BaseEntity as BaseEntity
 from .domain.events import DomainEvent as DomainEvent, EntityCreatedEvent as EntityCreatedEvent, EntityDeletedEvent as EntityDeletedEvent, EntityUpdatedEvent as EntityUpdatedEvent
 from .domain.repositories import IBaseRepository as IBaseRepository
 from .infrastructure import cache as cache, cli as cli
-from .infrastructure.repositories.base import BaseSQLRepository as BaseSQLRepository
+from .infrastructure.repositories.base import BaseSQLAlchemyRepository as BaseSQLAlchemyRepository
 
-__all__ = ['BaseEntity', 'PermissionsRegistry', 'TokenClaims', 'DTO', 'DomainEvent', 'EntityCreatedEvent', 'EntityDeletedEvent', 'EntityUpdatedEvent', 'IBaseRepository', 'BaseSQLRepository', 'cli', 'cache', 'config']
+__all__ = ['BaseEntity', 'PermissionsRegistry', 'TokenClaims', 'DTO', 'DomainEvent', 'EntityCreatedEvent', 'EntityDeletedEvent', 'EntityUpdatedEvent', 'IBaseRepository', 'BaseSQLAlchemyRepository', 'cli', 'cache', 'config']

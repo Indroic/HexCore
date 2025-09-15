@@ -8,13 +8,13 @@ from hexcore.types import FieldResolversType
 from hexcore.types import VisitedType, VisitedResultsType
 
 
-from .orms.sql.alchemy import BaseModel
-from .orms.nosql.beanie import BaseDocument
-from .base import BaseSQLRepository
+from .orms.sqlalchemy import BaseModel
+from .orms.beanie import BaseDocument
+from .base import BaseSQLAlchemyRepository
 
 # --- Función auxiliar para aplicar resolvers asíncronos en dicts ---
 
-T = t.TypeVar("T", bound=t.Union[BaseModel[t.Any], BaseDocument])
+T = t.TypeVar("T", bound=t.Union[BaseModel[t.Any], BaseDocument, t.Any])
 E = t.TypeVar("E", bound=BaseEntity)
 
 
@@ -73,6 +73,8 @@ async def to_entity_from_model_or_document(
     Convierte un modelo SQLAlchemy o un documento Beanie a una entidad de dominio,
     permitiendo reconstruir campos complejos con resolvers asíncronos.
     Si is_nosql=True, renombra 'entity_id' a 'id'.
+    
+    SOLO FUNCIONA CON LOS ORMS/ODMS SOPORTADOS (SQLAlchemy Y BEANIE).
     """
     model_dict = (
         model_instance.model_dump()
@@ -100,7 +102,7 @@ def get_all_concrete_subclasses(cls: type) -> set[type]:
 
 def discover_sql_repositories() -> t.Dict[
     str,
-    t.Type[BaseSQLRepository[t.Any]],
+    t.Type[BaseSQLAlchemyRepository[t.Any]],
 ]:
     """
     Descubre todos los repositorios SQL disponibles.
@@ -113,5 +115,5 @@ def discover_sql_repositories() -> t.Dict[
 
     return {
         repo_cls.__name__.lower().replace("repository", ""): repo_cls
-        for repo_cls in get_all_concrete_subclasses(BaseSQLRepository)
+        for repo_cls in get_all_concrete_subclasses(BaseSQLAlchemyRepository)
     }

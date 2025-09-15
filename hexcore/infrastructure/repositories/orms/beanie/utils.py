@@ -8,7 +8,7 @@ from hexcore.infrastructure.repositories.utils import get_all_concrete_subclasse
 from hexcore.types import FieldSerializersType
 from hexcore.config import LazyConfig
 
-from .beanie import BaseDocument
+from . import BaseDocument
 
 E = t.TypeVar("E", bound=BaseEntity)
 D = t.TypeVar("D", bound=BaseDocument)

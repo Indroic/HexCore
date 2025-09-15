@@ -1,6 +1,6 @@
 import types
 import typing as t
-from .alchemy import BaseModel as BaseModel
+from . import BaseModel as BaseModel
 from hexcore.domain.base import BaseEntity as BaseEntity
 from hexcore.types import FieldResolversType as FieldResolversType
 from sqlalchemy.ext.asyncio import AsyncSession as AsyncSession
