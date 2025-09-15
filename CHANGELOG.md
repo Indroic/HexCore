@@ -1,3 +1,9 @@
+## 1.3.0 (2025-09-15)
+
+### Fix
+
+- **pyproject.toml**: add ruff obligatory module
+
 ## 1.2.0 (2025-09-15)
 
 ### Feat
