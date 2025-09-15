@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, RelationshipProperty
 
-from hexcore.types import FieldResolversType
+from hexcore.types import FieldResolversType, RelationsType
 
 from . import BaseModel
 
@@ -16,10 +16,6 @@ from hexcore.domain.base import BaseEntity
 
 T = t.TypeVar("T", bound=BaseModel[t.Any])
 E = t.TypeVar("E", bound=BaseEntity)
-
-RelationsType: t.TypeAlias = t.Dict[
-    str, t.Tuple[t.Type[BaseModel[t.Any]], t.List[UUID]]
-]
 
 
 def to_model(
@@ -55,7 +51,7 @@ def _get_relationship_names(model: t.Type[BaseModel[t.Any]]) -> list[str]:
     ]
 
 
-def load_relations(model: t.Type[T]):
+def load_relations(model: t.Type[T]) -> t.Any:
     """
     Crea una lista de opciones selectinload para las relaciones del modelo especificado.
 
@@ -100,7 +96,7 @@ async def db_save(session: AsyncSession, entity: T) -> T:
     return merged
 
 
-def select_in_load_options(*relationships: str, model: t.Type[T]):
+def select_in_load_options(*relationships: str, model: t.Type[T]) -> t.Any:
     """
     Crea una lista de opciones selectinload para las relaciones especificadas.
 
@@ -166,6 +162,6 @@ async def logical_delete(
         await save_entity(session, entity, model_cls)
 
 
-def import_all_models(package: types.ModuleType):
+def import_all_models(package: types.ModuleType)  -> t.Any:
     for _, module_name, _ in pkgutil.iter_modules(package.__path__):
         importlib.import_module(f"{package.__name__}.{module_name}")

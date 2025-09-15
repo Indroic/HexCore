@@ -7,6 +7,8 @@ MODULE=hexcore
 
 stubs:
 	PYTHONPATH=. $(STUBGEN) -p $(MODULE) -o .
+	python -m scripts.main fix-pyi-defaults .
+	python -m scripts.main fix-types-pyi-aliases
 
 clean-stubs:
 	find . -name '*.pyi' -not -path './venv/*' -delete

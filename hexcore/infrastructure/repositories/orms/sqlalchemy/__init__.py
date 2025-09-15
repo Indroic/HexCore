@@ -34,7 +34,7 @@ class BaseModel(Base, t.Generic[T]):
 
     _domain_entity: T
 
-    def set_domain_entity(self, entity: T):
+    def set_domain_entity(self, entity: T) -> None:
         self._domain_entity = entity
 
     def get_domain_entity(self) -> T:

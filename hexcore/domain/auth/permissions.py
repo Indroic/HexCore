@@ -33,7 +33,7 @@ class PermissionsRegistry:
     def __init__(self):
         self._permissions_registry: Dict[str, str] = {}
 
-    def register_permission(self, name: str, value: Optional[str] = None):
+    def register_permission(self, name: str, value: Optional[str] = None) -> None:
         """
         Registra un nuevo permiso en el sistema.
         name: nombre identificador (ej: 'USERS_INVITE')
@@ -43,7 +43,7 @@ class PermissionsRegistry:
             value = name.lower()
         self._permissions_registry[name] = value
 
-    def register_permissions(self, permissions: Dict[str, Optional[str]]):
+    def register_permissions(self, permissions: Dict[str, Optional[str]]) -> None:
         """
         Registra múltiples permisos en el sistema.
         """

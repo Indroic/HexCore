@@ -297,6 +297,7 @@ dependencies = [
 dev = [
     { name = "commitizen" },
     { name = "mypy" },
+    { name = "mypy-extensions" },
     { name = "ruff" },
 ]
 
@@ -319,6 +320,7 @@ requires-dist = [
 dev = [
     { name = "commitizen", specifier = ">=4.9.1" },
     { name = "mypy", specifier = ">=1.17.1" },
+    { name = "mypy-extensions", specifier = ">=1.1.0" },
     { name = "ruff", specifier = ">=0.12.11" },
 ]
 

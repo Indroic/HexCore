@@ -1,7 +1,9 @@
 import typing as t
 from typing import Protocol
 from .domain.base import BaseEntity
-from hexcore.infrastructure.repositories.base import IBaseRepository
+from .infrastructure.repositories.orms.sqlalchemy import BaseModel
+from .infrastructure.repositories.base import IBaseRepository
+from uuid import UUID
 
 # Tipos genéricos reutilizables para repositorios y decoradores
 A = t.TypeVar("A", contravariant=True)
@@ -31,3 +33,5 @@ FieldResolversType: t.TypeAlias = t.Dict[str, t.Tuple[str, AsyncCycleResolver[A]
 FieldSerializersType: t.TypeAlias = t.Dict[str, t.Tuple[str, t.Callable[[A], t.Any]]]
 
 ExcludeType: t.TypeAlias = t.Optional[set[str]]
+
+RelationsType: t.TypeAlias = t.Dict[str, t.Tuple[t.Type[BaseModel[t.Any]], t.List[UUID]]]
