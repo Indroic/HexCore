@@ -16,8 +16,8 @@ def fix_pyi_defaults_command(root_dir: str = typer.Argument(..., help="Directori
     typer.echo('Archivos .pyi corregidos.')
     
 @app.command(name="fix-types-pyi-aliases")
-def fix_types_pyi_aliases_command(pyi_path: str = typer.Argument(..., help="Ruta al archivo types.pyi"),
-                                  py_path: str = typer.Argument(..., help="Ruta al archivo types.py")) -> None:
+def fix_types_pyi_aliases_command(pyi_path: str = typer.Argument("hexcore/types.pyi", help="Ruta al archivo types.pyi"),
+                                  py_path: str = typer.Argument("hexcore/types.py", help="Ruta al archivo types.py")) -> None:
     pyi_file = pathlib.Path(pyi_path)
     py_file = pathlib.Path(py_path)
     if not pyi_file.is_file():

@@ -10,7 +10,7 @@ from hexcore.types import VisitedType, VisitedResultsType
 
 from .orms.sql.alchemy import BaseModel
 from .orms.nosql.beanie import BaseDocument
-from .base import BaseSQLRepository, BaseSQLTenantAwareRepository
+from .base import BaseSQLRepository
 
 # --- Función auxiliar para aplicar resolvers asíncronos en dicts ---
 
@@ -100,9 +100,7 @@ def get_all_concrete_subclasses(cls: type) -> set[type]:
 
 def discover_sql_repositories() -> t.Dict[
     str,
-    t.Union[
-        t.Type[BaseSQLRepository[t.Any]], t.Type[BaseSQLTenantAwareRepository[t.Any]]
-    ],
+    t.Type[BaseSQLRepository[t.Any]],
 ]:
     """
     Descubre todos los repositorios SQL disponibles.
