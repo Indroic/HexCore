@@ -5,6 +5,9 @@ on:
     workflows: ["Build Python 🐍 distribution"]
     types:
       - completed
+  push:
+    tags:
+      - 'v*'
 jobs:
   build:
     runs-on: ubuntu-latest
