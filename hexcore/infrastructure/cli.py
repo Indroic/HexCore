@@ -26,56 +26,78 @@ MANAGE = PROJECT_ROOT / "manage.py"
 
 
 @app.command(name="init")
-def init_project() -> None:
+def init_project(
+    project_name: str = typer.Argument(..., help="Nombre del proyecto a crear")
+) -> None:
     """
-    Inicializa el proyecto Euphoria creando la estructura de directorios básica.
+    Inicializa el proyecto Euphoria creando la estructura de directorios básica en una carpeta con el nombre dado.
     """
-    typer.echo(f"Inicializando el proyecto en: {PROJECT_ROOT}")
+    import pathlib
+    base_path = pathlib.Path.cwd() / project_name
+    if base_path.exists():
+        typer.secho(f"Error: La carpeta '{base_path}' ya existe.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    base_path.mkdir(parents=True, exist_ok=False)
+    typer.echo(f"Inicializando el proyecto en: {base_path}")
+
+    # Definir rutas relativas al nuevo proyecto
+    src_path = base_path / "src"
+    domain_path = src_path / "domain"
+    application_path = src_path / "application"
+    infrastructure_path = src_path / "infrastructure"
+    db_path = infrastructure_path / "database"
+    models_path = db_path / "models"
+    documents_path = db_path / "documents"
+    tests_domain_path = base_path / "tests" / "domain"
+    readme = base_path / "README.md"
+    gitignore = base_path / ".gitignore"
+    manage = base_path / "manage.py"
+
     # Crear directorios base
     for path in (
-        DOMAIN_PATH,
-        TESTS_DOMAIN_PATH,
-        APPLICATION_PATH,
-        INFRAESTRUCTURE_PATH,
+        domain_path,
+        tests_domain_path,
+        application_path,
+        infrastructure_path,
     ):
-        (path / "__init__.py").touch()
         path.mkdir(parents=True, exist_ok=True)
+        (path / "__init__.py").touch()
         typer.secho(f"Directorio creado: {path}", fg=typer.colors.GREEN)
 
     # Crear subdirectorios de infraestructura
-    for path in (DB_PATH,):
-        (path / "__init__.py").touch()
+    for path in (db_path,):
         path.mkdir(parents=True, exist_ok=True)
+        (path / "__init__.py").touch()
         typer.secho(f"Directorio creado: {path}", fg=typer.colors.GREEN)
 
     # Crear subdirectorios de DB
-    for path in (MODELS_PATH, DOCUMENTS_PATH):
-        (path / "__init__.py").touch()
+    for path in (models_path, documents_path):
         path.mkdir(parents=True, exist_ok=True)
+        (path / "__init__.py").touch()
         typer.secho(f"Directorio creado: {path}", fg=typer.colors.GREEN)
 
     # Crear archivos base
-
-    if not README.exists():
-        README.write_text(
-            "# Proyecto Euphoria\n\nDescripción del proyecto.", encoding="utf-8"
+    if not readme.exists():
+        readme.write_text(
+            f"# Proyecto {project_name}\n\nDescripción del proyecto.", encoding="utf-8"
         )
-        typer.secho(f"Archivo creado: {README}", fg=typer.colors.GREEN)
+        typer.secho(f"Archivo creado: {readme}", fg=typer.colors.GREEN)
 
-    if not GITIGNORE.exists():
-        GITIGNORE.write_text("*.pyc\n__pycache__/\n", encoding="utf-8")
-        typer.secho(f"Archivo creado: {GITIGNORE}", fg=typer.colors.GREEN)
+    if not gitignore.exists():
+        gitignore.write_text("*.pyc\n__pycache__/\n", encoding="utf-8")
+        typer.secho(f"Archivo creado: {gitignore}", fg=typer.colors.GREEN)
 
-    if not MANAGE.exists():
-        MANAGE.write_text(_get_manage_template().strip(), encoding="utf-8")
-        typer.secho(f"Archivo creado: {MANAGE}", fg=typer.colors.GREEN)
+    if not manage.exists():
+        manage.write_text(_get_manage_template().strip(), encoding="utf-8")
+        typer.secho(f"Archivo creado: {manage}", fg=typer.colors.GREEN)
 
     # Inicializa Alembic
-    os.system("alembic init alembic")
-    typer.secho(f"Directorio creado: {PROJECT_ROOT / 'alembic'}", fg=typer.colors.GREEN)
+    import subprocess
+    subprocess.run(["alembic", "init", "alembic"], cwd=base_path)
+    typer.secho(f"Directorio creado: {base_path / 'alembic'}", fg=typer.colors.GREEN)
 
     # editado del version_locations en el archivo alembic.ini
-    alembic_ini_path = PROJECT_ROOT / "alembic.ini"
+    alembic_ini_path = base_path / "alembic.ini"
     if alembic_ini_path.exists():
         content = alembic_ini_path.read_text(encoding="utf-8")
         if "version_locations" not in content:
@@ -93,7 +115,7 @@ def init_project() -> None:
         )
 
     # añadido del import de models y documents en env.py
-    env_py_path = PROJECT_ROOT / "alembic" / "env.py"
+    env_py_path = base_path / "alembic" / "env.py"
     if env_py_path.exists():
         content = env_py_path.read_text(encoding="utf-8")
         if "from src.infrastructure.db import models, documents" not in content:
@@ -131,10 +153,10 @@ if database_url:
     else:
         typer.secho(f"Advertencia: No se encontró {env_py_path}", fg=typer.colors.RED)
 
-    os.system("ruff format")
+    subprocess.run(["ruff", "format"], cwd=base_path)
 
     typer.secho(
-        "\n¡Servidor inicializado exitosamente!",
+        f"\n¡Proyecto '{project_name}' inicializado exitosamente en {base_path}!",
         fg=typer.colors.BRIGHT_GREEN,
     )
 
