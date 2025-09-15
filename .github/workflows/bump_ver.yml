@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     name: "Bump version and create changelog with commitizen"
     steps:
+      - name: Test
+        run: echo "${{ github.event.head_commit.message }}"
       - name: Check out
         uses: actions/checkout@v3
         with:
