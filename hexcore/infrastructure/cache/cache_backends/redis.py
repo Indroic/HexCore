@@ -21,10 +21,10 @@ class RedisCache(ICache):
         key: str,
         value: t.Dict[str, t.Any],
         expire: int = LazyConfig().get_config().redis_cache_duration,
-    ):
+    ) -> None:
         await self.redis.set(key, json.dumps(value), ex=expire)
 
-    async def delete(self, key: str):
+    async def delete(self, key: str) -> None:
         await self.redis.delete(key)
 
     async def clear(self):

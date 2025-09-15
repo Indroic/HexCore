@@ -14,11 +14,11 @@ class MemoryCache(ICache):
         key: str,
         value: t.Dict[str, t.Any],
         expire: int = 0,
-    ):
+    ) -> None:
         self.cache[key] = value
 
-    async def delete(self, key: str):
+    async def delete(self, key: str) -> None:
         self.cache.pop(key, None)
 
-    async def clear(self):
+    async def clear(self) -> None:
         self.cache.clear()
