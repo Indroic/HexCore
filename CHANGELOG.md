@@ -1,3 +1,14 @@
+## 1.1.0 (2025-09-15)
+
+### Fix
+
+- **stubs**: fix stubs files maker
+
+### Refactor
+
+- rename ORM/ODM repo implements
+- delete Permissions Enum and SQLTenant
+
 ## 1.0.2 (2025-09-15)
 
 ### Fix
