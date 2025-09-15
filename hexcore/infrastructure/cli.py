@@ -122,9 +122,9 @@ def init_project(
             content = content.replace(
                 "from alembic import context",
                 """from alembic import context
-from euphoria_kernel.config import LazyConfig
-from euphoria_kernel.repositories.orms.sql.alchemy import Base
-from euphoria_kernel.repositories.orms.sql.utils import import_all_models
+from hexcore.config import LazyConfig
+from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
+from euphoria_kernel.repositories.orms.sqlalchemy.utils import import_all_models
 import src.infrastructure.database.models as models
 
 import_all_models(models)
@@ -200,7 +200,6 @@ def create_domain_module(
         class_name = module_name.capitalize()
         files_to_create = {
             "__init__.py": "",
-            "entities.py": _get_entities_template(module_name, class_name),
             "repositories.py": _get_repositories_template(class_name),
             "services.py": _get_services_template(module_name, class_name),
             "value_objects.py": _get_value_objects_template(),
@@ -296,27 +295,11 @@ def test(
 
 def _get_manage_template() -> str:
     return """
-from euphoria_kernel.cli import app as CLI
+from hexcore.infrastructure.cli import app as CLI
 
 if __name__ == "__main__":
     CLI()
 
-"""
-
-
-def _get_entities_template(module_name: str, class_name: str) -> str:
-    return f"""
-from __future__ import annotations
-import typing as t
-
-from domain.shared_kernel.base import BaseEntity
-
-
-class {class_name}(BaseEntity):
-    \"\"\"
-    Entidad de ejemplo para el módulo {module_name}.
-    \"\"\"
-    nombre: str
 """
 
 
@@ -326,7 +309,7 @@ from __future__ import annotations
 import abc
 from uuid import UUID
 
-from euphoria_kernel.repositories import IBaseRepository
+from hexcore.domain.repositories import IBaseRepository
 from .entities import {class_name}
 
 
@@ -342,9 +325,9 @@ def _get_services_template(module_name: str, class_name: str) -> str:
     return f"""
 from __future__ import annotations
 import typing as t
+from hexcore.domain.services import BaseDomainService
 
-
-class {class_name}Service:
+class {class_name}Service(BaseDomainService):
     \"\"\"
     Servicio de dominio para el módulo {module_name}.
     Orquesta operaciones que no encajan de forma natural en una única entidad.
@@ -379,11 +362,11 @@ from decimal import Decimal
 def _get_events_template() -> str:
     return """
 from __future__ import annotations
-from euphoria_kernel.events import EntityCreatedEvent
+from hexcore.domain.events import EntityCreatedEvent
 
 
 # Ejemplo de Evento de Creacion
-# class MiEventoDeCreacionn(EntityCreatedEvent[Entidad]):
+# class MiEventoDeCreacion(EntityCreatedEvent[Entidad]):
 #     \"\"\"
 #     Un Evento de Creación de ejemplo.
 #     \"\"\"
