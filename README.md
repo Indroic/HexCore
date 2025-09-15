@@ -10,5 +10,3 @@ HexCore es un módulo base reutilizable para proyectos Python que implementan ar
 - **Estructura flexible** para que puedas construir microservicios o aplicaciones monolíticas desacopladas y testeables.
 
 ---
-
-**Versión:** 1.0.0
