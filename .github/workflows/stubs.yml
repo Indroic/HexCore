@@ -34,7 +34,7 @@ jobs:
 
       - name: Fix type aliases in stubs
         run: |
-          python -m scripts.main fix-types-pyi-aliases ./hexcore/types.pyi ./hexcore/types
+          python -m scripts.main fix-types-pyi-aliases ./hexcore/types.pyi ./hexcore/types.py
 
       - name: Commit and push stubs if changed
         run: |
