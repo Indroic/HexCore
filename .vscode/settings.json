@@ -1,0 +1,16 @@
+{
+    "material-icon-theme.folders.associations": {
+        "domain": "core",
+        "shared_kernel": "shared",
+        "iam": "secure",
+        "logistics": "job",
+        "infrastructure": "database",
+        "entities": "class",
+        "repositories": "bibliography",
+        "services": "tools",
+        "value_objects": "constant",
+        "billing": "invoice",
+        "inventory": "packages",
+        "products": "components"
+    }
+}

@@ -1,0 +1,19 @@
+import abc
+from _typeshed import Incomplete
+from datetime import datetime
+from hexcore.domain.events import DomainEvent as DomainEvent
+from pydantic import BaseModel
+from uuid import UUID
+
+class BaseEntity(BaseModel):
+    id: UUID
+    created_at: datetime
+    updated_at: datetime
+    is_active: bool | None
+    model_config: Incomplete
+    def register_event(self, event: DomainEvent): ...
+    def pull_domain_events(self) -> list[DomainEvent]: ...
+    def clear_domain_events(self) -> None: ...
+    async def deactivate(self) -> None: ...
+
+class AbstractModelMeta(BaseEntity, abc.ABC): ...

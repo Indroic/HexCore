@@ -1,0 +1,14 @@
+import typing as t
+from beanie import Document, Indexed as Indexed
+from datetime import datetime
+from uuid import UUID
+
+class BaseDocument(Document):
+    entity_id: t.Annotated[UUID, None]
+    created_at: datetime | None
+    updated_at: datetime | None
+    is_active: bool | None
+    class Settings:
+        is_root: bool
+        use_cache: bool
+    def update_updated_at(self) -> None: ...

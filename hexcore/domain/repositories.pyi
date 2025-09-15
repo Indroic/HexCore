@@ -1,0 +1,25 @@
+import abc
+import typing as t
+from .uow import IUnitOfWork as IUnitOfWork
+from hexcore.domain.base import BaseEntity as BaseEntity
+from hexcore.domain.exceptions import InactiveEntityException as InactiveEntityException
+from uuid import UUID
+
+T = t.TypeVar('T', bound=BaseEntity)
+
+class IBaseRepository(abc.ABC, t.Generic[T], metaclass=abc.ABCMeta):
+    uow: IUnitOfWork
+    def __init__(self, uow: IUnitOfWork) -> None: ...
+    @abc.abstractmethod
+    async def get_by_id(self, entity_id: UUID) -> T: ...
+    async def get_active_by_id(self, entity_id: UUID) -> T: ...
+    @abc.abstractmethod
+    async def list_all(self) -> list[T]: ...
+    @abc.abstractmethod
+    async def save(self, entity: T) -> T: ...
+    @abc.abstractmethod
+    async def delete(self, entity: T) -> None: ...
+
+class IBaseTenantAwareRepository(IBaseRepository[T], abc.ABC, t.Generic[T], metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    async def list_by_tenant(self, tenant_id: UUID) -> list[T]: ...

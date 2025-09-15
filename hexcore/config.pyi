@@ -1,0 +1,35 @@
+from _typeshed import Incomplete
+from hexcore.domain.events import IEventDispatcher as IEventDispatcher
+from hexcore.infrastructure.cache import ICache as ICache
+from hexcore.infrastructure.cache.cache_backends.memory import MemoryCache as MemoryCache
+from hexcore.infrastructure.events.events_backends.memory import InMemoryEventDispatcher as InMemoryEventDispatcher
+from pathlib import Path
+from pydantic import BaseModel
+
+class ServerConfig(BaseModel):
+    base_dir: Path
+    host: str
+    port: int
+    debug: bool
+    sql_database_url: str
+    async_sql_database_url: str
+    mongo_database_url: str
+    async_mongo_database_url: str
+    mongo_db_name: str
+    mongo_uri: str
+    redis_uri: str
+    redis_host: str
+    redis_port: int
+    redis_db: int
+    redis_cache_duration: int
+    allow_origins: list[str]
+    allow_credentials: bool
+    allow_methods: list[str]
+    allow_headers: list[str]
+    cache_backend: ICache
+    model_config: Incomplete
+    event_dispatcher: IEventDispatcher
+
+class LazyConfig:
+    @classmethod
+    def get_config(cls) -> ServerConfig: ...

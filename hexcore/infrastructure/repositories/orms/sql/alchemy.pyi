@@ -1,0 +1,19 @@
+import typing as t
+from datetime import datetime
+from hexcore.domain.base import BaseEntity as BaseEntity
+from sqlalchemy.orm import DeclarativeBase, Mapped as Mapped
+from uuid import UUID as PythonUUID
+
+T = t.TypeVar('T', bound=BaseEntity)
+
+class Base(DeclarativeBase): ...
+
+class BaseModel(Base, t.Generic[T]):
+    __abstract__: bool
+    __tablename__: str
+    id: Mapped[PythonUUID]
+    is_active: Mapped[bool]
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]
+    def set_domain_entity(self, entity: T): ...
+    def get_domain_entity(self) -> T: ...

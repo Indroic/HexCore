@@ -1,0 +1,8 @@
+from _typeshed import Incomplete
+from hexcore.config import LazyConfig as LazyConfig
+from hexcore.domain.events import IEventDispatcher as IEventDispatcher
+
+class BaseDomainService:
+    config: Incomplete
+    event_dispatcher: Incomplete
+    def __init__(self, event_dispatcher: IEventDispatcher = ...) -> None: ...
