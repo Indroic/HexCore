@@ -19,6 +19,7 @@ dependencies = [
     "redis>=6.4.0",
     "sqlalchemy>=2.0.43",
     "typer>=0.17.3",
+    "ruff>=0.12.11",
 ]
 
 license = "MIT"
@@ -33,7 +34,6 @@ dev = [
     "commitizen>=4.9.1",
     "mypy>=1.17.1",
     "mypy-extensions>=1.1.0",
-    "ruff>=0.12.11",
 ]
 
 [tool.setuptools]
