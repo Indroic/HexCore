@@ -1,5 +1,4 @@
-# HexCore
-
+# HexCore [![PyPI Downloads](https://static.pepy.tech/personalized-badge/hexcore?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/hexcore)
 HexCore es un módulo base reutilizable para proyectos Python que implementan arquitectura hexagonal y event handling.
 
 ## ¿Qué provee HexCore?
@@ -13,12 +12,9 @@ HexCore es un módulo base reutilizable para proyectos Python que implementan ar
 
 ## Instalación
 
-HexCore está disponible en PyPI:
-
 ```sh
 pip install hexcore
 ```
-[Ver en PyPI](https://pypi.org/project/hexcore/)
 
 ---
 
