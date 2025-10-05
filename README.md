@@ -11,6 +11,17 @@ HexCore es un módulo base reutilizable para proyectos Python que implementan ar
 
 ---
 
+## Instalación
+
+HexCore está disponible en PyPI:
+
+```sh
+pip install hexcore
+```
+[Ver en PyPI](https://pypi.org/project/hexcore/)
+
+---
+
 ## Pautas de Colaboración
 
 ¡Gracias por tu interés en contribuir a HexCore! Para mantener una colaboración organizada y eficiente, sigue estas pautas:
