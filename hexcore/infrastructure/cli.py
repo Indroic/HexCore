@@ -124,7 +124,7 @@ def init_project(
                 """from alembic import context
 from hexcore.config import LazyConfig
 from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
-from euphoria_kernel.repositories.orms.sqlalchemy.utils import import_all_models
+from hexcore.infrastructure.repositories.orms.sqlalchemy.utils import import_all_models
 import src.infrastructure.database.models as models
 
 import_all_models(models)
