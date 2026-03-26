@@ -1,6 +1,16 @@
 # HexCore [![PyPI Downloads](https://static.pepy.tech/personalized-badge/hexcore?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/hexcore)
 HexCore es un módulo base reutilizable para proyectos Python que implementan arquitectura hexagonal y event handling.
 
+---
+
+## Skills del Proyecto
+
+Este repositorio cuenta con un conjunto de skills adicionales para extender y personalizar funcionalidades en VS Code y otros entornos compatibles. Puedes encontrarlas en:
+
+- [Repositorio de Skills de HexCore](https://github.com/Indroic/hexcore-skill)
+
+---
+
 ## ¿Qué provee HexCore?
 
 - **Clases base y abstracciones** para entidades, repositorios, servicios y unidad de trabajo (UoW), siguiendo los principios de DDD y arquitectura hexagonal.
