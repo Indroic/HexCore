@@ -2,7 +2,7 @@
 name: Publish Python 🐍 distribution to PyPI
 on:
   workflow_run:
-    workflows: ["Build Python 🐍 distribution"]
+    workflows: ["Bump version"]
     types:
       - completed
   push:
