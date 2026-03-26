@@ -1,3 +1,9 @@
+## 1.4.2 (2026-03-26)
+
+### Fix
+
+- **config.py**: only build new version
+
 ## 1.4.1 (2026-03-26)
 
 ### Fix
