@@ -27,10 +27,6 @@ class IUnitOfWork(abc.ABC):
         await self.rollback()
 
     @abc.abstractmethod
-    def IUnitOfWork(self) -> t.Set[BaseEntity]:
-        raise NotImplementedError
-
-    @abc.abstractmethod
     def collect_domain_events(self) -> t.List[t.Any]:
         raise NotImplementedError
 
