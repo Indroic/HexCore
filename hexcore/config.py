@@ -97,3 +97,6 @@ class LazyConfig:
         # Fallback: config base del kernel
         cls._imported_config = ServerConfig()
         return cls._imported_config
+
+
+# Esto es solo para disparar el Workflow pra subir la ultima version a PyPI, por favor ignora este comentario
