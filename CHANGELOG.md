@@ -1,3 +1,15 @@
+## 1.4.0 (2026-03-26)
+
+### Fix
+
+- **hexcore.domain.uow.IUnitOfWork**: delete iunitofwork function
+
+## v1.3.2 (2025-10-05)
+
+## v1.3.1b (2025-10-05)
+
+## v1.3.1a (2025-10-05)
+
 ## 1.3.1 (2025-09-15)
 
 ### Fix
