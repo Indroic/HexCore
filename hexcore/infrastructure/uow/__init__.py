@@ -22,6 +22,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
     def __init__(self, session: AsyncSession):
         self.session = session
         super().__init__()
+        self._inject_repositories()
         
     def _inject_repositories(self):
         """
@@ -91,6 +92,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
 class NoSqlUnitOfWork(IUnitOfWork):
     def __init__(self):
         self._entities: set[BaseEntity] = set()
+        self._inject_repositories()
 
     def _inject_repositories(self):
         """
