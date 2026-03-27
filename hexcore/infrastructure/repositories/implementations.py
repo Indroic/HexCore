@@ -5,7 +5,7 @@ from uuid import UUID
 from hexcore.infrastructure.uow.decorators import register_entity_on_uow
 from hexcore.types import FieldResolversType, FieldSerializersType
 
-from .base import T, BaseSQLAlchemyRepository, IBaseRepository
+from .base import T, BaseSQLAlchemyRepository, BaseBeanieRepository
 from .utils import to_entity_from_model_or_document
 
 # Utilidades para operaciones comunes con SQLAlchemy
@@ -125,7 +125,7 @@ class SQLAlchemyCommonImplementationsRepo(
 
 
 class BeanieODMCommonImplementationsRepo(
-    IBaseRepository[T], HasBasicArgs[T, D], t.Generic[T, D]
+    BaseBeanieRepository[T], HasBasicArgs[T, D], t.Generic[T, D]
 ):
     """
     Implementaciones comunes para repositorios usando Beanie.

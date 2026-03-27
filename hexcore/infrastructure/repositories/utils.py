@@ -10,7 +10,7 @@ from hexcore.types import VisitedType, VisitedResultsType
 
 from .orms.sqlalchemy import BaseModel
 from .orms.beanie import BaseDocument
-from .base import BaseSQLAlchemyRepository
+from .base import BaseSQLAlchemyRepository, BaseBeanieRepository
 
 # --- Función auxiliar para aplicar resolvers asíncronos en dicts ---
 
@@ -116,4 +116,23 @@ def discover_sql_repositories() -> t.Dict[
     return {
         repo_cls.__name__.lower().replace("repository", ""): repo_cls
         for repo_cls in get_all_concrete_subclasses(BaseSQLAlchemyRepository)
+    }
+    
+    
+def discover_nosql_repositories() -> t.Dict[
+    str,
+    t.Type[BaseBeanieRepository[t.Any]],
+]:
+    """
+    Descubre todos los repositorios NoSQL disponibles.
+
+    Retorna un diccionario que mapea nombres de repositorios a sus clases.
+    El nombre del repositorio se deriva del nombre de la clase, convirtiéndolo a minúsculas.
+    Ejemplo:
+        Si existe una clase UserRepository, se mapeará como 'user': UserRepository
+    """
+
+    return {
+        repo_cls.__name__.lower().replace("repository", ""): repo_cls
+        for repo_cls in get_all_concrete_subclasses(BaseBeanieRepository)
     }
