@@ -1,3 +1,9 @@
+## 1.5.0 (2026-03-27)
+
+### Feat
+
+- **infrastructure.uow**: add the auto repo register in the uow
+
 ## 1.4.2 (2026-03-26)
 
 ### Fix
