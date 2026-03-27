@@ -1,3 +1,9 @@
+## 1.5.1 (2026-03-27)
+
+### Fix
+
+- **infrastructure.uow**: set the inject repositories in the init def
+
 ## 1.5.0 (2026-03-27)
 
 ### Feat
