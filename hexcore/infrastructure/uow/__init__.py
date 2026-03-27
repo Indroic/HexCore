@@ -8,6 +8,10 @@ from hexcore.domain.events import DomainEvent
 from hexcore.infrastructure.repositories.orms.sqlalchemy import (
     BaseModel,
 )
+from hexcore.infrastructure.repositories.utils import (
+    discover_sql_repositories,
+    discover_nosql_repositories,
+)
 
 
 class SqlAlchemyUnitOfWork(IUnitOfWork):
@@ -18,6 +22,14 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
     def __init__(self, session: AsyncSession):
         self.session = session
         super().__init__()
+        
+    def _inject_repositories(self):
+        """
+        Instancia cada repositorio registrado y lo pega al UoW usando setattr.
+        """
+        for name, repo_class in discover_sql_repositories().items():
+            repo_instance = repo_class(self)
+            setattr(self, name, repo_instance)
 
     async def __aexit__(
         self,
@@ -79,6 +91,14 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
 class NoSqlUnitOfWork(IUnitOfWork):
     def __init__(self):
         self._entities: set[BaseEntity] = set()
+
+    def _inject_repositories(self):
+        """
+        Instancia cada repositorio registrado y lo pega al UoW usando setattr.
+        """
+        for name, repo_class in discover_nosql_repositories().items():
+            repo_instance = repo_class(self)
+            setattr(self, name, repo_instance)
 
     async def __aenter__(self):
         return self

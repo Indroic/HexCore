@@ -21,3 +21,8 @@ class BaseSQLAlchemyRepository(IBaseRepository[T], abc.ABC, t.Generic[T]):
         if self._session is None:
             raise ValueError("El repositorio no está asociado a una sesión de base de datos.")
         return self._session
+    
+    
+class BaseBeanieRepository(IBaseRepository[T], abc.ABC, t.Generic[T]):
+    """Repositorio base para Beanie ODM. Similar a BaseSQLAlchemyRepository pero sin sesión."""
+    pass
