@@ -24,7 +24,8 @@ class IUnitOfWork(abc.ABC):
         exc_val: t.Optional[BaseException],
         exc_tb: t.Optional[t.Any],
     ) -> None:
-        await self.rollback()
+        if exc_type:
+            await self.rollback()
 
     @abc.abstractmethod
     def collect_domain_events(self) -> t.List[t.Any]:

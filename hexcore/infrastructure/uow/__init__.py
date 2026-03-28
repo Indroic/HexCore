@@ -23,7 +23,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         self.session = session
         super().__init__()
         self._inject_repositories()
-        
+
     def _inject_repositories(self):
         """
         Instancia cada repositorio registrado y lo pega al UoW usando setattr.
@@ -38,10 +38,9 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         exc_val: t.Optional[BaseException],
         exc_tb: t.Optional[t.Any],
     ) -> None:
-        # Llama al rollback de la interfaz (que a su vez llama al nuestro)
-        # y cierra la sesión para liberar la conexión.
+        # El ciclo de vida de la sesion se maneja en la dependencia/factory
+        # que la crea. Aqui solo manejamos rollback en errores.
         await super().__aexit__(exc_type, exc_val, exc_tb)
-        await self.session.close()
 
     async def commit(self):
         """
@@ -52,7 +51,8 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         self.clear_tracked_entities()
 
     async def rollback(self):
-        await self.session.rollback()
+        if self.session.in_transaction():
+            await self.session.rollback()
         self.clear_tracked_entities()
 
     def collect_domain_entities(self) -> t.Set[BaseEntity]:
