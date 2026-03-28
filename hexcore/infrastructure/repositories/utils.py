@@ -74,15 +74,13 @@ async def to_entity_from_model_or_document(
     """
     Convierte un modelo SQLAlchemy o un documento Beanie a una entidad de dominio.
     """
-    # Si es un Row de SQLAlchemy (Core), lo convertimos a dict directamente
-    if isinstance(model_instance, Row):
-        model_dict = dict(model_instance._mapping) # pyright: ignore[reportPrivateUsage]
+    # Prioriza _mapping para soportar Row de SQLAlchemy y row-like compatibles.
+    if hasattr(model_instance, "_mapping"):
+        model_dict = dict(getattr(model_instance, "_mapping"))
+    elif is_nosql and isinstance(model_instance, BaseDocument):
+        model_dict = model_instance.model_dump()
     else:
-        model_dict = (
-            model_instance.model_dump()
-            if is_nosql and isinstance(model_instance, BaseDocument)
-            else model_instance.__dict__.copy()
-        )
+        model_dict = vars(model_instance).copy()
 
     if is_nosql and "entity_id" in model_dict:
         model_dict["id"] = model_dict.pop("entity_id")
@@ -123,8 +121,8 @@ def discover_sql_repositories() -> t.Dict[
         repo_cls.__name__.lower().replace("repository", ""): repo_cls
         for repo_cls in get_all_concrete_subclasses(BaseSQLAlchemyRepository)
     }
-    
-    
+
+
 def discover_nosql_repositories() -> t.Dict[
     str,
     t.Type[BaseBeanieRepository[t.Any]],
