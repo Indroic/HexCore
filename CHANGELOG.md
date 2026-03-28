@@ -1,3 +1,9 @@
+## 1.6.0 (2026-03-28)
+
+### Feat
+
+- **domain.reposotiries,-infrastructure.repositories.implementations-and-orms-utils**: implement limit/offset pagination in repository methods
+
 ## 1.5.1 (2026-03-27)
 
 ### Fix
