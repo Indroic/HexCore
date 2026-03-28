@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing as t
+from collections.abc import Mapping
 
 from sqlalchemy import Row
 
@@ -74,19 +75,33 @@ async def to_entity_from_model_or_document(
     """
     Convierte un modelo SQLAlchemy o un documento Beanie a una entidad de dominio.
     """
-    # Prioriza _mapping para soportar Row de SQLAlchemy y row-like compatibles.
-    if hasattr(model_instance, "_mapping"):
-        model_dict = dict(getattr(model_instance, "_mapping"))
-    elif is_nosql and isinstance(model_instance, BaseDocument):
+    model_dict: dict[str, t.Any]
+
+    if is_nosql and isinstance(model_instance, BaseDocument):
         model_dict = model_instance.model_dump()
+    # Prioriza _mapping para soportar Row de SQLAlchemy y row-like compatibles.
+    elif hasattr(model_instance, "_mapping"):
+        mapping_obj = t.cast(Mapping[str, t.Any], getattr(model_instance, "_mapping"))
+        model_dict = dict(mapping_obj)
+    # Compatibilidad con objetos tipo namedtuple/Row legacy que exponen _asdict().
+    elif hasattr(model_instance, "_asdict") and callable(
+        getattr(model_instance, "_asdict")
+    ):
+        asdict_obj = t.cast(Mapping[str, t.Any], getattr(model_instance, "_asdict")())
+        model_dict = dict(asdict_obj)
+    # Soporte para objetos que son Mapping pero no tienen __dict__.
+    elif isinstance(model_instance, Mapping):
+        mapping_instance = t.cast(Mapping[str, t.Any], model_instance)
+        model_dict = dict(mapping_instance)
     else:
         model_dict = vars(model_instance).copy()
 
     if is_nosql and "entity_id" in model_dict:
         model_dict["id"] = model_dict.pop("entity_id")
 
+    resolver_source = t.cast(T, model_instance)
     model_dict = await _apply_async_field_resolvers(
-        model_instance, model_dict, field_resolvers
+        resolver_source, model_dict, field_resolvers
     )
 
     if is_nosql:
