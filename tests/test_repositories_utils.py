@@ -17,6 +17,16 @@ class _DummyModel:
         self.__dict__.update(values)
 
 
+class _RowLikeWithoutDict:
+    def __init__(self, **values: object) -> None:
+        self._mapping = values
+
+    def __getattribute__(self, name: str):
+        if name == "__dict__":
+            raise AttributeError("Could not locate column in row for column '__dict__'")
+        return super().__getattribute__(name)
+
+
 def test_to_entity_from_plain_model_uses_model_dict_values() -> None:
     async def _run() -> None:
         entity_id = uuid4()
@@ -74,5 +84,16 @@ def test_to_entity_from_sqlalchemy_row_mapping() -> None:
         entity = await to_entity_from_model_or_document(row, _TestEntity)
 
         assert entity.name == "row-value"
+
+    asyncio.run(_run())
+
+
+def test_to_entity_from_row_like_object_uses_mapping() -> None:
+    async def _run() -> None:
+        row_like = _RowLikeWithoutDict(name="row-like")
+
+        entity = await to_entity_from_model_or_document(row_like, _TestEntity)
+
+        assert entity.name == "row-like"
 
     asyncio.run(_run())
