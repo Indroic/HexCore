@@ -1,3 +1,9 @@
+## 1.6.4 (2026-03-28)
+
+### Fix
+
+- **repositories**: support Row mapping in to_entity utility and add tests
+
 ## 1.6.3 (2026-03-28)
 
 ### Fix
