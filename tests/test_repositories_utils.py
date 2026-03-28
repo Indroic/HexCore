@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Iterator, Mapping
 from uuid import uuid4
 
 from sqlalchemy import create_engine, text
@@ -25,6 +26,22 @@ class _RowLikeWithoutDict:
         if name == "__dict__":
             raise AttributeError("Could not locate column in row for column '__dict__'")
         return super().__getattribute__(name)
+
+
+class _MappingWithoutDict(Mapping[str, object]):
+    __slots__ = ("_data",)
+
+    def __init__(self, **values: object) -> None:
+        self._data = values
+
+    def __getitem__(self, key: str) -> object:
+        return self._data[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
 
 
 def test_to_entity_from_plain_model_uses_model_dict_values() -> None:
@@ -95,5 +112,16 @@ def test_to_entity_from_row_like_object_uses_mapping() -> None:
         entity = await to_entity_from_model_or_document(row_like, _TestEntity)
 
         assert entity.name == "row-like"
+
+    asyncio.run(_run())
+
+
+def test_to_entity_from_mapping_without_dict() -> None:
+    async def _run() -> None:
+        mapping_like = _MappingWithoutDict(name="mapping-like")
+
+        entity = await to_entity_from_model_or_document(mapping_like, _TestEntity)
+
+        assert entity.name == "mapping-like"
 
     asyncio.run(_run())
