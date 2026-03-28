@@ -1,3 +1,9 @@
+## 1.6.6 (2026-03-28)
+
+### Fix
+
+- **infrastructure.repositories**: finally fix of row mapping objects
+
 ## 1.6.5 (2026-03-28)
 
 ### Fix
