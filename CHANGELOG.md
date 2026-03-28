@@ -1,3 +1,9 @@
+## 1.6.2 (2026-03-28)
+
+### Fix
+
+- **domain.uow,-infrastructure.uow**: corregir manejo de rollback en caso de error y optimizar cierre de sesión
+
 ## 1.6.1 (2026-03-28)
 
 ### Fix
