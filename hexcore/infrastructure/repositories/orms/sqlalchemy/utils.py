@@ -76,8 +76,17 @@ async def db_get(
     return get_entity
 
 
-async def db_list(session: AsyncSession, model: t.Type[T]) -> t.List[T]:
+async def db_list(
+    session: AsyncSession,
+    model: t.Type[T],
+    limit: t.Optional[int] = None,
+    offset: int = 0,
+) -> t.List[T]:
     stmt = select(model).options(*load_relations(model))
+    if offset > 0:
+        stmt = stmt.offset(offset)
+    if limit is not None:
+        stmt = stmt.limit(limit)
     result = await session.execute(stmt)
     entities = list(result.scalars().all())
     if not entities:
@@ -162,6 +171,6 @@ async def logical_delete(
         await save_entity(session, entity, model_cls)
 
 
-def import_all_models(package: types.ModuleType)  -> t.Any:
+def import_all_models(package: types.ModuleType) -> t.Any:
     for _, module_name, _ in pkgutil.iter_modules(package.__path__):
         importlib.import_module(f"{package.__name__}.{module_name}")

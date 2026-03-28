@@ -1,15 +1,24 @@
 import typing as t
-from .base import BaseSQLAlchemyRepository as BaseSQLAlchemyRepository, IBaseRepository as IBaseRepository, T as T
+from .base import (
+    BaseSQLAlchemyRepository as BaseSQLAlchemyRepository,
+    IBaseRepository as IBaseRepository,
+    T as T,
+)
 from .orms.beanie import BaseDocument as BaseDocument
 from .orms.sqlalchemy import BaseModel as BaseModel
 from .utils import to_entity_from_model_or_document as to_entity_from_model_or_document
-from hexcore.infrastructure.uow.decorators import register_entity_on_uow as register_entity_on_uow
-from hexcore.types import FieldResolversType as FieldResolversType, FieldSerializersType as FieldSerializersType
+from hexcore.infrastructure.uow.decorators import (
+    register_entity_on_uow as register_entity_on_uow,
+)
+from hexcore.types import (
+    FieldResolversType as FieldResolversType,
+    FieldSerializersType as FieldSerializersType,
+)
 from uuid import UUID
 
-M = t.TypeVar('M', bound=BaseModel[t.Any])
-D = t.TypeVar('D', bound=BaseDocument)
-A = t.TypeVar('A')
+M = t.TypeVar("M", bound=BaseModel[t.Any])
+D = t.TypeVar("D", bound=BaseDocument)
+A = t.TypeVar("A")
 
 class HasBasicArgs(t.Generic[T, A]):
     @property
@@ -21,19 +30,23 @@ class HasBasicArgs(t.Generic[T, A]):
     @property
     def fields_resolvers(self) -> FieldResolversType[A]: ...
 
-class SQLAlchemyCommonImplementationsRepo(BaseSQLAlchemyRepository[T], HasBasicArgs[T, M], t.Generic[T, M]):
+class SQLAlchemyCommonImplementationsRepo(
+    BaseSQLAlchemyRepository[T], HasBasicArgs[T, M], t.Generic[T, M]
+):
     @property
     def model_cls(self) -> type[M]: ...
     async def get_by_id(self, entity_id: UUID) -> T: ...
-    async def list_all(self) -> list[T]: ...
+    async def list_all(self, limit: int | None = ..., offset: int = ...) -> list[T]: ...
     async def save(self, entity: T) -> T: ...
     async def delete(self, entity: T) -> None: ...
 
-class BeanieODMCommonImplementationsRepo(IBaseRepository[T], HasBasicArgs[T, D], t.Generic[T, D]):
+class BeanieODMCommonImplementationsRepo(
+    IBaseRepository[T], HasBasicArgs[T, D], t.Generic[T, D]
+):
     @property
     def document_cls(self) -> type[D]: ...
     async def get_by_id(self, entity_id: UUID) -> T: ...
-    async def list_all(self) -> list[T]: ...
+    async def list_all(self, limit: int | None = ..., offset: int = ...) -> list[T]: ...
     @register_entity_on_uow
     async def save(self, entity: T) -> T: ...
     async def delete(self, entity: T) -> None: ...

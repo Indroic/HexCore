@@ -82,7 +82,9 @@ async def db_get(document_class: t.Type[D], entity_id: UUID) -> t.Optional[D]:
     return await document_class.find_one({"entity_id": entity_id})
 
 
-async def db_list(document_class: t.Type[D]) -> t.List[D]:
+async def db_list(
+    document_class: t.Type[D], limit: t.Optional[int] = None, offset: int = 0
+) -> t.List[D]:
     """
     Lista todos los documentos de una clase específica.
     Args:
@@ -90,7 +92,12 @@ async def db_list(document_class: t.Type[D]) -> t.List[D]:
     Returns:
         Lista de documentos encontrados.
     """
-    return await document_class.find_all().to_list()
+    query = document_class.find_all()
+    if offset > 0:
+        query = query.skip(offset)
+    if limit is not None:
+        query = query.limit(limit)
+    return await query.to_list()
 
 
 async def save_entity(
