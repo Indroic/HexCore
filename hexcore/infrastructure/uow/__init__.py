@@ -39,16 +39,20 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         exc_tb: t.Optional[t.Any],
     ) -> None:
         # El ciclo de vida de la sesion se maneja en la dependencia/factory
-        # que la crea. Aqui solo manejamos rollback en errores.
-        await super().__aexit__(exc_type, exc_val, exc_tb)
+        # que la crea. Evitamos rollback duplicado para no interferir con
+        # el unwind del contexto externo de AsyncSession.
+        if exc_type:
+            self.clear_tracked_entities()
 
     async def commit(self):
         """
         Confirma la transacción y despacha los eventos.
         """
         await self.session.commit()
-        await self.dispatch_events()
-        self.clear_tracked_entities()
+        try:
+            await self.dispatch_events()
+        finally:
+            self.clear_tracked_entities()
 
     async def rollback(self):
         if self.session.in_transaction():
