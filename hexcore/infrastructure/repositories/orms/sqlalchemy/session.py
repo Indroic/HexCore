@@ -23,9 +23,11 @@ AsyncSessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
 
 
 async def get_async_db_session():
-    """Generador de dependencias para obtener una sesión de BD asíncrona."""
-    db = AsyncSessionLocal()
-    try:
-        yield db
-    finally:
-        await db.close()
+    """Generador de sesiones asíncronas con gestión de transacciones integrada."""
+    async with AsyncSessionLocal() as db:
+        try:
+            yield db
+        except Exception:
+            if db.in_transaction():
+                await db.rollback()
+            raise
