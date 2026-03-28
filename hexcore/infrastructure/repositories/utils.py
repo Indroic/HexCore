@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import typing as t
 
+from sqlalchemy import Row
+
 
 from hexcore.domain.base import BaseEntity
 from hexcore.types import FieldResolversType
@@ -14,7 +16,7 @@ from .base import BaseSQLAlchemyRepository, BaseBeanieRepository
 
 # --- Función auxiliar para aplicar resolvers asíncronos en dicts ---
 
-T = t.TypeVar("T", bound=t.Union[BaseModel[t.Any], BaseDocument, t.Any])
+T = t.TypeVar("T", bound=t.Union[BaseModel[t.Any], BaseDocument, Row[t.Any], t.Any])
 E = t.TypeVar("E", bound=BaseEntity)
 
 
@@ -70,25 +72,29 @@ async def to_entity_from_model_or_document(
     is_nosql: bool = False,
 ) -> E:
     """
-    Convierte un modelo SQLAlchemy o un documento Beanie a una entidad de dominio,
-    permitiendo reconstruir campos complejos con resolvers asíncronos.
-    Si is_nosql=True, renombra 'entity_id' a 'id'.
-    
-    SOLO FUNCIONA CON LOS ORMS/ODMS SOPORTADOS (SQLAlchemy Y BEANIE).
+    Convierte un modelo SQLAlchemy o un documento Beanie a una entidad de dominio.
     """
-    model_dict = (
-        model_instance.model_dump()
-        if is_nosql and isinstance(model_instance, BaseDocument)
-        else model_instance.__dict__.copy()
-    )
+    # Si es un Row de SQLAlchemy (Core), lo convertimos a dict directamente
+    if isinstance(model_instance, Row):
+        model_dict = dict(model_instance._mapping) # pyright: ignore[reportPrivateUsage]
+    else:
+        model_dict = (
+            model_instance.model_dump()
+            if is_nosql and isinstance(model_instance, BaseDocument)
+            else model_instance.__dict__.copy()
+        )
+
     if is_nosql and "entity_id" in model_dict:
         model_dict["id"] = model_dict.pop("entity_id")
+
     model_dict = await _apply_async_field_resolvers(
         model_instance, model_dict, field_resolvers
     )
+
     if is_nosql:
-        return entity_class.model_validate(model_dict)
-    return entity_class.model_validate(model_dict, from_attributes=True)
+        return entity_class.model_construct(**model_dict)
+
+    return entity_class.model_construct(**model_dict)
 
 
 def get_all_concrete_subclasses(cls: type) -> set[type]:
