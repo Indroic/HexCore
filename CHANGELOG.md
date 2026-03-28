@@ -1,3 +1,9 @@
+## 1.6.3 (2026-03-28)
+
+### Fix
+
+- **uow**: avoid duplicate rollback in async session lifecycle
+
 ## 1.6.2 (2026-03-28)
 
 ### Fix
