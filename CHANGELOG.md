@@ -1,3 +1,9 @@
+## 1.6.5 (2026-03-28)
+
+### Fix
+
+- **infrastructure.repositories**: best robust for row-like sqlalchemy objects in to_entity_from_model_or_document util
+
 ## 1.6.4 (2026-03-28)
 
 ### Fix
