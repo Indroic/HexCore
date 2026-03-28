@@ -1,3 +1,9 @@
+## 1.6.1 (2026-03-28)
+
+### Fix
+
+- **infrastructure.repositories.orms.sqalchemy.session**: fallo al cerrar la conexion mientras se realizaba una transaccion
+
 ## 1.6.0 (2026-03-28)
 
 ### Feat
