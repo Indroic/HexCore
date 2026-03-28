@@ -15,6 +15,9 @@ class IBaseRepository(abc.ABC, t.Generic[T]):
     Define las operaciones CRUD comunes que todos los repositorios deben implementar.
     """
 
+    # Controla si el repositorio aplica paginacion limit/offset en listados.
+    limit_offset_pagination: bool = True
+
     def __init__(self, uow: IUnitOfWork):
         self.uow: IUnitOfWork = uow
 
@@ -29,7 +32,9 @@ class IBaseRepository(abc.ABC, t.Generic[T]):
         return entity
 
     @abc.abstractmethod
-    async def list_all(self) -> t.List[T]:
+    async def list_all(
+        self, limit: t.Optional[int] = None, offset: int = 0
+    ) -> t.List[T]:
         raise NotImplementedError
 
     @abc.abstractmethod

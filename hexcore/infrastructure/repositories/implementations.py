@@ -86,7 +86,6 @@ class SQLAlchemyCommonImplementationsRepo(
         raise NotImplementedError("Debe implementar la propiedad document_cls")
 
     async def get_by_id(self, entity_id: UUID) -> T:
-
         model = await sql_db_get(
             self.session,
             self.model_cls,
@@ -97,9 +96,15 @@ class SQLAlchemyCommonImplementationsRepo(
             model, self.entity_cls, self.fields_resolvers
         )
 
-    async def list_all(self) -> t.List[T]:
-
-        models = await sql_db_list(self.session, self.model_cls)
+    async def list_all(
+        self, limit: t.Optional[int] = None, offset: int = 0
+    ) -> t.List[T]:
+        if self.limit_offset_pagination:
+            models = await sql_db_list(
+                self.session, self.model_cls, limit=limit, offset=offset
+            )
+        else:
+            models = await sql_db_list(self.session, self.model_cls)
         return [
             await to_entity_from_model_or_document(
                 model, self.entity_cls, self.fields_resolvers
@@ -108,7 +113,6 @@ class SQLAlchemyCommonImplementationsRepo(
         ]
 
     async def save(self, entity: T) -> T:
-
         saved = await sql_save_entity(
             self.session,
             entity,
@@ -120,7 +124,6 @@ class SQLAlchemyCommonImplementationsRepo(
         )
 
     async def delete(self, entity: T) -> None:
-
         await sql_logical_delete(self.session, entity, self.model_cls)
 
 
@@ -157,8 +160,15 @@ class BeanieODMCommonImplementationsRepo(
             document, self.entity_cls, self.fields_resolvers, is_nosql=True
         )
 
-    async def list_all(self) -> t.List[T]:
-        documents = await nosql_db_list(self.document_cls)
+    async def list_all(
+        self, limit: t.Optional[int] = None, offset: int = 0
+    ) -> t.List[T]:
+        if self.limit_offset_pagination:
+            documents = await nosql_db_list(
+                self.document_cls, limit=limit, offset=offset
+            )
+        else:
+            documents = await nosql_db_list(self.document_cls)
         return [
             await to_entity_from_model_or_document(
                 doc, self.entity_cls, self.fields_resolvers, is_nosql=True
