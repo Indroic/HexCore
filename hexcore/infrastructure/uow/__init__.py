@@ -28,9 +28,18 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         """
         Instancia cada repositorio registrado y lo pega al UoW usando setattr.
         """
-        for name, repo_class in discover_sql_repositories().items():
+        repositories = discover_sql_repositories()
+        if not repositories:
+            raise RuntimeError(
+                "No se descubrieron repositorios SQLAlchemy. "
+                "Asegura que los modulos de repositorios esten disponibles en paquetes escaneables."
+            )
+
+        self.repositories = {}
+        for name, repo_class in repositories.items():
             repo_instance = repo_class(self)
             setattr(self, name, repo_instance)
+            self.repositories[name] = repo_instance
 
     async def __aexit__(
         self,
@@ -95,6 +104,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
 
 class NoSqlUnitOfWork(IUnitOfWork):
     def __init__(self):
+        super().__init__()
         self._entities: set[BaseEntity] = set()
         self._inject_repositories()
 
@@ -102,9 +112,18 @@ class NoSqlUnitOfWork(IUnitOfWork):
         """
         Instancia cada repositorio registrado y lo pega al UoW usando setattr.
         """
-        for name, repo_class in discover_nosql_repositories().items():
+        repositories = discover_nosql_repositories()
+        if not repositories:
+            raise RuntimeError(
+                "No se descubrieron repositorios NoSQL. "
+                "Asegura que los modulos de repositorios esten disponibles en paquetes escaneables."
+            )
+
+        self.repositories = {}
+        for name, repo_class in repositories.items():
             repo_instance = repo_class(self)
             setattr(self, name, repo_instance)
+            self.repositories[name] = repo_instance
 
     async def __aenter__(self):
         return self

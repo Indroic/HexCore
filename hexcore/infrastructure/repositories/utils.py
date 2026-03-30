@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import importlib
+import pkgutil
+import sys
 import typing as t
+import warnings
 from collections.abc import Mapping
 
 from sqlalchemy import Row
@@ -19,6 +23,9 @@ from .base import BaseSQLAlchemyRepository, BaseBeanieRepository
 
 T = t.TypeVar("T", bound=t.Union[BaseModel[t.Any], BaseDocument, Row[t.Any], t.Any])
 E = t.TypeVar("E", bound=BaseEntity)
+
+_AUTOLOADED_REPOSITORY_PACKAGES: set[str] = set()
+_EMPTY_ABSTRACT_MEMBERS: frozenset[str] = frozenset()
 
 
 async def _apply_async_field_resolvers(
@@ -119,6 +126,176 @@ def get_all_concrete_subclasses(cls: type) -> set[type]:
     return subclasses
 
 
+def _get_all_subclasses(cls: type) -> set[type]:
+    subclasses: set[type] = set()
+    for subclass in cls.__subclasses__():
+        subclasses.add(subclass)
+        subclasses.update(_get_all_subclasses(subclass))
+    return subclasses
+
+
+def _warn_for_abstract_repository(repo_cls: type) -> None:
+    abstract_members_raw = t.cast(
+        t.Iterable[str],
+        getattr(repo_cls, "__abstractmethods__", _EMPTY_ABSTRACT_MEMBERS),
+    )
+    abstract_members = sorted(abstract_members_raw)
+    if not abstract_members:
+        return
+
+    missing_members = ", ".join(abstract_members)
+    warnings.warn(
+        f"Repositorio abstracto detectado y omitido: {repo_cls.__module__}.{repo_cls.__name__}. "
+        f"Miembros pendientes por implementar: {missing_members}. Este repositorio puede fallar si se intenta usar.",
+        UserWarning,
+        stacklevel=2,
+    )
+
+
+def _get_configured_repository_packages() -> set[str]:
+    try:
+        from hexcore.config import LazyConfig
+
+        config = LazyConfig.get_config()
+    except Exception:
+        return set()
+
+    configured = getattr(config, "repository_discovery_packages", ())
+    if not isinstance(configured, (list, tuple, set)):
+        return set()
+
+    normalized_packages: set[str] = set()
+    configured_packages = t.cast(t.Iterable[object], configured)
+    for package in configured_packages:
+        package_name = str(package).strip()
+        if package_name:
+            normalized_packages.add(package_name)
+
+    return normalized_packages
+
+
+def _iter_candidate_repository_packages() -> set[str]:
+    packages = {
+        "hexcore.infrastructure.repositories",
+        "infrastructure.repositories",
+        "src.infrastructure.repositories",
+        "src.repositories",
+        "repositories",
+    }
+
+    for module_name in tuple(sys.modules):
+        if not module_name:
+            continue
+        if (
+            ".interfaces" not in module_name
+            and ".domain" not in module_name
+            and ".infrastructure" not in module_name
+        ):
+            continue
+
+        root_module = module_name.split(".", 1)[0]
+        if not root_module:
+            continue
+
+        packages.add(f"{root_module}.infrastructure.repositories")
+        packages.add(f"{root_module}.repositories")
+
+    packages.update(_get_configured_repository_packages())
+
+    return packages
+
+
+def _import_package_and_submodules(package_name: str, strict: bool = False) -> None:
+    if package_name in _AUTOLOADED_REPOSITORY_PACKAGES:
+        return
+
+    try:
+        package = importlib.import_module(package_name)
+    except ModuleNotFoundError:
+        if strict:
+            raise
+        return
+
+    _AUTOLOADED_REPOSITORY_PACKAGES.add(package_name)
+
+    package_paths = getattr(package, "__path__", None)
+    if not package_paths:
+        return
+
+    for module_info in pkgutil.walk_packages(package_paths, prefix=f"{package_name}."):
+        try:
+            importlib.import_module(module_info.name)
+        except ModuleNotFoundError:
+            if strict:
+                raise
+        except Exception:
+            if strict:
+                raise
+
+
+def _autoload_repository_modules() -> None:
+    configured_packages = _get_configured_repository_packages()
+    for package_name in _iter_candidate_repository_packages():
+        _import_package_and_submodules(
+            package_name,
+            strict=package_name in configured_packages,
+        )
+
+
+def _repository_key_from_class_name(class_name: str) -> str:
+    normalized_name = class_name.strip()
+    lowered_name = normalized_name.lower()
+
+    for suffix in ("repository", "repo"):
+        if lowered_name.endswith(suffix):
+            normalized_name = normalized_name[: -len(suffix)]
+            break
+
+    repo_key = "".join(char for char in normalized_name if char.isalnum()).lower()
+    if not repo_key:
+        raise ValueError(
+            f"No se pudo derivar la clave del repositorio para la clase '{class_name}'."
+        )
+
+    return repo_key
+
+
+def _discover_repositories(
+    base_repository_class: type,
+) -> t.Dict[str, type]:
+    _autoload_repository_modules()
+
+    repositories: t.Dict[str, type] = {}
+    all_subclasses = _get_all_subclasses(base_repository_class)
+    sorted_classes = sorted(
+        all_subclasses,
+        key=lambda cls: f"{cls.__module__}.{cls.__qualname__}",
+    )
+
+    for repo_cls in sorted_classes:
+        abstract_methods = t.cast(
+            t.Iterable[str],
+            getattr(repo_cls, "__abstractmethods__", _EMPTY_ABSTRACT_MEMBERS),
+        )
+        if any(True for _ in abstract_methods):
+            _warn_for_abstract_repository(repo_cls)
+            continue
+
+        repo_key = _repository_key_from_class_name(repo_cls.__name__)
+        existing_repo_cls = repositories.get(repo_key)
+
+        if existing_repo_cls is not None and existing_repo_cls is not repo_cls:
+            raise ValueError(
+                "Se detecto una colision de nombres de repositorio para "
+                f"'{repo_key}': {existing_repo_cls.__module__}.{existing_repo_cls.__name__} "
+                f"y {repo_cls.__module__}.{repo_cls.__name__}."
+            )
+
+        repositories[repo_key] = repo_cls
+
+    return repositories
+
+
 def discover_sql_repositories() -> t.Dict[
     str,
     t.Type[BaseSQLAlchemyRepository[t.Any]],
@@ -132,10 +309,10 @@ def discover_sql_repositories() -> t.Dict[
         Si existe una clase UserRepository, se mapeará como 'user': UserRepository
     """
 
-    return {
-        repo_cls.__name__.lower().replace("repository", ""): repo_cls
-        for repo_cls in get_all_concrete_subclasses(BaseSQLAlchemyRepository)
-    }
+    return t.cast(
+        t.Dict[str, t.Type[BaseSQLAlchemyRepository[t.Any]]],
+        _discover_repositories(BaseSQLAlchemyRepository),
+    )
 
 
 def discover_nosql_repositories() -> t.Dict[
@@ -151,7 +328,7 @@ def discover_nosql_repositories() -> t.Dict[
         Si existe una clase UserRepository, se mapeará como 'user': UserRepository
     """
 
-    return {
-        repo_cls.__name__.lower().replace("repository", ""): repo_cls
-        for repo_cls in get_all_concrete_subclasses(BaseBeanieRepository)
-    }
+    return t.cast(
+        t.Dict[str, t.Type[BaseBeanieRepository[t.Any]]],
+        _discover_repositories(BaseBeanieRepository),
+    )
