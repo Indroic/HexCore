@@ -1,11 +1,22 @@
+import abc
 import asyncio
+import warnings
 from collections.abc import Iterator, Mapping
+from unittest.mock import patch
 from uuid import uuid4
 
 from sqlalchemy import create_engine, text
 
 from hexcore.domain.base import BaseEntity
-from hexcore.infrastructure.repositories.utils import to_entity_from_model_or_document
+from hexcore.infrastructure.repositories.base import (
+    BaseBeanieRepository,
+    BaseSQLAlchemyRepository,
+)
+from hexcore.infrastructure.repositories.utils import (
+    discover_nosql_repositories,
+    discover_sql_repositories,
+    to_entity_from_model_or_document,
+)
 
 
 class _TestEntity(BaseEntity):
@@ -42,6 +53,48 @@ class _MappingWithoutDict(Mapping[str, object]):
 
     def __len__(self) -> int:
         return len(self._data)
+
+
+class _SqlRepoA(BaseSQLAlchemyRepository[_TestEntity]):
+    async def get_by_id(self, entity_id):
+        raise NotImplementedError
+
+    async def list_all(self, limit=None, offset=0):
+        raise NotImplementedError
+
+    async def save(self, entity):
+        raise NotImplementedError
+
+    async def delete(self, entity):
+        raise NotImplementedError
+
+
+class _SqlRepoB(BaseSQLAlchemyRepository[_TestEntity]):
+    async def get_by_id(self, entity_id):
+        raise NotImplementedError
+
+    async def list_all(self, limit=None, offset=0):
+        raise NotImplementedError
+
+    async def save(self, entity):
+        raise NotImplementedError
+
+    async def delete(self, entity):
+        raise NotImplementedError
+
+
+class LiveLinesRepo(BaseBeanieRepository[_TestEntity]):
+    async def get_by_id(self, entity_id):
+        raise NotImplementedError
+
+    async def list_all(self, limit=None, offset=0):
+        raise NotImplementedError
+
+    async def save(self, entity):
+        raise NotImplementedError
+
+    async def delete(self, entity):
+        raise NotImplementedError
 
 
 def test_to_entity_from_plain_model_uses_model_dict_values() -> None:
@@ -125,3 +178,67 @@ def test_to_entity_from_mapping_without_dict() -> None:
         assert entity.name == "mapping-like"
 
     asyncio.run(_run())
+
+
+def test_discover_sql_repositories_detects_key_collisions() -> None:
+    RepoX = type("UsersRepository", (_SqlRepoA,), {})
+    RepoY = type("UsersRepo", (_SqlRepoB,), {})
+
+    with (
+        patch("hexcore.infrastructure.repositories.utils._autoload_repository_modules"),
+        patch(
+            "hexcore.infrastructure.repositories.utils._get_all_subclasses",
+            return_value={RepoX, RepoY},
+        ),
+    ):
+        raised = None
+        try:
+            discover_sql_repositories()
+        except ValueError as exc:
+            raised = exc
+
+    assert raised is not None
+    assert "colision" in str(raised)
+    assert "users" in str(raised)
+
+
+def test_discover_nosql_repositories_accepts_repo_suffix() -> None:
+    with (
+        patch("hexcore.infrastructure.repositories.utils._autoload_repository_modules"),
+        patch(
+            "hexcore.infrastructure.repositories.utils._get_all_subclasses",
+            return_value={LiveLinesRepo},
+        ),
+    ):
+        discovered = discover_nosql_repositories()
+
+    assert "livelines" in discovered
+    assert discovered["livelines"] is LiveLinesRepo
+
+
+def test_discover_sql_repositories_warns_for_abstract_repositories() -> None:
+    class _AbstractWarningRepo(_SqlRepoA):
+        @abc.abstractmethod
+        async def custom_required(self):
+            raise NotImplementedError
+
+    class _ConcreteWarningRepo(_SqlRepoA):
+        pass
+
+    with (
+        patch("hexcore.infrastructure.repositories.utils._autoload_repository_modules"),
+        patch(
+            "hexcore.infrastructure.repositories.utils._get_all_subclasses",
+            return_value={_AbstractWarningRepo, _ConcreteWarningRepo},
+        ),
+        warnings.catch_warnings(record=True) as caught,
+    ):
+        warnings.simplefilter("always")
+        discovered = discover_sql_repositories()
+
+    assert "concretewarning" in discovered
+    assert discovered["concretewarning"] is _ConcreteWarningRepo
+    assert caught
+    warning_message = str(caught[0].message)
+    assert "_AbstractWarningRepo" in warning_message
+    assert "custom_required" in warning_message

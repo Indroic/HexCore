@@ -26,8 +26,16 @@ class _DummySessionContext:
         return False
 
 
+class _DummyRepository:
+    def __init__(self, uow: Any) -> None:
+        self.uow = uow
+
+
 def _build_sql_uow(session: Any) -> SqlAlchemyUnitOfWork:
-    with patch("hexcore.infrastructure.uow.discover_sql_repositories", return_value={}):
+    with patch(
+        "hexcore.infrastructure.uow.discover_sql_repositories",
+        return_value={"dummy": _DummyRepository},
+    ):
         return SqlAlchemyUnitOfWork(session=session)
 
 
