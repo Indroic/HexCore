@@ -1,3 +1,9 @@
+## 1.6.7 (2026-03-30)
+
+### Fix
+
+- **repositories**: harden repository discovery and uow injection
+
 ## 1.6.6 (2026-03-28)
 
 ### Fix

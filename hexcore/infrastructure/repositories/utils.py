@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import inspect
 import pkgutil
 import sys
 import typing as t
@@ -153,35 +152,6 @@ def _warn_for_abstract_repository(repo_cls: type) -> None:
     )
 
 
-def _get_repository_source_file(repo_cls: type) -> str | None:
-    try:
-        source_file = inspect.getsourcefile(repo_cls)
-    except (OSError, TypeError):
-        source_file = None
-    if source_file is None:
-        return None
-    return source_file.replace("\\", "/").lower()
-
-
-def _are_equivalent_repository_classes(existing_repo_cls: type, repo_cls: type) -> bool:
-    if existing_repo_cls is repo_cls:
-        return True
-
-    same_name = existing_repo_cls.__name__ == repo_cls.__name__
-    same_qualname = existing_repo_cls.__qualname__ == repo_cls.__qualname__
-    if not (same_name and same_qualname):
-        return False
-
-    existing_file = _get_repository_source_file(existing_repo_cls)
-    candidate_file = _get_repository_source_file(repo_cls)
-    if existing_file and candidate_file and existing_file == candidate_file:
-        return True
-
-    existing_module = existing_repo_cls.__module__.removeprefix("src.")
-    candidate_module = repo_cls.__module__.removeprefix("src.")
-    return existing_module == candidate_module
-
-
 def _get_configured_repository_packages() -> set[str]:
     try:
         from hexcore.config import LazyConfig
@@ -315,15 +285,6 @@ def _discover_repositories(
         existing_repo_cls = repositories.get(repo_key)
 
         if existing_repo_cls is not None and existing_repo_cls is not repo_cls:
-            if _are_equivalent_repository_classes(existing_repo_cls, repo_cls):
-                warnings.warn(
-                    "Repositorio duplicado detectado por alias de import y omitido: "
-                    f"'{repo_key}' -> {repo_cls.__module__}.{repo_cls.__name__}. "
-                    f"Se mantiene {existing_repo_cls.__module__}.{existing_repo_cls.__name__}.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-                continue
             raise ValueError(
                 "Se detecto una colision de nombres de repositorio para "
                 f"'{repo_key}': {existing_repo_cls.__module__}.{existing_repo_cls.__name__} "
