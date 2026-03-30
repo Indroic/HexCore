@@ -1,3 +1,13 @@
+## 1.6.8 (2026-03-30)
+
+### Fix
+
+- **repositories**: ignore alias duplicates during repository discovery
+
+### Refactor
+
+- **uow**: better repositories discover
+
 ## 1.6.7 (2026-03-30)
 
 ### Fix
