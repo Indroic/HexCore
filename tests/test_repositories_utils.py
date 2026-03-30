@@ -242,3 +242,47 @@ def test_discover_sql_repositories_warns_for_abstract_repositories() -> None:
     warning_message = str(caught[0].message)
     assert "_AbstractWarningRepo" in warning_message
     assert "custom_required" in warning_message
+
+
+def test_discover_sql_repositories_ignores_alias_duplicate_collision() -> None:
+    class AccountingSnapshotRepository(_SqlRepoA):
+        pass
+
+    AliasAccountingSnapshotRepository = type(
+        "AccountingSnapshotRepository",
+        (_SqlRepoA,),
+        {
+            "__module__": "src.infrastructure.repositories.accounting_snapshot_repository",
+            "__qualname__": "AccountingSnapshotRepository",
+        },
+    )
+
+    AccountingSnapshotRepository.__module__ = (
+        "infrastructure.repositories.accounting_snapshot_repository"
+    )
+    AccountingSnapshotRepository.__qualname__ = "AccountingSnapshotRepository"
+
+    with (
+        patch("hexcore.infrastructure.repositories.utils._autoload_repository_modules"),
+        patch(
+            "hexcore.infrastructure.repositories.utils._get_all_subclasses",
+            return_value={
+                AccountingSnapshotRepository,
+                AliasAccountingSnapshotRepository,
+            },
+        ),
+        patch(
+            "hexcore.infrastructure.repositories.utils._get_repository_source_file",
+            return_value="c:/proj/src/infrastructure/repositories/accounting_snapshot_repository.py",
+        ),
+        warnings.catch_warnings(record=True) as caught,
+    ):
+        warnings.simplefilter("always")
+        discovered = discover_sql_repositories()
+
+    assert "accountingsnapshot" in discovered
+    assert discovered["accountingsnapshot"] in {
+        AccountingSnapshotRepository,
+        AliasAccountingSnapshotRepository,
+    }
+    assert any("alias de import" in str(item.message) for item in caught)
