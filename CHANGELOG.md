@@ -1,3 +1,13 @@
+## 1.8.0 (2026-04-08)
+
+### Feat
+
+- **feat:add-project-templates-for-init-command-and-folder-agnostic**: hexcore
+
+### Fix
+
+- **query**: harden query validation and sorting behavior
+
 ## 1.7.0 (2026-04-08)
 
 ### Feat
