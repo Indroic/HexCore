@@ -1,6 +1,6 @@
 [project]
 name = "hexcore"
-version = "1.8.0"
+version = "2.0.0"
 authors = [
   { name="David Latosefki (Indroic)", email="indroic@outlook.com" },
 ]
@@ -46,6 +46,6 @@ name = "cz_conventional_commits"
 tag_format = "$version"
 version_scheme = "pep440"
 version_provider = "uv"
-update_changelog_on_bump = true
-major_version_zero = true
+update_changelog_on_bump = false
+major_version_zero = false
 push = true
