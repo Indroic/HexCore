@@ -281,7 +281,7 @@ wheels = [
 [[package]]
 name = "hexcore"
 version = "1.7.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "aiosqlite" },
     { name = "alembic" },
