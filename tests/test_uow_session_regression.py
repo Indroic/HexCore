@@ -31,10 +31,24 @@ class _DummyRepository:
         self.uow = uow
 
 
+class _DummyConfig:
+    def __init__(self) -> None:
+        self.event_dispatcher = AsyncMock()
+        self.repository_discovery_paths = {
+            "myapp.features.users.infrastructure.repositories"
+        }
+
+
 def _build_sql_uow(session: Any) -> SqlAlchemyUnitOfWork:
-    with patch(
-        "hexcore.infrastructure.uow.discover_sql_repositories",
-        return_value={"dummy": _DummyRepository},
+    with (
+        patch(
+            "hexcore.infrastructure.uow.LazyConfig.get_config",
+            return_value=_DummyConfig(),
+        ),
+        patch(
+            "hexcore.infrastructure.uow.discover_sql_repositories",
+            return_value={"dummy": _DummyRepository},
+        ),
     ):
         return SqlAlchemyUnitOfWork(session=session)
 
@@ -114,5 +128,60 @@ def test_sql_uow_commit_clears_entities_even_if_dispatch_fails():
         session.commit.assert_awaited_once()
         uow.dispatch_events.assert_awaited_once()
         uow.clear_tracked_entities.assert_called_once()
+
+    asyncio.run(_run())
+
+
+def test_sql_uow_sets_events_dispatcher_from_config():
+    async def _run():
+        session = MagicMock()
+        configured_dispatcher = AsyncMock()
+        configured_dispatcher.dispatch = AsyncMock()
+        configured = _DummyConfig()
+        configured.event_dispatcher = configured_dispatcher
+
+        with (
+            patch(
+                "hexcore.infrastructure.uow.LazyConfig.get_config",
+                return_value=configured,
+            ),
+            patch(
+                "hexcore.infrastructure.uow.discover_sql_repositories",
+                return_value={"dummy": _DummyRepository},
+            ),
+        ):
+            uow = SqlAlchemyUnitOfWork(session=session)
+
+        assert uow.events_dispatcher is configured_dispatcher
+
+    asyncio.run(_run())
+
+
+def test_sql_uow_fail_fast_message_when_no_repositories_discovered():
+    async def _run():
+        session = MagicMock()
+        configured = _DummyConfig()
+        configured.repository_discovery_paths = {"myapp.features.payments.repositories"}
+
+        with (
+            patch(
+                "hexcore.infrastructure.uow.LazyConfig.get_config",
+                return_value=configured,
+            ),
+            patch(
+                "hexcore.infrastructure.uow.discover_sql_repositories",
+                return_value={},
+            ),
+        ):
+            raised = None
+            try:
+                SqlAlchemyUnitOfWork(session=session)
+            except RuntimeError as exc:
+                raised = exc
+
+        assert raised is not None
+        assert "fallback implicito" in str(raised)
+        assert "repository_discovery_paths" in str(raised)
+        assert "myapp.features.payments.repositories" in str(raised)
 
     asyncio.run(_run())

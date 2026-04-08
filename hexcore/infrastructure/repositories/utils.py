@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import pkgutil
-import sys
 import typing as t
 import warnings
 from collections.abc import Mapping
@@ -26,6 +26,11 @@ E = t.TypeVar("E", bound=BaseEntity)
 
 _AUTOLOADED_REPOSITORY_PACKAGES: set[str] = set()
 _EMPTY_ABSTRACT_MEMBERS: frozenset[str] = frozenset()
+
+
+def clear_discovery_cache() -> None:
+    """Limpia el cache interno de paquetes autoloaded usado por el discovery."""
+    _AUTOLOADED_REPOSITORY_PACKAGES.clear()
 
 
 async def _apply_async_field_resolvers(
@@ -90,7 +95,7 @@ async def to_entity_from_model_or_document(
     elif hasattr(model_instance, "_mapping"):
         mapping_obj = t.cast(Mapping[str, t.Any], getattr(model_instance, "_mapping"))
         model_dict = dict(mapping_obj)
-    # Compatibilidad con objetos tipo namedtuple/Row legacy que exponen _asdict().
+    # Compatibilidad con objetos tipo namedtuple/Row que exponen _asdict().
     elif hasattr(model_instance, "_asdict") and callable(
         getattr(model_instance, "_asdict")
     ):
@@ -152,7 +157,7 @@ def _warn_for_abstract_repository(repo_cls: type) -> None:
     )
 
 
-def _get_configured_repository_packages() -> set[str]:
+def _get_configured_repository_paths() -> set[str]:
     try:
         from hexcore.config import LazyConfig
 
@@ -160,49 +165,22 @@ def _get_configured_repository_packages() -> set[str]:
     except Exception:
         return set()
 
-    configured = getattr(config, "repository_discovery_packages", ())
+    configured = getattr(config, "repository_discovery_paths", ())
     if not isinstance(configured, (list, tuple, set)):
         return set()
 
-    normalized_packages: set[str] = set()
-    configured_packages = t.cast(t.Iterable[object], configured)
-    for package in configured_packages:
-        package_name = str(package).strip()
-        if package_name:
-            normalized_packages.add(package_name)
+    normalized_paths: set[str] = set()
+    configured_paths = t.cast(t.Iterable[object], configured)
+    for path in configured_paths:
+        module_path = str(path).strip()
+        if module_path:
+            normalized_paths.add(module_path)
 
-    return normalized_packages
+    return normalized_paths
 
 
 def _iter_candidate_repository_packages() -> set[str]:
-    packages = {
-        "hexcore.infrastructure.repositories",
-        "infrastructure.repositories",
-        "src.infrastructure.repositories",
-        "src.repositories",
-        "repositories",
-    }
-
-    for module_name in tuple(sys.modules):
-        if not module_name:
-            continue
-        if (
-            ".interfaces" not in module_name
-            and ".domain" not in module_name
-            and ".infrastructure" not in module_name
-        ):
-            continue
-
-        root_module = module_name.split(".", 1)[0]
-        if not root_module:
-            continue
-
-        packages.add(f"{root_module}.infrastructure.repositories")
-        packages.add(f"{root_module}.repositories")
-
-    packages.update(_get_configured_repository_packages())
-
-    return packages
+    return _get_configured_repository_paths()
 
 
 def _import_package_and_submodules(package_name: str, strict: bool = False) -> None:
@@ -234,12 +212,30 @@ def _import_package_and_submodules(package_name: str, strict: bool = False) -> N
 
 
 def _autoload_repository_modules() -> None:
-    configured_packages = _get_configured_repository_packages()
+    configured_candidates = _iter_candidate_repository_packages()
     for package_name in _iter_candidate_repository_packages():
         _import_package_and_submodules(
             package_name,
-            strict=package_name in configured_packages,
+            strict=package_name in configured_candidates,
         )
+
+
+def _normalize_repository_module(module_name: str) -> str:
+    if module_name.startswith("src."):
+        return module_name[4:]
+    return module_name
+
+
+def _get_repository_class_source_path(repo_cls: type) -> str | None:
+    try:
+        source_file = inspect.getsourcefile(repo_cls)
+    except (TypeError, OSError):
+        source_file = None
+
+    if source_file is None:
+        return None
+
+    return source_file.replace("\\", "/").lower()
 
 
 def _repository_key_from_class_name(class_name: str) -> str:
@@ -285,6 +281,28 @@ def _discover_repositories(
         existing_repo_cls = repositories.get(repo_key)
 
         if existing_repo_cls is not None and existing_repo_cls is not repo_cls:
+            existing_module = _normalize_repository_module(existing_repo_cls.__module__)
+            current_module = _normalize_repository_module(repo_cls.__module__)
+            existing_source = _get_repository_class_source_path(existing_repo_cls)
+            current_source = _get_repository_class_source_path(repo_cls)
+
+            if (
+                existing_module == current_module
+                and existing_repo_cls.__name__ == repo_cls.__name__
+                and existing_repo_cls.__qualname__ == repo_cls.__qualname__
+                and existing_source is not None
+                and current_source is not None
+                and existing_source == current_source
+            ):
+                warnings.warn(
+                    "Repositorio duplicado detectado por alias de import y omitido: "
+                    f"'{repo_key}' -> {repo_cls.__module__}.{repo_cls.__name__}. "
+                    f"Se mantiene {existing_repo_cls.__module__}.{existing_repo_cls.__name__}.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
+
             raise ValueError(
                 "Se detecto una colision de nombres de repositorio para "
                 f"'{repo_key}': {existing_repo_cls.__module__}.{existing_repo_cls.__name__} "

@@ -1,11 +1,18 @@
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from hexcore.config import LazyConfig
 
 
 # 1. CREAR EL ENGINE ASÍNCRONO DE SQLAlchemy
 # Usamos create_async_engine en lugar de create_engine.
-engine = create_async_engine(
+engine: AsyncEngine = create_async_engine(
     LazyConfig.get_config().async_sql_database_url,
     # `echo=True` es útil para depuración, ya que imprime todas las sentencias SQL.
     # Desactívalo en producción.
@@ -22,8 +29,8 @@ AsyncSessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
 )
 
 
-async def get_async_db_session():
-    """Generador de sesiones asíncronas con gestión de transacciones integrada."""
+async def get_async_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Generador de sesiones asíncronas delegando el ciclo de vida al context manager."""
     async with AsyncSessionLocal() as db:
         try:
             yield db

@@ -1,3 +1,41 @@
+## 2.0.3 (2026-04-08)
+
+### Fix
+
+- **aplication**: fix final de tipados
+
+## 2.0.2 (2026-04-08)
+
+### Fix
+
+- **aplication**: firma erronea en el use case base
+
+## 2.0.1 (2026-04-08)
+
+### Fix
+
+- **query**: harden query validation and sorting behavior
+
+## 2.0.0 (2026-04-08)
+
+### Breaking
+
+- release major 2.0.0 after versioning reset and tag cleanup
+
+### Feat
+
+- **feat:add-project-templates-for-init-command-and-folder-agnostic**: hexcore
+
+### Fix
+
+- **query**: harden query validation and sorting behavior
+
+## 1.7.0 (2026-04-08)
+
+### Feat
+
+- **repositories**: add repository module normalization and priority handling
+
 ## 1.6.8 (2026-03-30)
 
 ### Fix

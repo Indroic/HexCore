@@ -1,7 +1,8 @@
 from __future__ import annotations
 import importlib
+import os
 import typing as t
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pathlib import Path
 from hexcore.infrastructure.cache import ICache
 from hexcore.domain.events import IEventDispatcher
@@ -53,25 +54,74 @@ class ServerConfig(BaseModel):
     # Event Dispatcher
     event_dispatcher: IEventDispatcher = InMemoryEventDispatcher()
 
+    # Repository Discovery
+    # v2 (breaking): discovery explicito y folder-agnostic.
+    # Si se deja vacio, no se autoloadearan modulos de repositorios.
+    repository_discovery_paths: set[str] = Field(default_factory=set)
+
 
 class LazyConfig:
     """
-    Loader de configuración flexible.
-    Busca una variable 'config' (instancia de ServerConfig) o una clase 'ServerConfig' en los módulos personalizados.
-    Si no la encuentra, usa la configuración base del kernel.
+    Loader de configuración flexible y agnóstico de estructura de carpetas.
 
-    IMPORTANTE: La configuración personalizada debe estar en un módulo llamado 'config' en src.domain
+    Prioridad de resolución:
+    1) Variable de entorno HEXCORE_CONFIG_MODULE (módulo único)
+    2) Variable de entorno HEXCORE_CONFIG_MODULES (lista separada por comas)
+    3) Lista configurada por set_config_modules(...)
+    4) Valor por defecto: "config" (archivo config.py en la raíz del proyecto)
+
+    En cada módulo candidato se busca:
+    - atributo `config` (instancia o clase derivada de ServerConfig)
+    - o clase `ServerConfig` derivada de la base.
+
+    Si no se encuentra nada válido, usa ServerConfig() por defecto.
 
     """
 
     _imported_config: t.Optional[ServerConfig] = None
+    _config_modules: tuple[str, ...] = ("config",)
+
+    @classmethod
+    def set_config_modules(cls, modules: t.Iterable[str]) -> None:
+        """Define módulos candidatos para resolver configuración personalizada."""
+        normalized_modules = tuple(
+            module_name.strip() for module_name in modules if str(module_name).strip()
+        )
+        cls._config_modules = normalized_modules
+        cls._imported_config = None
+
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Limpia la configuración cacheada para forzar nueva resolución."""
+        cls._imported_config = None
+
+    @classmethod
+    def _iter_config_module_candidates(cls) -> tuple[str, ...]:
+        env_single_module = os.getenv("HEXCORE_CONFIG_MODULE", "").strip()
+        if env_single_module:
+            return (env_single_module,)
+
+        env_modules_raw = os.getenv("HEXCORE_CONFIG_MODULES", "").strip()
+        if env_modules_raw:
+            env_modules = tuple(
+                module_name.strip()
+                for module_name in env_modules_raw.split(",")
+                if module_name.strip()
+            )
+            if env_modules:
+                return env_modules
+
+        if cls._config_modules:
+            return cls._config_modules
+
+        return ("config",)
 
     @classmethod
     def get_config(cls) -> ServerConfig:
         if cls._imported_config is not None:
             return cls._imported_config
         # Intenta importar la config personalizada
-        for modpath in ("config", "src.domain.config"):
+        for modpath in cls._iter_config_module_candidates():
             try:
                 mod = importlib.import_module(modpath)
                 config_instance = getattr(mod, "config", None)

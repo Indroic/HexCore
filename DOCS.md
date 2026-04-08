@@ -33,6 +33,71 @@ HexCore organiza el código siguiendo los principios DDD y arquitectura hexagona
 
 ---
 
+## 1.1 Configuración v2: root-first y discovery explícito
+
+En v2, HexCore no adivina rutas de repositorios. Debes declararlas en configuración.
+
+### Config recomendada
+
+Archivo `config.py` en la raíz:
+
+```python
+from hexcore.config import ServerConfig
+
+config = ServerConfig(
+    repository_discovery_paths={
+        "myapp.features.users.infrastructure.repositories",
+        "myapp.features.orders.infrastructure.repositories",
+    }
+)
+```
+
+### Prioridad de carga de configuración (`LazyConfig`)
+
+1. `HEXCORE_CONFIG_MODULE`
+2. `HEXCORE_CONFIG_MODULES`
+3. `LazyConfig.set_config_modules(...)`
+4. módulo `config` por defecto
+
+### Comportamiento de UoW
+
+- Si `repository_discovery_paths` está vacío o no contiene repositorios válidos, la inicialización de UoW falla con mensaje diagnóstico.
+- El `event_dispatcher` se toma desde `LazyConfig.get_config().event_dispatcher` durante la construcción del UoW.
+
+---
+
+## 1.2 Templates de estructura vía CLI
+
+El comando `hexcore init` soporta templates:
+
+```sh
+hexcore init mi_proyecto --template hexagonal
+hexcore init mi_proyecto --template vertical-slice
+```
+
+### Template `hexagonal`
+
+- `src/domain`
+- `src/application`
+- `src/infrastructure`
+- `src/infrastructure/database/models`
+- `src/infrastructure/database/documents`
+- `tests/domain`
+
+### Template `vertical-slice`
+
+- `src/features`
+- `src/shared/domain`
+- `src/shared/application`
+- `src/shared/infrastructure`
+- `src/shared/infrastructure/database/models`
+- `src/shared/infrastructure/database/documents`
+- `tests/features`
+
+Ambos templates crean `config.py` en raíz y configuran Alembic para migraciones.
+
+---
+
 ## 2. Abstracciones de Entidades y Eventos
 
 ### BaseEntity

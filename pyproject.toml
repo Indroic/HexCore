@@ -1,6 +1,6 @@
 [project]
 name = "hexcore"
-version = "1.6.8"
+version = "2.0.3"
 authors = [
   { name="David Latosefki (Indroic)", email="indroic@outlook.com" },
 ]
@@ -32,8 +32,8 @@ hexcore = "hexcore.__main__:app"
 [dependency-groups]
 dev = [
     "commitizen>=4.9.1",
-    "mypy>=1.17.1",
-    "mypy-extensions>=1.1.0",
+    "pyright>=1.1.405",
+    "pytest>=8.4.2",
 ]
 
 [tool.setuptools]
@@ -46,6 +46,6 @@ name = "cz_conventional_commits"
 tag_format = "$version"
 version_scheme = "pep440"
 version_provider = "uv"
-update_changelog_on_bump = true
-major_version_zero = true
+update_changelog_on_bump = false
+major_version_zero = false
 push = true

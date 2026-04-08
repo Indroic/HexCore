@@ -12,5 +12,7 @@
         "billing": "invoice",
         "inventory": "packages",
         "products": "components"
-    }
+    },
+    "python.analysis.autoFormatStrings": true,
+    "python.analysis.typeCheckingMode": "strict"
 }
