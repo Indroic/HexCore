@@ -23,6 +23,11 @@ AsyncSessionLocal: async_sessionmaker[AsyncSession] = async_sessionmaker(
 
 
 async def get_async_db_session():
-    """Generador de sesiones asíncronas delegando el ciclo de vida al context manager."""
+    """Generador de sesiones asíncronas con gestión de transacciones integrada."""
     async with AsyncSessionLocal() as db:
-        yield db
+        try:
+            yield db
+        except Exception:
+            if db.in_transaction():
+                await db.rollback()
+            raise
