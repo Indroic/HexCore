@@ -242,3 +242,57 @@ def test_discover_sql_repositories_warns_for_abstract_repositories() -> None:
     warning_message = str(caught[0].message)
     assert "_AbstractWarningRepo" in warning_message
     assert "custom_required" in warning_message
+
+
+def test_discover_sql_repositories_ignores_alias_duplicates() -> None:
+    RepoBase = type("AccountingSnapshotRepository", (_SqlRepoA,), {})
+    RepoAlias = type("AccountingSnapshotRepository", (_SqlRepoA,), {})
+
+    RepoBase.__module__ = "infrastructure.repositories.accounting_snapshot_repository"
+    RepoAlias.__module__ = (
+        "src.infrastructure.repositories.accounting_snapshot_repository"
+    )
+    RepoBase.__qualname__ = "AccountingSnapshotRepository"
+    RepoAlias.__qualname__ = "AccountingSnapshotRepository"
+
+    with (
+        patch("hexcore.infrastructure.repositories.utils._autoload_repository_modules"),
+        patch(
+            "hexcore.infrastructure.repositories.utils._get_all_subclasses",
+            return_value={RepoBase, RepoAlias},
+        ),
+        patch(
+            "hexcore.infrastructure.repositories.utils._get_repository_class_source_path",
+            return_value="c:/repo/src/infrastructure/repositories/accounting_snapshot_repository.py",
+        ),
+        warnings.catch_warnings(record=True) as caught,
+    ):
+        warnings.simplefilter("always")
+        discovered = discover_sql_repositories()
+
+    assert "accountingsnapshot" in discovered
+    assert discovered["accountingsnapshot"] in {RepoBase, RepoAlias}
+    assert any("alias de import" in str(item.message) for item in caught)
+
+
+def test_discover_sql_repositories_prefers_high_priority_prefix() -> None:
+    InfraRepo = type("PaymentsRepository", (_SqlRepoA,), {})
+    SrcRepo = type("PaymentsRepository", (_SqlRepoB,), {})
+
+    InfraRepo.__module__ = "infrastructure.repositories.payments_repository"
+    SrcRepo.__module__ = "src.infrastructure.repositories.payments_repository"
+
+    with (
+        patch("hexcore.infrastructure.repositories.utils._autoload_repository_modules"),
+        patch(
+            "hexcore.infrastructure.repositories.utils._get_all_subclasses",
+            return_value={InfraRepo, SrcRepo},
+        ),
+        warnings.catch_warnings(record=True) as caught,
+    ):
+        warnings.simplefilter("always")
+        discovered = discover_sql_repositories()
+
+    assert "payments" in discovered
+    assert discovered["payments"] is SrcRepo
+    assert any("prioridad de modulo" in str(item.message) for item in caught)

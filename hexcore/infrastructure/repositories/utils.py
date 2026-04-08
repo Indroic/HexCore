@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import pkgutil
 import sys
 import typing as t
@@ -242,6 +243,65 @@ def _autoload_repository_modules() -> None:
         )
 
 
+def _normalize_repository_module(module_name: str) -> str:
+    if module_name.startswith("src."):
+        return module_name[4:]
+    return module_name
+
+
+def _get_preferred_repository_prefixes() -> list[str]:
+    try:
+        from hexcore.config import LazyConfig
+
+        config = LazyConfig.get_config()
+    except Exception:
+        return [
+            "src.infrastructure.repositories",
+            "infrastructure.repositories",
+            "hexcore.infrastructure.repositories",
+        ]
+
+    configured = getattr(config, "repository_discovery_preferred_prefixes", ())
+    if isinstance(configured, (list, tuple, set)):
+        normalized: list[str] = []
+        configured_iter = t.cast(t.Iterable[object], configured)
+        for item in configured_iter:
+            value = str(item).strip()
+            if value:
+                normalized.append(value)
+        if normalized:
+            return normalized
+
+    return [
+        "src.infrastructure.repositories",
+        "infrastructure.repositories",
+        "hexcore.infrastructure.repositories",
+    ]
+
+
+def _module_priority(module_name: str, prefixes: list[str]) -> int:
+    normalized_module = module_name.strip()
+    for index, prefix in enumerate(prefixes):
+        normalized_prefix = prefix.strip()
+        if normalized_module == normalized_prefix or normalized_module.startswith(
+            f"{normalized_prefix}."
+        ):
+            return index
+    return len(prefixes)
+
+
+def _get_repository_class_source_path(repo_cls: type) -> str | None:
+    try:
+        source_file = inspect.getsourcefile(repo_cls)
+    except (TypeError, OSError):
+        source_file = None
+
+    if source_file is None:
+        return None
+
+    return source_file.replace("\\", "/").lower()
+
+
 def _repository_key_from_class_name(class_name: str) -> str:
     normalized_name = class_name.strip()
     lowered_name = normalized_name.lower()
@@ -265,6 +325,7 @@ def _discover_repositories(
 ) -> t.Dict[str, type]:
     _autoload_repository_modules()
 
+    preferred_prefixes = _get_preferred_repository_prefixes()
     repositories: t.Dict[str, type] = {}
     all_subclasses = _get_all_subclasses(base_repository_class)
     sorted_classes = sorted(
@@ -285,11 +346,58 @@ def _discover_repositories(
         existing_repo_cls = repositories.get(repo_key)
 
         if existing_repo_cls is not None and existing_repo_cls is not repo_cls:
-            raise ValueError(
-                "Se detecto una colision de nombres de repositorio para "
-                f"'{repo_key}': {existing_repo_cls.__module__}.{existing_repo_cls.__name__} "
-                f"y {repo_cls.__module__}.{repo_cls.__name__}."
+            existing_module = _normalize_repository_module(existing_repo_cls.__module__)
+            current_module = _normalize_repository_module(repo_cls.__module__)
+            existing_source = _get_repository_class_source_path(existing_repo_cls)
+            current_source = _get_repository_class_source_path(repo_cls)
+
+            if (
+                existing_module == current_module
+                and existing_repo_cls.__name__ == repo_cls.__name__
+                and existing_repo_cls.__qualname__ == repo_cls.__qualname__
+                and existing_source is not None
+                and current_source is not None
+                and existing_source == current_source
+            ):
+                warnings.warn(
+                    "Repositorio duplicado detectado por alias de import y omitido: "
+                    f"'{repo_key}' -> {repo_cls.__module__}.{repo_cls.__name__}. "
+                    f"Se mantiene {existing_repo_cls.__module__}.{existing_repo_cls.__name__}.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
+
+            existing_priority = _module_priority(
+                existing_repo_cls.__module__, preferred_prefixes
             )
+            current_priority = _module_priority(repo_cls.__module__, preferred_prefixes)
+
+            if current_priority < existing_priority:
+                warnings.warn(
+                    "Colision de repositorio resuelta por prioridad de modulo para "
+                    f"'{repo_key}': se reemplaza "
+                    f"{existing_repo_cls.__module__}.{existing_repo_cls.__name__} por "
+                    f"{repo_cls.__module__}.{repo_cls.__name__}.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            elif current_priority > existing_priority:
+                warnings.warn(
+                    "Colision de repositorio resuelta por prioridad de modulo para "
+                    f"'{repo_key}': se omite "
+                    f"{repo_cls.__module__}.{repo_cls.__name__} y se mantiene "
+                    f"{existing_repo_cls.__module__}.{existing_repo_cls.__name__}.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                continue
+            else:
+                raise ValueError(
+                    "Se detecto una colision de nombres de repositorio para "
+                    f"'{repo_key}': {existing_repo_cls.__module__}.{existing_repo_cls.__name__} "
+                    f"y {repo_cls.__module__}.{repo_cls.__name__}."
+                )
 
         repositories[repo_key] = repo_cls
 
