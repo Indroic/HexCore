@@ -1,9 +1,16 @@
 import typing as t
+import types
+import re
 from uuid import UUID
 
 from beanie import init_beanie  # type: ignore
 from pymongo import AsyncMongoClient
 
+from hexcore.application.dtos.query import (
+    FilterOperator,
+    QueryRequestDTO,
+    SortDirection,
+)
 from hexcore.domain.base import BaseEntity
 from hexcore.infrastructure.repositories.utils import get_all_concrete_subclasses
 from hexcore.types import FieldSerializersType
@@ -99,6 +106,137 @@ async def db_list(
     if limit is not None:
         query = query.limit(limit)
     return await query.to_list()
+
+
+def _build_filter_query(
+    query: QueryRequestDTO,
+    document_class: t.Type[D],
+) -> dict[str, t.Any]:
+    and_clauses: list[dict[str, t.Any]] = []
+
+    if query.search:
+        search_value = query.search.strip()
+        if search_value:
+            if query.search_fields:
+                for field in query.search_fields:
+                    _require_document_field(document_class, field, "busqueda")
+                search_fields = query.search_fields
+            else:
+                search_fields = _infer_search_fields_from_document(document_class)
+            if search_fields:
+                escaped_search = re.escape(search_value)
+                and_clauses.append(
+                    {
+                        "$or": [
+                            {
+                                field: {
+                                    "$regex": escaped_search,
+                                    "$options": "i",
+                                }
+                            }
+                            for field in search_fields
+                        ]
+                    }
+                )
+
+    for condition in query.filters:
+        field = condition.field
+        _require_document_field(document_class, field, "filtro")
+        operator = condition.operator
+        value = condition.value
+
+        if operator == FilterOperator.IS_NULL:
+            and_clauses.append({field: None})
+        elif operator == FilterOperator.EQ:
+            and_clauses.append({field: value})
+        elif operator == FilterOperator.NE:
+            and_clauses.append({field: {"$ne": value}})
+        elif operator == FilterOperator.GT:
+            and_clauses.append({field: {"$gt": value}})
+        elif operator == FilterOperator.GTE:
+            and_clauses.append({field: {"$gte": value}})
+        elif operator == FilterOperator.LT:
+            and_clauses.append({field: {"$lt": value}})
+        elif operator == FilterOperator.LTE:
+            and_clauses.append({field: {"$lte": value}})
+        elif operator == FilterOperator.IN and isinstance(value, list):
+            and_clauses.append({field: {"$in": value}})
+        elif operator == FilterOperator.NOT_IN and isinstance(value, list):
+            and_clauses.append({field: {"$nin": value}})
+        elif operator == FilterOperator.CONTAINS:
+            and_clauses.append(
+                {field: {"$regex": re.escape(str(value)), "$options": "i"}}
+            )
+        elif operator == FilterOperator.STARTSWITH:
+            and_clauses.append(
+                {field: {"$regex": f"^{re.escape(str(value))}", "$options": "i"}}
+            )
+        elif operator == FilterOperator.ENDSWITH:
+            and_clauses.append(
+                {field: {"$regex": f"{re.escape(str(value))}$", "$options": "i"}}
+            )
+
+    if not and_clauses:
+        return {}
+    return {"$and": and_clauses}
+
+
+def _strip_optional(annotation: t.Any) -> t.Any:
+    origin = t.get_origin(annotation)
+    if origin in (t.Union, types.UnionType):
+        args = [arg for arg in t.get_args(annotation) if arg is not type(None)]
+        if len(args) == 1:
+            return args[0]
+    return annotation
+
+
+def _infer_search_fields_from_document(document_class: t.Type[D]) -> list[str]:
+    model_fields = getattr(document_class, "model_fields", {})
+    fields: list[str] = []
+    for field_name, field_info in model_fields.items():
+        annotation = _strip_optional(getattr(field_info, "annotation", None))
+        if annotation is str:
+            fields.append(field_name)
+    return fields
+
+
+def _require_document_field(
+    document_class: t.Type[D],
+    field_name: str,
+    context: str,
+) -> None:
+    model_fields = getattr(document_class, "model_fields", {})
+    if field_name not in model_fields:
+        raise ValueError(f"Campo de {context} no soportado: {field_name}")
+
+
+def _build_sort_query(
+    query: QueryRequestDTO,
+    document_class: t.Type[D],
+) -> list[tuple[str, int]]:
+    sort_items: list[tuple[str, int]] = []
+    for condition in query.sort:
+        _require_document_field(document_class, condition.field, "orden")
+        direction = -1 if condition.direction == SortDirection.DESC else 1
+        sort_items.append((condition.field, direction))
+    return sort_items
+
+
+async def db_query(
+    document_class: t.Type[D],
+    query: QueryRequestDTO,
+) -> tuple[list[D], int]:
+    filter_query = _build_filter_query(query, document_class)
+    beanie_query = document_class.find(filter_query)
+
+    total = await beanie_query.count()
+
+    sort_items = _build_sort_query(query, document_class)
+    if sort_items:
+        beanie_query = beanie_query.sort(t.cast(t.Any, sort_items))
+
+    items = await beanie_query.skip(query.offset).limit(query.limit).to_list()
+    return items, total
 
 
 async def save_entity(

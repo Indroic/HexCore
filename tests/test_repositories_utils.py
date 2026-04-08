@@ -19,6 +19,7 @@ from hexcore.infrastructure.repositories.utils import (
     to_entity_from_model_or_document,
 )
 from hexcore.infrastructure.repositories import utils as repo_utils
+from hexcore.types import FieldResolversType
 
 
 class _TestEntity(BaseEntity):
@@ -27,6 +28,8 @@ class _TestEntity(BaseEntity):
 
 
 class _DummyModel:
+    name: str
+
     def __init__(self, **values: object) -> None:
         self.__dict__.update(values)
 
@@ -134,7 +137,9 @@ def test_to_entity_applies_async_field_resolvers() -> None:
         async def score_resolver(model_instance: _DummyModel) -> int:
             return len(model_instance.name)
 
-        field_resolvers = {"score": ("name", score_resolver)}
+        field_resolvers: FieldResolversType[_DummyModel] = {
+            "score": ("name", score_resolver)
+        }
 
         entity = await to_entity_from_model_or_document(
             model, _TestEntity, field_resolvers=field_resolvers

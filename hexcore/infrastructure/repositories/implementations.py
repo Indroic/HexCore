@@ -2,6 +2,7 @@ from __future__ import annotations
 import typing as t
 from uuid import UUID
 
+from hexcore.application.dtos.query import QueryRequestDTO
 from hexcore.infrastructure.uow.decorators import register_entity_on_uow
 from hexcore.types import FieldResolversType, FieldSerializersType
 
@@ -12,6 +13,7 @@ from .utils import to_entity_from_model_or_document
 from .orms.sqlalchemy.utils import (
     db_get as sql_db_get,
     db_list as sql_db_list,
+    db_query as sql_db_query,
     save_entity as sql_save_entity,
     logical_delete as sql_logical_delete,
 )
@@ -23,6 +25,7 @@ from .orms.beanie import BaseDocument
 from .orms.beanie.utils import (
     db_get as nosql_db_get,
     db_list as nosql_db_list,
+    db_query as nosql_db_query,
     save_entity as nosql_save_entity,
     logical_delete as nosql_logical_delete,
 )
@@ -112,6 +115,16 @@ class SQLAlchemyCommonImplementationsRepo(
             for model in models
         ]
 
+    async def query_all(self, query: QueryRequestDTO) -> tuple[t.List[T], int]:
+        models, total = await sql_db_query(self.session, self.model_cls, query)
+        entities = [
+            await to_entity_from_model_or_document(
+                model, self.entity_cls, self.fields_resolvers
+            )
+            for model in models
+        ]
+        return entities, total
+
     async def save(self, entity: T) -> T:
         saved = await sql_save_entity(
             self.session,
@@ -175,6 +188,16 @@ class BeanieODMCommonImplementationsRepo(
             )
             for doc in documents
         ]
+
+    async def query_all(self, query: QueryRequestDTO) -> tuple[t.List[T], int]:
+        documents, total = await nosql_db_query(self.document_cls, query)
+        entities = [
+            await to_entity_from_model_or_document(
+                doc, self.entity_cls, self.fields_resolvers, is_nosql=True
+            )
+            for doc in documents
+        ]
+        return entities, total
 
     @register_entity_on_uow
     async def save(self, entity: T) -> T:  # type: ignore
