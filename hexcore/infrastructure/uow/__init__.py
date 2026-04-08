@@ -2,6 +2,7 @@ from __future__ import annotations
 import typing as t
 from itertools import chain
 from sqlalchemy.ext.asyncio import AsyncSession
+from hexcore.config import LazyConfig
 from hexcore.domain.uow import IUnitOfWork
 from hexcore.domain.base import BaseEntity
 from hexcore.domain.events import DomainEvent
@@ -14,6 +15,20 @@ from hexcore.infrastructure.repositories.utils import (
 )
 
 
+def _build_discovery_runtime_error(backend_label: str) -> RuntimeError:
+    config = LazyConfig.get_config()
+    configured_paths = sorted(config.repository_discovery_paths)
+    configured_paths_text = (
+        ", ".join(configured_paths) if configured_paths else "ninguno"
+    )
+    return RuntimeError(
+        f"No se descubrieron repositorios {backend_label}. "
+        "HexCore v2 no usa fallback implicito: configura 'repository_discovery_paths' "
+        "en tu config.py de raiz o por HEXCORE_CONFIG_MODULE(S). "
+        f"Paths configurados: {configured_paths_text}."
+    )
+
+
 class SqlAlchemyUnitOfWork(IUnitOfWork):
     """
     Implementación concreta (Adaptador) de la Unidad de Trabajo para SQLAlchemy.
@@ -22,6 +37,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
     def __init__(self, session: AsyncSession):
         self.session = session
         super().__init__()
+        self.events_dispatcher = LazyConfig.get_config().event_dispatcher
         self._inject_repositories()
 
     def _inject_repositories(self):
@@ -30,10 +46,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         """
         repositories = discover_sql_repositories()
         if not repositories:
-            raise RuntimeError(
-                "No se descubrieron repositorios SQLAlchemy. "
-                "Asegura que los modulos de repositorios esten disponibles en paquetes escaneables."
-            )
+            raise _build_discovery_runtime_error("SQLAlchemy")
 
         self.repositories = {}
         for name, repo_class in repositories.items():
@@ -105,6 +118,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
 class NoSqlUnitOfWork(IUnitOfWork):
     def __init__(self):
         super().__init__()
+        self.events_dispatcher = LazyConfig.get_config().event_dispatcher
         self._entities: set[BaseEntity] = set()
         self._inject_repositories()
 
@@ -114,10 +128,7 @@ class NoSqlUnitOfWork(IUnitOfWork):
         """
         repositories = discover_nosql_repositories()
         if not repositories:
-            raise RuntimeError(
-                "No se descubrieron repositorios NoSQL. "
-                "Asegura que los modulos de repositorios esten disponibles en paquetes escaneables."
-            )
+            raise _build_discovery_runtime_error("NoSQL")
 
         self.repositories = {}
         for name, repo_class in repositories.items():

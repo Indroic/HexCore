@@ -26,6 +26,57 @@ Este repositorio cuenta con un conjunto de skills adicionales para extender y pe
 pip install hexcore
 ```
 
+## Templates de Proyecto (CLI)
+
+HexCore incluye templates base para bootstrap de proyectos:
+
+```sh
+hexcore init mi_proyecto --template hexagonal
+hexcore init mi_proyecto --template vertical-slice
+```
+
+- `hexagonal`: crea `src/domain`, `src/application`, `src/infrastructure`.
+- `vertical-slice`: crea `src/features`, `src/shared/domain`, `src/shared/application`, `src/shared/infrastructure`.
+
+En ambos templates se generan:
+- `config.py` en raíz con `repository_discovery_paths` de ejemplo.
+- estructura de migraciones con Alembic.
+
+---
+
+## Configuración v2 (Folder-Agnostic)
+
+Desde v2, HexCore usa configuración explícita y no aplica fallback implícito para descubrir repositorios.
+
+### 1. Configuración visible en raíz
+
+Define un archivo `config.py` en la raíz del proyecto:
+
+```python
+from hexcore.config import ServerConfig
+
+config = ServerConfig(
+    repository_discovery_paths={
+        "myapp.features.users.infrastructure.repositories",
+        "myapp.features.billing.infrastructure.repositories",
+    }
+)
+```
+
+### 2. Prioridad para cargar configuración
+
+`LazyConfig` resuelve módulos en este orden:
+
+1. `HEXCORE_CONFIG_MODULE`
+2. `HEXCORE_CONFIG_MODULES` (lista separada por comas)
+3. módulos configurados por `LazyConfig.set_config_modules(...)`
+4. `config` por defecto (raíz del proyecto)
+
+### 3. Regla de discovery en v2
+
+- Si `repository_discovery_paths` está vacío, no se cargan módulos de repositorios.
+- UoW falla con error explícito para evitar comportamiento ambiguo.
+
 ---
 
 ## Pautas de Colaboración

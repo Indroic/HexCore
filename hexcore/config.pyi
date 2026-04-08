@@ -1,10 +1,15 @@
 from _typeshed import Incomplete
 from hexcore.domain.events import IEventDispatcher as IEventDispatcher
 from hexcore.infrastructure.cache import ICache as ICache
-from hexcore.infrastructure.cache.cache_backends.memory import MemoryCache as MemoryCache
-from hexcore.infrastructure.events.events_backends.memory import InMemoryEventDispatcher as InMemoryEventDispatcher
+from hexcore.infrastructure.cache.cache_backends.memory import (
+    MemoryCache as MemoryCache,
+)
+from hexcore.infrastructure.events.events_backends.memory import (
+    InMemoryEventDispatcher as InMemoryEventDispatcher,
+)
 from pathlib import Path
 from pydantic import BaseModel
+import typing as t
 
 class ServerConfig(BaseModel):
     base_dir: Path = ...
@@ -29,7 +34,12 @@ class ServerConfig(BaseModel):
     cache_backend: ICache = ...
     model_config: Incomplete = ...
     event_dispatcher: IEventDispatcher = ...
+    repository_discovery_paths: set[str] = ...
 
 class LazyConfig:
+    @classmethod
+    def set_config_modules(cls, modules: t.Iterable[str]) -> None: ...
+    @classmethod
+    def clear_cache(cls) -> None: ...
     @classmethod
     def get_config(cls) -> ServerConfig: ...
