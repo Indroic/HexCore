@@ -1,3 +1,9 @@
+## 1.7.0 (2026-04-08)
+
+### Feat
+
+- **repositories**: add repository module normalization and priority handling
+
 ## 1.6.8 (2026-03-30)
 
 ### Fix
