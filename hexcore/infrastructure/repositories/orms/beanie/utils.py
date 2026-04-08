@@ -1,7 +1,8 @@
 import typing as t
-from pymongo import AsyncMongoClient
-from beanie import init_beanie  # type: ignore
 from uuid import UUID
+
+from beanie import init_beanie  # type: ignore
+from pymongo import AsyncMongoClient
 
 from hexcore.domain.base import BaseEntity
 from hexcore.infrastructure.repositories.utils import get_all_concrete_subclasses
@@ -28,7 +29,7 @@ def to_document(
         field_serializers: Diccionario opcional {campo: (destino, serializer(entidad de dominio original))} para transformar campos complejos.
         update: Si es True, no renombra el id, solo lo excluye.
     """
-    entity_data_dict = entity_data.model_dump()
+    entity_data_dict: dict[str, t.Any] = entity_data.model_dump()
 
     # Renombramos el 'id' de la entidad a 'entity_id' para el documento.
     if "id" in entity_data_dict and not update:
@@ -58,11 +59,11 @@ def discover_beanie_documents() -> t.List[t.Type[BaseDocument]]:
     return [doc_cls for doc_cls in get_all_concrete_subclasses(BaseDocument)]
 
 
-async def init_beanie_documents():
+async def init_beanie_documents() -> None:
     """
     Inicializa los documentos Beanie descubiertos.
     """
-    client = AsyncMongoClient(LazyConfig().get_config().mongo_uri)  # type: ignore
+    client = AsyncMongoClient(LazyConfig.get_config().mongo_uri)  # type: ignore
 
     documents = discover_beanie_documents()
 
@@ -101,7 +102,9 @@ async def db_list(
 
 
 async def save_entity(
-    entity: E, document_cls: t.Type[D], fields_serializers: FieldSerializersType[E]
+    entity: E,
+    document_cls: t.Type[D],
+    fields_serializers: t.Optional[FieldSerializersType[E]] = None,
 ) -> D:
     """
     Guarda o actualiza un documento en la base de datos.
@@ -137,5 +140,6 @@ async def logical_delete(entity_id: UUID, document_cls: t.Type[D]) -> None:
     """
     document = await db_get(document_cls, entity_id)
     if document:
-        document.is_active = False
+        document_any = t.cast(t.Any, document)
+        document_any.is_active = False
         await document.save()
