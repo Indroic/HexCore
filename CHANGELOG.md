@@ -1,3 +1,9 @@
+## 2.0.1 (2026-04-08)
+
+### Fix
+
+- **query**: harden query validation and sorting behavior
+
 ## 2.0.0 (2026-04-08)
 
 ### Breaking
