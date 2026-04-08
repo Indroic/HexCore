@@ -1,3 +1,9 @@
+## 2.0.0 (2026-04-08)
+
+### Breaking
+
+- release major 2.0.0 after versioning reset and tag cleanup
+
 ## 1.7.0 (2026-04-08)
 
 ### Feat
