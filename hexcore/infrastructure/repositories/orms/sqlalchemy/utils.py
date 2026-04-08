@@ -4,10 +4,15 @@ import importlib
 import pkgutil
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, cast, func, or_, select, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, RelationshipProperty
 
+from hexcore.application.dtos.query import (
+    FilterOperator,
+    QueryRequestDTO,
+    SortDirection,
+)
 from hexcore.types import FieldResolversType, RelationsType
 
 from . import BaseModel
@@ -92,6 +97,116 @@ async def db_list(
     if not entities:
         return []
     return entities
+
+
+def _resolve_model_column(model: t.Type[T], field_name: str) -> t.Any:
+    if field_name in model.__table__.columns:
+        return getattr(model, field_name)
+    return None
+
+
+def _require_model_column(
+    model: t.Type[T],
+    field_name: str,
+    context: str,
+) -> t.Any:
+    column = _resolve_model_column(model, field_name)
+    if column is None:
+        raise ValueError(f"Campo de {context} no soportado: {field_name}")
+    return column
+
+
+def _build_filter_expression(model: t.Type[T], query: QueryRequestDTO) -> list[t.Any]:
+    expressions: list[t.Any] = []
+
+    if query.search:
+        search_text = query.search.strip()
+        if search_text:
+            if query.search_fields:
+                search_columns = [
+                    _require_model_column(model, field, "busqueda")
+                    for field in query.search_fields
+                ]
+            else:
+                search_columns = [
+                    getattr(model, column.name)
+                    for column in model.__table__.columns
+                    if isinstance(column.type, String)
+                ]
+            if search_columns:
+                expressions.append(
+                    or_(
+                        *[
+                            cast(column, String).ilike(f"%{search_text}%")
+                            for column in search_columns
+                        ]
+                    )
+                )
+
+    for condition in query.filters:
+        column = _require_model_column(model, condition.field, "filtro")
+
+        operator = condition.operator
+        value = condition.value
+
+        if operator == FilterOperator.IS_NULL:
+            expressions.append(column.is_(None))
+        elif operator == FilterOperator.EQ:
+            expressions.append(column == value)
+        elif operator == FilterOperator.NE:
+            expressions.append(column != value)
+        elif operator == FilterOperator.GT:
+            expressions.append(column > value)
+        elif operator == FilterOperator.GTE:
+            expressions.append(column >= value)
+        elif operator == FilterOperator.LT:
+            expressions.append(column < value)
+        elif operator == FilterOperator.LTE:
+            expressions.append(column <= value)
+        elif operator == FilterOperator.IN and isinstance(value, list):
+            expressions.append(column.in_(value))
+        elif operator == FilterOperator.NOT_IN and isinstance(value, list):
+            expressions.append(~column.in_(value))
+        elif operator == FilterOperator.CONTAINS:
+            expressions.append(cast(column, String).ilike(f"%{value}%"))
+        elif operator == FilterOperator.STARTSWITH:
+            expressions.append(cast(column, String).ilike(f"{value}%"))
+        elif operator == FilterOperator.ENDSWITH:
+            expressions.append(cast(column, String).ilike(f"%{value}"))
+
+    return expressions
+
+
+def _apply_sorting(stmt: t.Any, model: t.Type[T], query: QueryRequestDTO) -> t.Any:
+    for condition in query.sort:
+        column = _require_model_column(model, condition.field, "orden")
+        stmt = stmt.order_by(
+            column.desc() if condition.direction == SortDirection.DESC else column.asc()
+        )
+    return stmt
+
+
+async def db_query(
+    session: AsyncSession,
+    model: t.Type[T],
+    query: QueryRequestDTO,
+) -> tuple[list[T], int]:
+    where_expressions = _build_filter_expression(model, query)
+
+    count_stmt = select(func.count()).select_from(model)
+    if where_expressions:
+        count_stmt = count_stmt.where(and_(*where_expressions))
+    count_result = await session.execute(count_stmt)
+    total = int(count_result.scalar_one() or 0)
+
+    data_stmt = select(model).options(*load_relations(model))
+    if where_expressions:
+        data_stmt = data_stmt.where(and_(*where_expressions))
+    data_stmt = _apply_sorting(data_stmt, model, query)
+    data_stmt = data_stmt.offset(query.offset).limit(query.limit)
+
+    result = await session.execute(data_stmt)
+    return list(result.scalars().all()), total
 
 
 async def db_save(session: AsyncSession, entity: T) -> T:

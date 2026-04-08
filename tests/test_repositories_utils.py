@@ -13,10 +13,13 @@ from hexcore.infrastructure.repositories.base import (
     BaseSQLAlchemyRepository,
 )
 from hexcore.infrastructure.repositories.utils import (
+    clear_discovery_cache,
     discover_nosql_repositories,
     discover_sql_repositories,
     to_entity_from_model_or_document,
 )
+from hexcore.infrastructure.repositories import utils as repo_utils
+from hexcore.types import FieldResolversType
 
 
 class _TestEntity(BaseEntity):
@@ -25,6 +28,8 @@ class _TestEntity(BaseEntity):
 
 
 class _DummyModel:
+    name: str
+
     def __init__(self, **values: object) -> None:
         self.__dict__.update(values)
 
@@ -132,7 +137,9 @@ def test_to_entity_applies_async_field_resolvers() -> None:
         async def score_resolver(model_instance: _DummyModel) -> int:
             return len(model_instance.name)
 
-        field_resolvers = {"score": ("name", score_resolver)}
+        field_resolvers: FieldResolversType[_DummyModel] = {
+            "score": ("name", score_resolver)
+        }
 
         entity = await to_entity_from_model_or_document(
             model, _TestEntity, field_resolvers=field_resolvers
@@ -275,7 +282,7 @@ def test_discover_sql_repositories_ignores_alias_duplicates() -> None:
     assert any("alias de import" in str(item.message) for item in caught)
 
 
-def test_discover_sql_repositories_prefers_high_priority_prefix() -> None:
+def test_discover_sql_repositories_raises_on_duplicate_key_without_priority() -> None:
     InfraRepo = type("PaymentsRepository", (_SqlRepoA,), {})
     SrcRepo = type("PaymentsRepository", (_SqlRepoB,), {})
 
@@ -288,11 +295,41 @@ def test_discover_sql_repositories_prefers_high_priority_prefix() -> None:
             "hexcore.infrastructure.repositories.utils._get_all_subclasses",
             return_value={InfraRepo, SrcRepo},
         ),
-        warnings.catch_warnings(record=True) as caught,
     ):
-        warnings.simplefilter("always")
-        discovered = discover_sql_repositories()
+        raised = None
+        try:
+            discover_sql_repositories()
+        except ValueError as exc:
+            raised = exc
 
-    assert "payments" in discovered
-    assert discovered["payments"] is SrcRepo
-    assert any("prioridad de modulo" in str(item.message) for item in caught)
+    assert raised is not None
+    assert "colision" in str(raised)
+    assert "payments" in str(raised)
+
+
+def test_iter_candidate_repository_packages_uses_configured_paths_first() -> None:
+    with patch(
+        "hexcore.infrastructure.repositories.utils._get_configured_repository_paths",
+        return_value={"myapp.slices.billing.repositories"},
+    ):
+        packages = repo_utils._iter_candidate_repository_packages()
+
+    assert packages == {"myapp.slices.billing.repositories"}
+
+
+def test_iter_candidate_repository_packages_without_config_returns_empty_set() -> None:
+    with patch(
+        "hexcore.infrastructure.repositories.utils._get_configured_repository_paths",
+        return_value=set(),
+    ):
+        packages = repo_utils._iter_candidate_repository_packages()
+
+    assert packages == set()
+
+
+def test_clear_discovery_cache_empties_autoloaded_packages() -> None:
+    repo_utils._AUTOLOADED_REPOSITORY_PACKAGES.add("dummy.repositories")
+
+    clear_discovery_cache()
+
+    assert repo_utils._AUTOLOADED_REPOSITORY_PACKAGES == set()
