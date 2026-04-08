@@ -1,3 +1,9 @@
+## 2.0.2 (2026-04-08)
+
+### Fix
+
+- **aplication**: firma erronea en el use case base
+
 ## 2.0.1 (2026-04-08)
 
 ### Fix
