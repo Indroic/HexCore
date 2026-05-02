@@ -1,3 +1,9 @@
+## 2.0.4 (2026-05-02)
+
+### Refactor
+
+- **UseCase**: delete bound for accept any return type
+
 ## 2.0.3 (2026-04-08)
 
 ### Fix
