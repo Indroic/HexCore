@@ -7,7 +7,7 @@ type DTOType = DTO
 
 T = t.TypeVar("T", bound=DTOType | Sequence[DTOType])
 
-R = t.TypeVar("R", bound=DTOType | Sequence[DTOType])
+R = t.TypeVar("R")
 
 
 class UseCase(ABC, t.Generic[T, R]):
