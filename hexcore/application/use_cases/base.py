@@ -9,7 +9,6 @@ T = t.TypeVar("T", bound=DTOType | Sequence[DTOType])
 
 R = t.TypeVar("R")
 
-
 class UseCase(ABC, t.Generic[T, R]):
     @abstractmethod
     async def execute(self, command: T) -> R:
