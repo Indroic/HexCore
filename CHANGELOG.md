@@ -1,3 +1,10 @@
+## 2.0.5 (2026-05-19)
+
+### Fix
+
+- **utils.py**: valor de un campo serializado se eliminaba al momento de aplciars elos serializadores cuando la Key A era igual que la Key B
+- **UseCase**: solo para hacer un bump version
+
 ## 2.0.4 (2026-05-02)
 
 ### Refactor
