@@ -40,7 +40,7 @@ def to_model(
         for field, (dest_field, serializer) in field_serializers.items():
             if hasattr(entity, field):
                 entity_data[dest_field] = serializer(entity)
-                if field in entity_data:
+                if field != dest_field and field in entity_data:
                     del entity_data[field]
     model = model_cls(**entity_data)
     if set_domain and hasattr(model, "set_domain_entity"):
