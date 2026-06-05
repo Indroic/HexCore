@@ -2,10 +2,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import typer
-from async_typer import AsyncTyper  # type: ignore
 from hexcore.config import LazyConfig
 
-app = AsyncTyper(
+app = typer.Typer(
     help="CLI para ayudar con tareas de desarrollo en el proyecto Euphoria."
 )
 
