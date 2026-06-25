@@ -1,3 +1,9 @@
+## 2.0.6 (2026-06-25)
+
+### Fix
+
+- **cli**: error de typer provocaba bloqueo completo de la api
+
 ## 2.0.5 (2026-05-19)
 
 ### Fix
