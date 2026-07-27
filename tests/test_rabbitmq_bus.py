@@ -1,8 +1,14 @@
 import asyncio
 import json
 import pytest
+import sys
 from unittest.mock import AsyncMock, MagicMock, ANY
 from uuid import uuid4
+
+# Mockear aio_pika globalmente para los tests (porque es una dependencia opcional)
+sys.modules["aio_pika"] = MagicMock()
+sys.modules["aio_pika"].Message = MagicMock
+sys.modules["aio_pika"].ExchangeType = MagicMock()
 
 from hexcore.domain.events import DomainEvent
 from hexcore.infrastructure.cqrs.rabbitmq import RabbitMQEventBus
