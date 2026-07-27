@@ -26,6 +26,7 @@ license-files = ["LICEN[CS]E*"]
 
 [project.optional-dependencies]
 procrastinate = ["procrastinate>=3.0.0"]
+rabbitmq = ["aio-pika>=9.4.0"]
 
 
 [project.scripts]

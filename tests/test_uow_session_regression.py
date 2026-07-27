@@ -59,8 +59,8 @@ def test_get_async_db_session_no_manual_rollback_on_error():
         session.rollback = AsyncMock()
 
         with patch(
-            "hexcore.infrastructure.repositories.orms.sqlalchemy.session.AsyncSessionLocal",
-            return_value=_DummySessionContext(session),
+            "hexcore.infrastructure.repositories.orms.sqlalchemy.session.get_session_factory",
+            return_value=lambda: _DummySessionContext(session),
         ):
             session_generator = cast(AsyncGenerator[Any, None], get_async_db_session())
             yielded = await anext(session_generator)
