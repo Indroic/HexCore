@@ -24,6 +24,9 @@ dependencies = [
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 
+[project.optional-dependencies]
+procrastinate = ["procrastinate>=3.0.0"]
+
 
 [project.scripts]
 hexcore = "hexcore.__main__:app"

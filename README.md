@@ -242,6 +242,194 @@ Ambos repositorios utilizan `to_entity_from_model_or_document` para convertir mo
 
 ---
 
+---
+
+## Arquitectura CQRS en HexCore
+
+HexCore v2 integra de forma nativa soporte para el patrón **CQRS (Command Query Responsibility Segregation)**, permitiendo separar conceptual y técnicamente las operaciones de escritura (Commands) de las de lectura (Queries). 
+
+### ¿Cómo funciona el CQRS en HexCore?
+
+El sistema se basa en 3 buses principales, configurables e independientes:
+
+1. **`AbstractCommandBus`**: Despacha inteniones de mutación (`Command`) a un único `AbstractCommandHandler`. Los commands modifican el estado del sistema y se ejecutan (por defecto) dentro de una transacción de base de datos (Unit of Work).
+2. **`AbstractQueryBus`**: Despacha intenciones de lectura (`Query`) a un único `AbstractQueryHandler`. Retornan un resultado sin mutar el estado.
+3. **`EventBus`**: Distribuye eventos de dominio (`DomainEvent`) a múltiples suscriptores asíncronamente (vía `subscribe`/`publish`).
+
+La configuración de CQRS se activa mediante el `CQRSConfig` en tu `ServerConfig`:
+
+```python
+from hexcore.config import ServerConfig
+from hexcore.application.cqrs.config import CQRSConfig, BusConfig
+
+config = ServerConfig(
+    cqrs=CQRSConfig(
+        command_bus=BusConfig(
+            # Por defecto incluye TransactionMiddleware
+            middlewares=["hexcore.infrastructure.cqrs.middlewares.TransactionMiddleware"]
+        ),
+        # Puedes sustituir el backend en memoria por uno distribuido (Ej: Celery, Procrastinate)
+        # backend="mi_app.infrastructure.ProcrastinateCommandBus" 
+    )
+)
+```
+
+---
+
+### Guía de Migración: De Casos de Uso Clásicos a CQRS
+
+Si ya tienes una aplicación escrita con la abstracción `UseCase` de HexCore, puedes migrar progresivamente a CQRS sin reescribir todo tu código, utilizando los adaptadores incluidos.
+
+#### Paso 1: Usar el adaptador `UseCaseCommandHandler`
+
+En lugar de instanciar un UseCase directamente en tu endpoint, envuélvelo en un comando:
+
+```python
+from hexcore.application.cqrs.adapters import UseCaseCommandHandler
+from hexcore.application.cqrs.registry import HandlerRegistry
+
+# 1. Tienes tu UseCase legado
+class CreateUserUseCase(UseCase[CreateUserCommand, UserDTO]):
+    async def execute(self, request: CreateUserCommand) -> UserDTO:
+        # logica legacy
+        pass
+
+# 2. Lo registras en el registry de CQRS utilizando el adaptador
+registry = HandlerRegistry()
+registry.register_command(
+    CreateUserCommand, 
+    UseCaseCommandHandler(CreateUserUseCase())
+)
+```
+
+#### Paso 2: Consumirlo desde el endpoint usando el CommandBus
+
+```python
+@router.post("/users")
+async def create_user(
+    cmd: CreateUserCommand, 
+    # factory inyectado por dependencias
+    bus: AbstractCommandBus = Depends(get_command_bus)
+):
+    # El bus despacha el comando al UseCase legacy de forma transparente
+    result = await bus.dispatch(cmd)
+    return result
+```
+
+#### Paso 3 (Final): Refactor a Handler Puro
+
+Cuando estés listo, convierte tu UseCase directamente en un `AbstractCommandHandler`:
+
+```python
+from hexcore.domain.cqrs import AbstractCommandHandler
+
+class CreateUserHandler(AbstractCommandHandler[CreateUserCommand, UserDTO]):
+    def __init__(self, uow: IUnitOfWork):
+        self.uow = uow
+
+    async def handle(self, command: CreateUserCommand) -> UserDTO:
+        # Lógica refactorizada
+        return dto
+```
+
+---
+
+### Guía: Almacenamiento Híbrido para Queries (Mongo, Redis, SQL)
+
+La mayor ventaja de CQRS es optimizar las lecturas. HexCore permite que tus **Commands** escriban en una base de datos relacional (SQLAlchemy) fuertemente normalizada, mientras que los **Queries** leen de vistas desnormalizadas súper rápidas en MongoDB o Redis.
+
+#### 1. Sincronización a través del EventBus (La Proyección)
+
+Cuando un Command modifica SQL, dispara un Evento de Dominio. Un handler de eventos intercepta este evento y actualiza el "Read Model" en MongoDB o Redis.
+
+```python
+from hexcore.domain.events import EventBus, DomainEvent
+
+class UserCreatedEvent(DomainEvent):
+    user_id: str
+    full_name: str
+    email: str
+
+async def project_user_to_mongodb(event: UserCreatedEvent):
+    """Proyecta el evento en la BD de lectura (MongoDB)"""
+    doc = UserReadDocument(
+        id=event.user_id, 
+        name=event.full_name, 
+        email=event.email
+    )
+    await doc.insert() # usando Beanie (Mongo)
+
+# Registrar la proyección
+event_bus.subscribe(UserCreatedEvent, project_user_to_mongodb)
+```
+
+#### 2. Query Handler leyendo del Read Model
+
+Tu QueryHandler nunca toca SQL, simplemente ataca directamente a Mongo o Redis para máxima velocidad.
+
+```python
+from hexcore.domain.cqrs import AbstractQueryHandler, Query
+
+class GetUserQuery(Query[UserReadDTO]):
+    user_id: str
+
+class GetUserQueryHandler(AbstractQueryHandler[GetUserQuery, UserReadDTO]):
+    async def handle(self, query: GetUserQuery) -> UserReadDTO:
+        # Consulta ultra rápida a la colección de lectura en MongoDB
+        doc = await UserReadDocument.get(query.user_id)
+        
+        # O desde Redis:
+        # data = await redis_client.get(f"user:{query.user_id}")
+        
+        if not doc:
+            raise UserNotFoundException()
+        return UserReadDTO(**doc.dict())
+```
+
+Con este esquema, alcanzas una alta escalabilidad: tus endpoints GET son despachados por el `QueryBus` respondiendo en milisegundos desde Mongo/Redis, y tus operaciones POST/PUT/DELETE van por el `CommandBus` transaccionando con ACID en SQL.
+
+#### 3. Definición de Modelos de Lectura (Proyecciones)
+
+Una pregunta frecuente es: **¿HexCore genera automáticamente estos modelos de lectura?** 
+La respuesta es **No**. El patrón CQRS sugiere que tus modelos de lectura estén diseñados *específicamente* para lo que tus interfaces visuales (UI) o APIs van a consultar. Por lo tanto, debes definir estos modelos manualmente.
+
+**Si usas MongoDB (Beanie) para lecturas:**
+Debes crear un documento manual optimizado. Por ejemplo, en lugar de tener joins, puedes embeber datos:
+```python
+from beanie import Document
+
+# Modelo desnormalizado optimizado para la lectura
+class UserReadDocument(Document):
+    id: str  # ID referenciado de la tabla SQL
+    name: str
+    email: str
+    total_purchases_cache: int = 0  # Dato pre-calculado por eventos
+
+    class Settings:
+        name = "users_read_projections"
+```
+
+**Si usas PostgreSQL/MySQL (SQLAlchemy) para lecturas:**
+Si prefieres mantenerte 100% en SQL pero aislando lecturas, puedes crear tablas específicas para proyecciones (Materialized Views o tablas planas):
+```python
+from sqlalchemy.orm import declarative_base
+from sqlalchemy import Column, String, Integer
+
+Base = declarative_base()
+
+class UserReadProjection(Base):
+    __tablename__ = 'users_read_projection'
+    
+    # Modelo totalmente plano sin relaciones ForeignKey complejas
+    id = Column(String, primary_key=True)
+    full_name = Column(String)
+    email = Column(String)
+    total_purchases_cache = Column(Integer, default=0)
+```
+En ambos casos, es tu **EventBus** (o un consumidor como Procrastinate) el encargado de instanciar estos modelos manuales y persistirlos cada vez que se detecte un cambio en los modelos de escritura.
+
+---
+
 ## Referencias
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md): Pautas de colaboración.
