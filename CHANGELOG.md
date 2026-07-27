@@ -1,3 +1,10 @@
+## 2.4.0 (2026-07-27)
+
+### Feat
+
+- Add Redis and PostgreSQL Event Buses for real-time Pub/Sub
+- Task queues adapters (Celery, Procrastinate) for smart routing
+
 ## 2.3.0 (2026-07-27)
 
 ### Feat
