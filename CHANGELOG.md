@@ -1,3 +1,13 @@
+## 2.1.0 (2026-07-27)
+
+### Feat
+
+- add core CQRS abstractions, pipelines, and factory
+
+### Refactor
+
+- migrate IEventDispatcher to EventBus and ensure backward compatibility
+
 ## 2.0.6 (2026-06-25)
 
 ### Fix
