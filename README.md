@@ -492,24 +492,36 @@ class ProcrastinateEnqueuer(ITaskEnqueuer):
 
 #### 2. Configurar tus Buses con un Adaptador Oficial
 
-HexCore provee adaptadores *plug & play* para **Celery** y **Procrastinate**. Simplemente importa el enqueuer, pásale tu app y configúralo en los buses de memoria:
+HexCore provee adaptadores *plug & play* para **Celery** y **Procrastinate**. Simplemente importa el enqueuer, pásale tu app y configúralo en los buses de memoria.
+
+Si además deseas persistencia o distribución de Eventos entre múltiples workers/servidores (Pub/Sub), puedes cambiar el `InMemoryEventBus` por `RedisEventBus`, `PostgresEventBus` o `RabbitMQEventBus`:
 
 ```python
-from hexcore.application.cqrs.in_memory_buses import InMemoryCommandBus, InMemoryEventBus
+from hexcore.application.cqrs.in_memory_buses import InMemoryCommandBus
 from hexcore.infrastructure.task_queues.celery_adapter import CeleryEnqueuer
-# o: from hexcore.infrastructure.task_queues.procrastinate_adapter import ProcrastinateEnqueuer
+from hexcore.infrastructure.cqrs.redis_bus import RedisEventBus
 from celery import Celery
+import redis.asyncio as redis
 
+# 1. Adaptador de Task Queue (Para Comandos asíncronos y Event Handlers asíncronos)
 app = Celery("my_app", broker="redis://localhost:6379/0")
 enqueuer = CeleryEnqueuer(app)
 serializer = PydanticSerializer()
 
-# El bus evalúa: ¿Tiene el comando @background_command? Si es así, usa el enqueuer.
 command_bus = InMemoryCommandBus(registry=registry, enqueuer=enqueuer, serializer=serializer)
 
-# El bus evalúa suscriptores: ¿Tienen @background_handler? Si es así, usa el enqueuer.
-event_bus = InMemoryEventBus(enqueuer=enqueuer, serializer=serializer)
+# 2. Event Bus (Para enviar los Eventos por la red)
+redis_client = redis.from_url("redis://localhost:6379/0")
+event_bus = RedisEventBus(
+    redis_client=redis_client,
+    serializer=serializer,
+    stream_name="hexcore:events",
+    group_name="api_workers",
+    enqueuer=enqueuer  # <-- Importante para inyectarle la habilidad de Smart Routing
+)
 ```
+
+> **Tip:** También dispones de `PostgresEventBus(pool, serializer, channel_name)` que usa `LISTEN/NOTIFY` nativo si quieres 0 dependencias externas aparte de tu BD de siempre.
 
 #### 4. Ejecutar tareas genéricas
 
