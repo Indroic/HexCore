@@ -1,3 +1,13 @@
+## 2.2.0 (2026-07-27)
+
+### Fix
+
+- **test**: mock aio_pika to prevent ModuleNotFoundError in CI
+
+### Refactor
+
+- make sqlalchemy engine initialization fully lazy for workers
+
 ## 2.1.0 (2026-07-27)
 
 ### Feat
