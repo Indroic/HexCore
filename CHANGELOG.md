@@ -1,3 +1,9 @@
+## 2.3.0 (2026-07-27)
+
+### Feat
+
+- smart routing decorators and utilities for background tasks
+
 ## 2.2.0 (2026-07-27)
 
 ### Fix
