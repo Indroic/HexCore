@@ -56,15 +56,47 @@ class EntityDeletedEvent(DomainEvent):
 EventHandler = t.Callable[[DomainEvent], t.Awaitable[None]]
 
 
-class IEventDispatcher(abc.ABC):
+class EventBus(abc.ABC):
     """
-    Interfaz (Puerto) para el despachador de eventos.
+    Puerto para publicar y suscribir eventos de dominio.
+    Reemplaza al antiguo IEventDispatcher con una API simplificada.
     """
 
     @abc.abstractmethod
+    def subscribe(self, event_type: type, handler: EventHandler) -> None:
+        """Registra un handler para un tipo de evento."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def publish(self, event: t.Any) -> None:
+        """Publica un evento a todos los handlers suscritos."""
+        raise NotImplementedError
+
+    # --- Retrocompatibilidad (Deprecado) ---
     def register(self, event_type: type, handler: EventHandler) -> None:
-        raise NotImplementedError
+        """
+        Alias deprecado para `subscribe`.
+        """
+        import warnings
+        warnings.warn(
+            "IEventDispatcher.register is deprecated. Use EventBus.subscribe instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.subscribe(event_type, handler)
 
-    @abc.abstractmethod
     async def dispatch(self, event: t.Any) -> None:
-        raise NotImplementedError
+        """
+        Alias deprecado para `publish`.
+        """
+        import warnings
+        warnings.warn(
+            "IEventDispatcher.dispatch is deprecated. Use EventBus.publish instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        await self.publish(event)
+
+
+# Alias de retrocompatibilidad
+IEventDispatcher = EventBus

@@ -41,7 +41,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         super().__init__()
-        self.events_dispatcher = LazyConfig.get_config().event_dispatcher
+        self.event_bus = LazyConfig.get_config().event_bus
         self._inject_repositories()
 
     def _inject_repositories(self) -> None:
@@ -108,7 +108,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
 
     async def dispatch_events(self) -> None:
         for event in self.collect_domain_events():
-            await self.events_dispatcher.dispatch(event)
+            await self.event_bus.publish(event)
 
     def clear_tracked_entities(self) -> None:
         # No es necesario limpiar entidades en SQL, pero se mantiene para simetría
@@ -122,7 +122,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
 class NoSqlUnitOfWork(IUnitOfWork):
     def __init__(self) -> None:
         super().__init__()
-        self.events_dispatcher = LazyConfig.get_config().event_dispatcher
+        self.event_bus = LazyConfig.get_config().event_bus
         self._entities: set[BaseEntity] = set()
         self._inject_repositories()
 
@@ -175,7 +175,7 @@ class NoSqlUnitOfWork(IUnitOfWork):
 
     async def dispatch_events(self) -> None:
         for event in self.collect_domain_events():
-            await self.events_dispatcher.dispatch(event)
+            await self.event_bus.publish(event)
 
     def clear_tracked_entities(self) -> None:
         self._entities.clear()

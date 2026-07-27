@@ -13,7 +13,7 @@ class IUnitOfWork(abc.ABC):
 
     def __init__(self):
         self.repositories: t.Dict[str, t.Any] = {}
-        self.events_dispatcher: t.Any = None
+        self.event_bus: t.Any = None
 
     async def __aenter__(self) -> IUnitOfWork:
         return self
