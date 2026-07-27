@@ -1,37 +1,71 @@
 """
-Implementaciones In-Memory de los buses CQRS.
-Funcionan out-of-the-box sin dependencias de infraestructura.
+Implementaciones In-Memory de los buses CQRS con soporte para Enrutamiento Inteligente (Smart Routing).
 """
 from __future__ import annotations
 
 import typing as t
+import logging
 
 from hexcore.domain.cqrs.buses import ICommandBus, IQueryBus, IEventBus
 from hexcore.domain.cqrs.commands import Command
 from hexcore.domain.cqrs.queries import Query
 from hexcore.domain.events import DomainEvent
+from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
+from hexcore.domain.cqrs.serializer import ISerializer
 
 from .registry import HandlerRegistry
 from .pipeline import MiddlewarePipeline
 
+logger = logging.getLogger("hexcore.cqrs.buses")
+
 
 class InMemoryCommandBus(ICommandBus):
     """
-    Bus de commands síncrono en memoria.
+    Bus de commands síncrono en memoria con Smart Routing.
     Resuelve el handler desde el registry, ejecuta el pipeline de middlewares
-    y retorna el resultado directamente.
+    y retorna el resultado.
+    
+    Si el comando está decorado con `@background_command` y se provee un `enqueuer`,
+    el comando es automáticamente encolado para su ejecución en segundo plano
+    sin bloquear el proceso actual (retornando None).
     """
 
     def __init__(
         self,
         registry: HandlerRegistry,
         pipeline: MiddlewarePipeline | None = None,
+        enqueuer: ITaskEnqueuer | None = None,
+        serializer: ISerializer | None = None,
     ) -> None:
         self._registry = registry
         self._pipeline = pipeline or MiddlewarePipeline()
+        self._enqueuer = enqueuer
+        self._serializer = serializer
 
     async def dispatch(self, command: Command) -> t.Any:
-        handler = self._registry.resolve_command_handler(type(command))
+        cmd_type = type(command)
+        
+        # 1. Smart Routing: ¿Debe irse a background?
+        is_background = getattr(cmd_type, "__cqrs_background__", False)
+        
+        if is_background:
+            if not self._enqueuer or not self._serializer:
+                raise RuntimeError(
+                    f"El comando '{cmd_type.__name__}' requiere ejecución en background, "
+                    "pero el InMemoryCommandBus no tiene configurado un 'enqueuer' o 'serializer'."
+                )
+            
+            async def background_dispatcher(cmd: Command) -> None:
+                queue_name = getattr(cmd_type, "__cqrs_queue__", "default")
+                payload = self._serializer.serialize(cmd) # type: ignore
+                await self._enqueuer.enqueue_command(cmd_type.__name__, payload, queue=queue_name) # type: ignore
+                logger.debug("[SmartRouting] Comando %s enrutado a background (queue=%s)", cmd_type.__name__, queue_name)
+
+            await self._pipeline.execute(command, background_dispatcher)
+            return None
+
+        # 2. Ejecución Local Estándar
+        handler = self._registry.resolve_command_handler(cmd_type)
 
         async def final_handler(cmd: t.Any) -> t.Any:
             return await handler.handle(cmd)
@@ -65,18 +99,26 @@ class InMemoryQueryBus(IQueryBus):
 
 class InMemoryEventBus(IEventBus):
     """
-    Bus de eventos en memoria. Compatible con el IEventDispatcher existente.
+    Bus de eventos en memoria con Smart Routing para Handlers Asíncronos.
+    
+    Permite publicar eventos a todos los suscriptores. Si un suscriptor
+    fue decorado con `@background_handler`, se enviará un mensaje al Task Queue
+    para que *solo* ese handler se ejecute en background para este evento.
     """
 
     def __init__(
         self,
         pipeline: MiddlewarePipeline | None = None,
+        enqueuer: ITaskEnqueuer | None = None,
+        serializer: ISerializer | None = None,
     ) -> None:
         self._handlers: dict[
             type[DomainEvent],
             list[t.Callable[[DomainEvent], t.Awaitable[None]]],
         ] = {}
         self._pipeline = pipeline or MiddlewarePipeline()
+        self._enqueuer = enqueuer
+        self._serializer = serializer
 
     def subscribe(
         self,
@@ -89,11 +131,34 @@ class InMemoryEventBus(IEventBus):
         handlers = self._handlers.get(type(event), [])
 
         for event_handler in handlers:
+            is_background = getattr(event_handler, "__cqrs_background_handler__", False)
 
-            async def final_handler(
-                evt: t.Any,
-                _h: t.Callable[..., t.Awaitable[None]] = event_handler,
-            ) -> None:
-                await _h(evt)
+            if is_background:
+                # Enrutamiento hacia background
+                if not self._enqueuer or not self._serializer:
+                    raise RuntimeError(
+                        f"El handler de eventos '{event_handler.__name__}' requiere ejecución en background, "
+                        "pero el InMemoryEventBus no tiene configurado un 'enqueuer' o 'serializer'."
+                    )
+                
+                async def background_dispatcher(
+                    evt: t.Any,
+                    _h: t.Callable[..., t.Awaitable[None]] = event_handler,
+                ) -> None:
+                    handler_name = getattr(_h, "__cqrs_handler_name__")
+                    queue_name = getattr(_h, "__cqrs_queue__", "default")
+                    payload = self._serializer.serialize(evt) # type: ignore
+                    await self._enqueuer.enqueue_handler(handler_name, payload, queue=queue_name) # type: ignore
+                    logger.debug("[SmartRouting] EventHandler %s enrutado a background (queue=%s)", handler_name, queue_name)
+                    
+                await self._pipeline.execute(event, background_dispatcher)
+                
+            else:
+                # Ejecución local síncrona
+                async def final_handler(
+                    evt: t.Any,
+                    _h: t.Callable[..., t.Awaitable[None]] = event_handler,
+                ) -> None:
+                    await _h(evt)
 
-            await self._pipeline.execute(event, final_handler)
+                await self._pipeline.execute(event, final_handler)

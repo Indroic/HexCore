@@ -430,6 +430,127 @@ En ambos casos, es tu **EventBus** (o un consumidor como Procrastinate) el encar
 
 ---
 
+### Integración con Task Queues (Smart Routing)
+
+HexCore v2 hace que la delegación de tareas a **Celery**, **Procrastinate** o **ARQ** sea increíblemente sencilla y mágica a través del patrón de **Smart Routing**.
+
+Ya no necesitas instanciar buses separados para código síncrono y asíncrono. HexCore enruta automáticamente tus comandos y eventos hacia las colas de background usando simples decoradores.
+
+#### 1. Decoradores de Background
+
+HexCore ofrece 3 decoradores esenciales en `hexcore.domain.cqrs.decorators` para cubrir todos los casos de uso:
+
+1. **`@background_command(queue="...")`**: Aplícalo sobre una clase `Command`. Todo el comando y su handler se ejecutarán asíncronamente en el Worker. Ideal para operaciones pesadas iniciadas por el usuario (ej. Generar un reporte PDF masivo).
+2. **`@background_handler(queue="...")`**: Aplícalo sobre una función que maneje un evento (`DomainEvent`). Permite que un solo evento dispare algunas acciones síncronas rápidas y otras asíncronas lentas (ej. Enviar emails).
+3. **`@background_task(queue="...")`**: Aplícalo sobre funciones o utilidades genéricas que no pertenecen al modelo estricto de CQRS (ej. Limpiar base de datos, tareas tipo CRON).
+
+**Ejemplos de uso:**
+
+```python
+from hexcore.domain.cqrs.decorators import background_command, background_handler, background_task
+from hexcore.domain.cqrs.commands import Command
+
+# 1. Comando de ejecución asíncrona obligatoria
+@background_command(queue="high_priority")
+class SendEmailCommand(Command):
+    user_id: str
+    template: str
+
+# 2. Handler de evento asíncrono
+@background_handler(queue="analytics")
+async def send_analytics_on_user_created(event: UserCreatedEvent):
+    # Lógica costosa...
+    pass
+
+# 3. Tarea genérica (Non-CQRS)
+@background_task(queue="maintenance")
+async def clean_old_records_task(days_retention: int):
+    # Limpieza de base de datos...
+    pass
+```
+
+#### 2. Crear el Enqueuer (Adaptador)
+
+Implementa la interfaz genérica `ITaskEnqueuer` usando la SDK de tu Task Queue favorito:
+
+```python
+from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
+
+class ProcrastinateEnqueuer(ITaskEnqueuer):
+    async def enqueue_command(self, command_name: str, payload: dict, queue: str) -> None:
+        await process_cqrs_command.defer_async(payload=payload)
+        
+    async def enqueue_handler(self, handler_name: str, payload: dict, queue: str) -> None:
+        await process_cqrs_handler.defer_async(handler_name=handler_name, payload=payload)
+    
+    async def enqueue_event(self, event_name: str, payload: dict, queue: str) -> None:
+        pass # Usualmente no se usa directamente si utilizas @background_handler
+        
+    async def enqueue_task(self, task_name: str, payload: dict, queue: str) -> None:
+        await process_generic_task.defer_async(task_name=task_name, payload=payload)
+```
+
+#### 3. Configurar tus Buses (Enrutamiento Automático)
+
+Al inyectar tu enqueuer en los buses estándar de memoria en tu API, estos adquieren la habilidad de enrutamiento inteligente. (Si usas un comando decorado pero no inyectas un enqueuer, HexCore levantará una excepción tempranamente).
+
+```python
+from hexcore.application.cqrs.in_memory_buses import InMemoryCommandBus, InMemoryEventBus
+
+enqueuer = ProcrastinateEnqueuer()
+serializer = PydanticSerializer()
+
+# El bus evalúa: ¿Tiene el comando @background_command? Si es así, usa el enqueuer.
+command_bus = InMemoryCommandBus(registry=registry, enqueuer=enqueuer, serializer=serializer)
+
+# El bus evalúa suscriptores: ¿Tienen @background_handler? Si es así, usa el enqueuer.
+event_bus = InMemoryEventBus(enqueuer=enqueuer, serializer=serializer)
+```
+
+#### 4. Ejecutar tareas genéricas
+
+Para encolar la tarea genérica (`@background_task`), la llamas indirectamente pasándola por el enqueuer:
+
+```python
+# Así se encola una tarea genérica sin CQRS:
+await enqueuer.enqueue_task(
+    task_name=clean_old_records_task.__cqrs_task_name__, 
+    payload={"days_retention": 30},
+    queue=clean_old_records_task.__cqrs_queue__
+)
+```
+
+#### 5. Levantar el Worker (Consumidor Universal)
+
+En el entrypoint de tu worker (ej. Celery o Procrastinate), usa el `CQRSConsumer` de HexCore para deserializar y ejecutar los payloads interceptados. El consumidor usa resolución dinámica para invocar la función correcta automáticamente.
+
+```python
+from hexcore.infrastructure.workers.consumer import CQRSConsumer
+
+consumer = CQRSConsumer(
+    command_bus=command_bus, # Tu CommandBus configurado
+    event_bus=event_bus, 
+    serializer=serializer
+)
+
+@app.task(name="process_cqrs_command")
+async def process_cqrs_command(payload: dict):
+    # HexCore deserializa y ejecuta el Command usando el CommandBus local
+    await consumer.process_command(payload)
+
+@app.task(name="process_cqrs_handler")
+async def process_cqrs_handler(handler_name: str, payload: dict):
+    # HexCore resuelve y ejecuta exclusivamente el Event Handler asíncrono
+    await consumer.process_handler(handler_name, payload)
+
+@app.task(name="process_generic_task")
+async def process_generic_task(task_name: str, payload: dict):
+    # HexCore resuelve e inyecta los kwargs a la función pura
+    await consumer.process_task(task_name, payload)
+```
+
+---
+
 ## Referencias
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md): Pautas de colaboración.
