@@ -123,8 +123,9 @@ class TransactionMiddleware(IMiddleware):
         # Heurística simple: Si hay una URL de SQL (por defecto siempre la hay), asume SQL.
         # En una app real de Hexcore se puede inyectar esto mejor, pero provee un default funcional.
         if config.sql_database_url:
-            from hexcore.infrastructure.repositories.orms.sqlalchemy.session import AsyncSessionLocal
-            return SqlAlchemyUnitOfWork(session=AsyncSessionLocal())
+            from hexcore.infrastructure.repositories.orms.sqlalchemy.session import get_session_factory
+            factory = get_session_factory()
+            return SqlAlchemyUnitOfWork(session=factory())
         return NoSqlUnitOfWork()
 
     async def handle(self, message: t.Any, next_handler: NextHandler) -> t.Any:
