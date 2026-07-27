@@ -490,22 +490,38 @@ class ProcrastinateEnqueuer(ITaskEnqueuer):
         await process_generic_task.defer_async(task_name=task_name, payload=payload)
 ```
 
-#### 3. Configurar tus Buses (Enrutamiento Automático)
+#### 2. Configurar tus Buses con un Adaptador Oficial
 
-Al inyectar tu enqueuer en los buses estándar de memoria en tu API, estos adquieren la habilidad de enrutamiento inteligente. (Si usas un comando decorado pero no inyectas un enqueuer, HexCore levantará una excepción tempranamente).
+HexCore provee adaptadores *plug & play* para **Celery** y **Procrastinate**. Simplemente importa el enqueuer, pásale tu app y configúralo en los buses de memoria.
+
+Si además deseas persistencia o distribución de Eventos entre múltiples workers/servidores (Pub/Sub), puedes cambiar el `InMemoryEventBus` por `RedisEventBus`, `PostgresEventBus` o `RabbitMQEventBus`:
 
 ```python
-from hexcore.application.cqrs.in_memory_buses import InMemoryCommandBus, InMemoryEventBus
+from hexcore.application.cqrs.in_memory_buses import InMemoryCommandBus
+from hexcore.infrastructure.task_queues.celery_adapter import CeleryEnqueuer
+from hexcore.infrastructure.cqrs.redis_bus import RedisEventBus
+from celery import Celery
+import redis.asyncio as redis
 
-enqueuer = ProcrastinateEnqueuer()
+# 1. Adaptador de Task Queue (Para Comandos asíncronos y Event Handlers asíncronos)
+app = Celery("my_app", broker="redis://localhost:6379/0")
+enqueuer = CeleryEnqueuer(app)
 serializer = PydanticSerializer()
 
-# El bus evalúa: ¿Tiene el comando @background_command? Si es así, usa el enqueuer.
 command_bus = InMemoryCommandBus(registry=registry, enqueuer=enqueuer, serializer=serializer)
 
-# El bus evalúa suscriptores: ¿Tienen @background_handler? Si es así, usa el enqueuer.
-event_bus = InMemoryEventBus(enqueuer=enqueuer, serializer=serializer)
+# 2. Event Bus (Para enviar los Eventos por la red)
+redis_client = redis.from_url("redis://localhost:6379/0")
+event_bus = RedisEventBus(
+    redis_client=redis_client,
+    serializer=serializer,
+    stream_name="hexcore:events",
+    group_name="api_workers",
+    enqueuer=enqueuer  # <-- Importante para inyectarle la habilidad de Smart Routing
+)
 ```
+
+> **Tip:** También dispones de `PostgresEventBus(pool, serializer, channel_name)` que usa `LISTEN/NOTIFY` nativo si quieres 0 dependencias externas aparte de tu BD de siempre.
 
 #### 4. Ejecutar tareas genéricas
 
@@ -522,10 +538,11 @@ await enqueuer.enqueue_task(
 
 #### 5. Levantar el Worker (Consumidor Universal)
 
-En el entrypoint de tu worker (ej. Celery o Procrastinate), usa el `CQRSConsumer` de HexCore para deserializar y ejecutar los payloads interceptados. El consumidor usa resolución dinámica para invocar la función correcta automáticamente.
+En el entrypoint de tu worker, usa la función utilitaria `register_hexcore_celery_tasks` para autoconfigurar las rutas en una sola línea:
 
 ```python
 from hexcore.infrastructure.workers.consumer import CQRSConsumer
+from hexcore.infrastructure.task_queues.celery_adapter import register_hexcore_celery_tasks
 
 consumer = CQRSConsumer(
     command_bus=command_bus, # Tu CommandBus configurado
@@ -533,20 +550,8 @@ consumer = CQRSConsumer(
     serializer=serializer
 )
 
-@app.task(name="process_cqrs_command")
-async def process_cqrs_command(payload: dict):
-    # HexCore deserializa y ejecuta el Command usando el CommandBus local
-    await consumer.process_command(payload)
-
-@app.task(name="process_cqrs_handler")
-async def process_cqrs_handler(handler_name: str, payload: dict):
-    # HexCore resuelve y ejecuta exclusivamente el Event Handler asíncrono
-    await consumer.process_handler(handler_name, payload)
-
-@app.task(name="process_generic_task")
-async def process_generic_task(task_name: str, payload: dict):
-    # HexCore resuelve e inyecta los kwargs a la función pura
-    await consumer.process_task(task_name, payload)
+# ¡Magia! Registra las tareas 'hexcore.process_command', 'hexcore.process_handler', etc.
+register_hexcore_celery_tasks(app, consumer)
 ```
 
 ---
