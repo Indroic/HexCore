@@ -2,14 +2,14 @@ from __future__ import annotations
 import importlib
 import os
 import typing as t
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pathlib import Path
 from hexcore.infrastructure.cache import ICache
-from hexcore.domain.events import IEventDispatcher
+from hexcore.domain.events import EventBus
 
 
 from hexcore.infrastructure.cache.cache_backends.memory import MemoryCache
-from hexcore.infrastructure.events.events_backends.memory import InMemoryEventDispatcher
+from hexcore.infrastructure.events.events_backends.memory import InMemoryEventBus
 
 
 class ServerConfig(BaseModel):
@@ -51,13 +51,45 @@ class ServerConfig(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    # Event Dispatcher
-    event_dispatcher: IEventDispatcher = InMemoryEventDispatcher()
+    # Event Bus
+    event_bus: EventBus = InMemoryEventBus()
+
+    @property
+    def event_dispatcher(self) -> EventBus:
+        """Retrocompatibilidad para acceso a event_dispatcher."""
+        import warnings
+        warnings.warn(
+            "ServerConfig.event_dispatcher is deprecated. Use ServerConfig.event_bus instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.event_bus
+
+    @event_dispatcher.setter
+    def event_dispatcher(self, value: EventBus) -> None:
+        self.event_bus = value
 
     # Repository Discovery
     # v2 (breaking): discovery explicito y folder-agnostic.
     # Si se deja vacio, no se autoloadearan modulos de repositorios.
     repository_discovery_paths: set[str] = Field(default_factory=set)
+
+    # CQRS (opcional — None = deshabilitado, sin impacto en módulos existentes)
+    # Tipo: Optional[hexcore.application.cqrs.config.CQRSConfig]
+    cqrs: t.Any = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def map_deprecated_fields(cls, data: t.Any) -> t.Any:
+        if isinstance(data, dict) and "event_dispatcher" in data:
+            import warnings
+            warnings.warn(
+                "Passing 'event_dispatcher' to ServerConfig is deprecated. Use 'event_bus' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            data["event_bus"] = data.pop("event_dispatcher")
+        return data
 
 
 class LazyConfig:
@@ -147,6 +179,7 @@ class LazyConfig:
         # Fallback: config base del kernel
         cls._imported_config = ServerConfig()
         return cls._imported_config
+
 
 
 # Esto es solo para disparar el Workflow pra subir la ultima version a PyPI, por favor ignora este comentario

@@ -1,20 +1,32 @@
 import typing as t
-from hexcore.domain.events import IEventDispatcher, DomainEvent
+from hexcore.domain.events import EventBus, DomainEvent
 
 
-class InMemoryEventDispatcher(IEventDispatcher):
+class InMemoryEventBus(EventBus):
+    """
+    Implementación básica en memoria del EventBus.
+    Mantiene un diccionario de tipo_de_evento -> lista_de_handlers.
+    """
+
     def __init__(self) -> None:
-        self._events: list[tuple[str, dict[str, t.Any]]] = []
+        # dict[type, list[EventHandler]]
+        self._handlers: dict[type, list[t.Callable[[DomainEvent], t.Awaitable[None]]]] = {}
 
-    async def dispatch(self, event: DomainEvent) -> None:
-        self._events.append((event.__class__.__name__, event.model_dump()))
-
-    def register(
-        self,
-        event_type: t.Type[DomainEvent],
-        handler: t.Callable[[DomainEvent], t.Awaitable[None]],
+    def subscribe(
+        self, event_type: type, handler: t.Callable[[DomainEvent], t.Awaitable[None]]
     ) -> None:
-        pass
+        """
+        Registra un handler asíncrono para un tipo de evento específico.
+        """
+        if event_type not in self._handlers:
+            self._handlers[event_type] = []
+        self._handlers[event_type].append(handler)
 
-    def clear_events(self) -> None:
-        self._events.clear()
+    async def publish(self, event: DomainEvent) -> None:
+        if event.__class__ in self._handlers:
+            for handler in self._handlers[event.__class__]:
+                await handler(event)
+
+
+# Alias de retrocompatibilidad
+InMemoryEventDispatcher = InMemoryEventBus

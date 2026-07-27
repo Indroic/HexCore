@@ -33,7 +33,7 @@ class _DummyRepository:
 
 class _DummyConfig:
     def __init__(self) -> None:
-        self.event_dispatcher = AsyncMock()
+        self.event_bus = AsyncMock()
         self.repository_discovery_paths = {
             "myapp.features.users.infrastructure.repositories"
         }
@@ -132,13 +132,13 @@ def test_sql_uow_commit_clears_entities_even_if_dispatch_fails():
     asyncio.run(_run())
 
 
-def test_sql_uow_sets_events_dispatcher_from_config():
+def test_sql_uow_sets_event_bus_from_config():
     async def _run():
         session = MagicMock()
-        configured_dispatcher = AsyncMock()
-        configured_dispatcher.dispatch = AsyncMock()
+        configured_bus = AsyncMock()
+        configured_bus.publish = AsyncMock()
         configured = _DummyConfig()
-        configured.event_dispatcher = configured_dispatcher
+        configured.event_bus = configured_bus
 
         with (
             patch(
@@ -152,7 +152,7 @@ def test_sql_uow_sets_events_dispatcher_from_config():
         ):
             uow = SqlAlchemyUnitOfWork(session=session)
 
-        assert uow.events_dispatcher is configured_dispatcher
+        assert uow.event_bus is configured_bus
 
     asyncio.run(_run())
 
