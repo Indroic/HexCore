@@ -490,14 +490,18 @@ class ProcrastinateEnqueuer(ITaskEnqueuer):
         await process_generic_task.defer_async(task_name=task_name, payload=payload)
 ```
 
-#### 3. Configurar tus Buses (Enrutamiento Automático)
+#### 2. Configurar tus Buses con un Adaptador Oficial
 
-Al inyectar tu enqueuer en los buses estándar de memoria en tu API, estos adquieren la habilidad de enrutamiento inteligente. (Si usas un comando decorado pero no inyectas un enqueuer, HexCore levantará una excepción tempranamente).
+HexCore provee adaptadores *plug & play* para **Celery** y **Procrastinate**. Simplemente importa el enqueuer, pásale tu app y configúralo en los buses de memoria:
 
 ```python
 from hexcore.application.cqrs.in_memory_buses import InMemoryCommandBus, InMemoryEventBus
+from hexcore.infrastructure.task_queues.celery_adapter import CeleryEnqueuer
+# o: from hexcore.infrastructure.task_queues.procrastinate_adapter import ProcrastinateEnqueuer
+from celery import Celery
 
-enqueuer = ProcrastinateEnqueuer()
+app = Celery("my_app", broker="redis://localhost:6379/0")
+enqueuer = CeleryEnqueuer(app)
 serializer = PydanticSerializer()
 
 # El bus evalúa: ¿Tiene el comando @background_command? Si es así, usa el enqueuer.
@@ -522,10 +526,11 @@ await enqueuer.enqueue_task(
 
 #### 5. Levantar el Worker (Consumidor Universal)
 
-En el entrypoint de tu worker (ej. Celery o Procrastinate), usa el `CQRSConsumer` de HexCore para deserializar y ejecutar los payloads interceptados. El consumidor usa resolución dinámica para invocar la función correcta automáticamente.
+En el entrypoint de tu worker, usa la función utilitaria `register_hexcore_celery_tasks` para autoconfigurar las rutas en una sola línea:
 
 ```python
 from hexcore.infrastructure.workers.consumer import CQRSConsumer
+from hexcore.infrastructure.task_queues.celery_adapter import register_hexcore_celery_tasks
 
 consumer = CQRSConsumer(
     command_bus=command_bus, # Tu CommandBus configurado
@@ -533,20 +538,8 @@ consumer = CQRSConsumer(
     serializer=serializer
 )
 
-@app.task(name="process_cqrs_command")
-async def process_cqrs_command(payload: dict):
-    # HexCore deserializa y ejecuta el Command usando el CommandBus local
-    await consumer.process_command(payload)
-
-@app.task(name="process_cqrs_handler")
-async def process_cqrs_handler(handler_name: str, payload: dict):
-    # HexCore resuelve y ejecuta exclusivamente el Event Handler asíncrono
-    await consumer.process_handler(handler_name, payload)
-
-@app.task(name="process_generic_task")
-async def process_generic_task(task_name: str, payload: dict):
-    # HexCore resuelve e inyecta los kwargs a la función pura
-    await consumer.process_task(task_name, payload)
+# ¡Magia! Registra las tareas 'hexcore.process_command', 'hexcore.process_handler', etc.
+register_hexcore_celery_tasks(app, consumer)
 ```
 
 ---
