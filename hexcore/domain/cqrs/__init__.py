@@ -21,6 +21,7 @@ from .handlers import ICommandHandler, IQueryHandler
 from .buses import ICommandBus, IQueryBus, IEventBus
 from .middleware import IMiddleware
 from .serializer import ISerializer
+from .cron import CronJobDefinition, ICronJobRepository, ILockProvider
 
 __all__ = [
     # Nombres canónicos (Abstract*)
@@ -34,6 +35,10 @@ __all__ = [
     "AbstractMiddleware",
     "NextHandler",
     "AbstractSerializer",
+    # Cron
+    "CronJobDefinition",
+    "ICronJobRepository",
+    "ILockProvider",
     # Aliases (I*)
     "ICommandHandler",
     "IQueryHandler",

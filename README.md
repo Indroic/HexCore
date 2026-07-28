@@ -556,6 +556,96 @@ register_hexcore_celery_tasks(app, consumer)
 
 ---
 
+## Tareas Periódicas Dinámicas (Cronjobs en Caliente)
+
+HexCore incluye un **`DynamicScheduler`** que te permite programar tareas (`@background_task`) para que se ejecuten periódicamente. La ventaja clave es que lee la configuración desde un repositorio (como tu Base de Datos), permitiendo activar, desactivar o cambiar los horarios **sin necesidad de reiniciar tus servidores**.
+
+### 1. Implementa tu Repositorio
+Implementa `ICronJobRepository` para decirle al Scheduler de dónde leer la configuración (ej. usando SQLAlchemy, MongoDB o Redis):
+
+```python
+from hexcore.domain.cqrs.cron import ICronJobRepository, CronJobDefinition
+from datetime import datetime
+
+class MiCronRepository(ICronJobRepository):
+    async def get_active_jobs(self) -> list[CronJobDefinition]:
+        # SELECT * FROM cronjobs WHERE is_active = true
+        return [
+            CronJobDefinition(
+                job_id="1",
+                task_name="hexcore.process_task", # o cualquier @background_task
+                cron_expression="*/5 * * * *",    # cada 5 minutos
+                payload={"task_name": "clean_db", "payload": {}}
+            )
+        ]
+        
+    async def update_last_run(self, job_id: str, run_time: datetime) -> None:
+        # UPDATE cronjobs SET last_run = run_time WHERE id = job_id
+        pass
+```
+
+### 2. Levanta el Scheduler
+En un proceso en background de tu API o en un microservicio separado, arranca el Scheduler inyectándole tu Enqueuer favorito (Celery, Procrastinate):
+
+```python
+from hexcore.application.cqrs.scheduler import DynamicScheduler
+import asyncio
+
+async def run_scheduler():
+    repo = MiCronRepository()
+    scheduler = DynamicScheduler(
+        repository=repo, 
+        enqueuer=enqueuer, 
+        tick_interval_seconds=60
+    )
+    
+    await scheduler.start() # Bucle infinito
+
+# En FastAPI puedes usar lifespan para lanzarlo:
+# asyncio.create_task(run_scheduler())
+```
+
+El Scheduler evaluará las expresiones (gracias a `croniter`) y delegará la carga pesada al enqueuer. ¡Tu Worker no necesita saber de horarios, solo ejecuta las tareas cuando le llegan!
+
+### 3. Distributed Locks (Evitar ejecuciones dobles)
+
+Si corres tu aplicación en múltiples contenedores o réplicas (ej. Kubernetes), podrías tener múltiples instancias del `DynamicScheduler` ejecutándose al mismo tiempo. Para evitar que el mismo cronjob se encole dos veces en el mismo minuto, HexCore soporta **Locks Distribuidos**.
+
+Puedes inyectar un proveedor de locks (`ILockProvider`) usando Redis o PostgreSQL (si lo usas como tu DB). Al inyectarlo, el Scheduler bloqueará atómicamente la tarea a través de toda tu red.
+
+#### Usando Redis
+```python
+from hexcore.infrastructure.cqrs.redis_lock import RedisLockProvider
+import redis.asyncio as redis
+
+redis_client = redis.from_url("redis://localhost:6379/0")
+lock_provider = RedisLockProvider(redis_client)
+
+scheduler = DynamicScheduler(
+    repository=repo, 
+    enqueuer=enqueuer, 
+    lock_provider=lock_provider
+)
+```
+
+#### Usando PostgreSQL (asyncpg)
+Si usas Procrastinate o bases de datos SQL y no quieres levantar Redis:
+
+```python
+from hexcore.infrastructure.cqrs.postgres_lock import PostgresLockProvider
+
+lock_provider = PostgresLockProvider(my_asyncpg_pool)
+await lock_provider.setup() # Crea la tabla de locks si no existe
+
+scheduler = DynamicScheduler(
+    repository=repo, 
+    enqueuer=enqueuer, 
+    lock_provider=lock_provider
+)
+```
+
+---
+
 ## Referencias
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md): Pautas de colaboración.

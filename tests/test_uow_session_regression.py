@@ -3,6 +3,8 @@ from collections.abc import AsyncGenerator
 from types import TracebackType
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
+import pytest
+pytest.importorskip("sqlalchemy")
 
 from hexcore.infrastructure.repositories.orms.sqlalchemy.session import (
     get_async_db_session,

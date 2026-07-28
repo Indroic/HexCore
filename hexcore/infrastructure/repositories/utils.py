@@ -7,17 +7,26 @@ import typing as t
 import warnings
 from collections.abc import Mapping
 
-from sqlalchemy import Row
-
-
 from hexcore.domain.base import BaseEntity
 from hexcore.types import FieldResolversType
 from hexcore.types import VisitedType, VisitedResultsType
 
+try:
+    from sqlalchemy import Row
+    from .orms.sqlalchemy import BaseModel
+    from .base import BaseSQLAlchemyRepository
+except ImportError:
+    class Row(t.Generic[t.TypeVar("R")]): ... # type: ignore
+    class BaseModel(t.Generic[t.TypeVar("M")]): ... # type: ignore
+    class BaseSQLAlchemyRepository: ... # type: ignore
 
-from .orms.sqlalchemy import BaseModel
-from .orms.beanie import BaseDocument
-from .base import BaseSQLAlchemyRepository, BaseBeanieRepository
+try:
+    from .orms.beanie import BaseDocument
+    from .base import BaseBeanieRepository
+except ImportError:
+    class BaseDocument: ... # type: ignore
+    class BaseBeanieRepository: ... # type: ignore
+
 
 # --- Función auxiliar para aplicar resolvers asíncronos en dicts ---
 
