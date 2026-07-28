@@ -48,6 +48,7 @@ dev = [
     "commitizen>=4.9.1",
     "pyright>=1.1.405",
     "pytest>=8.4.2",
+    "anyio>=4.0.0",
 ]
 
 [tool.setuptools]
