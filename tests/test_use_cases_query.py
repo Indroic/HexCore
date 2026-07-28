@@ -1,4 +1,6 @@
 import asyncio
+import pytest
+fastapi = pytest.importorskip("fastapi")
 import typing as t
 
 from fastapi import APIRouter, HTTPException

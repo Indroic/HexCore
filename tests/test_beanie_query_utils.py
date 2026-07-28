@@ -1,4 +1,6 @@
 import asyncio
+import pytest
+pytest.importorskip("beanie")
 import typing as t
 
 from hexcore.application.dtos.query import (

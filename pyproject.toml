@@ -63,3 +63,8 @@ version_provider = "uv"
 update_changelog_on_bump = false
 major_version_zero = false
 push = true
+
+[tool.pytest.ini_options]
+markers = [
+    "anyio: mark test as an anyio test",
+]

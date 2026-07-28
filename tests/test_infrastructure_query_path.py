@@ -1,4 +1,7 @@
 import asyncio
+import pytest
+pytest.importorskip("sqlalchemy")
+pytest.importorskip("beanie")
 import typing as t
 from unittest.mock import AsyncMock, patch
 

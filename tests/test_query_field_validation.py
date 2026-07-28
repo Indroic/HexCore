@@ -1,4 +1,6 @@
 import asyncio
+import pytest
+pytest.importorskip("sqlalchemy")
 import typing as t
 
 from sqlalchemy import Integer, String

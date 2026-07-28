@@ -5,6 +5,8 @@ from collections.abc import Iterator, Mapping
 from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
+pytest.importorskip("sqlalchemy")
 from sqlalchemy import create_engine, text
 
 from hexcore.domain.base import BaseEntity

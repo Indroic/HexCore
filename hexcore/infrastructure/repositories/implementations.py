@@ -116,7 +116,7 @@ try:
 
 except ImportError:
     M = t.TypeVar("M") # type: ignore
-    class SqlAlchemyRepository: ... # type: ignore
+    class SqlAlchemyRepository(t.Generic[T, M]): ... # type: ignore
     SQLAlchemyCommonImplementationsRepo = SqlAlchemyRepository # type: ignore
 
 
@@ -194,5 +194,5 @@ try:
 
 except ImportError:
     D = t.TypeVar("D") # type: ignore
-    class BeanieRepository: ... # type: ignore
+    class BeanieRepository(t.Generic[T, D]): ... # type: ignore
     BeanieODMCommonImplementationsRepo = BeanieRepository # type: ignore
