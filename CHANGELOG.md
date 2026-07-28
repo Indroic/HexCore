@@ -1,3 +1,15 @@
+## 2.5.0 (2026-07-28)
+
+### Feat
+
+- refactor repositories and make heavy dependencies optional
+
+### Fix
+
+- install anyio in pytest workflow to support async tests
+- add anyio to dev dependencies to fix pytest async execution in CI
+- make dummy classes generic and skip tests when optional dependencies are missing
+
 ## 2.4.0 (2026-07-27)
 
 ### Feat
