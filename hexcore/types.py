@@ -1,7 +1,10 @@
 import typing as t
 from typing import Protocol
 from .domain.base import BaseEntity
-from .infrastructure.repositories.orms.sqlalchemy import BaseModel
+try:
+    from .infrastructure.repositories.orms.sqlalchemy import BaseModel
+except ImportError:
+    class BaseModel(t.Generic[t.TypeVar("M")]): ... # type: ignore
 from .infrastructure.repositories.base import IBaseRepository
 from uuid import UUID
 

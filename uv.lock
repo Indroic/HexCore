@@ -405,28 +405,50 @@ name = "hexcore"
 version = "2.0.6"
 source = { virtual = "." }
 dependencies = [
-    { name = "aiosqlite" },
-    { name = "alembic" },
-    { name = "asyncpg" },
-    { name = "beanie" },
-    { name = "fastapi" },
-    { name = "pika" },
+    { name = "croniter" },
     { name = "pydantic" },
-    { name = "redis" },
     { name = "ruff" },
-    { name = "sqlalchemy" },
     { name = "typer" },
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "aio-pika" },
+    { name = "aiosqlite" },
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "beanie" },
+    { name = "celery" },
+    { name = "fastapi" },
+    { name = "pika" },
+    { name = "procrastinate" },
+    { name = "redis" },
+    { name = "sqlalchemy" },
+]
+api = [
+    { name = "fastapi" },
+]
 celery = [
     { name = "celery" },
+]
+mongo = [
+    { name = "beanie" },
 ]
 procrastinate = [
     { name = "procrastinate" },
 ]
 rabbitmq = [
     { name = "aio-pika" },
+    { name = "pika" },
+]
+redis = [
+    { name = "redis" },
+]
+sql = [
+    { name = "aiosqlite" },
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "sqlalchemy" },
 ]
 
 [package.dev-dependencies]
@@ -438,22 +460,34 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aio-pika", marker = "extra == 'all'", specifier = ">=9.4.0" },
     { name = "aio-pika", marker = "extra == 'rabbitmq'", specifier = ">=9.4.0" },
-    { name = "aiosqlite", specifier = ">=0.21.0" },
-    { name = "alembic", specifier = ">=1.16.5" },
-    { name = "asyncpg", specifier = ">=0.30.0" },
-    { name = "beanie", specifier = ">=2.0.0" },
+    { name = "aiosqlite", marker = "extra == 'all'", specifier = ">=0.21.0" },
+    { name = "aiosqlite", marker = "extra == 'sql'", specifier = ">=0.21.0" },
+    { name = "alembic", marker = "extra == 'all'", specifier = ">=1.16.5" },
+    { name = "alembic", marker = "extra == 'sql'", specifier = ">=1.16.5" },
+    { name = "asyncpg", marker = "extra == 'all'", specifier = ">=0.30.0" },
+    { name = "asyncpg", marker = "extra == 'sql'", specifier = ">=0.30.0" },
+    { name = "beanie", marker = "extra == 'all'", specifier = ">=2.0.0" },
+    { name = "beanie", marker = "extra == 'mongo'", specifier = ">=2.0.0" },
+    { name = "celery", marker = "extra == 'all'", specifier = ">=5.4.0" },
     { name = "celery", marker = "extra == 'celery'", specifier = ">=5.4.0" },
-    { name = "fastapi", specifier = ">=0.116.1" },
-    { name = "pika", specifier = ">=1.3.2" },
+    { name = "croniter", specifier = ">=2.0.0" },
+    { name = "fastapi", marker = "extra == 'all'", specifier = ">=0.116.1" },
+    { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.116.1" },
+    { name = "pika", marker = "extra == 'all'", specifier = ">=1.3.2" },
+    { name = "pika", marker = "extra == 'rabbitmq'", specifier = ">=1.3.2" },
+    { name = "procrastinate", marker = "extra == 'all'", specifier = ">=3.0.0" },
     { name = "procrastinate", marker = "extra == 'procrastinate'", specifier = ">=3.0.0" },
     { name = "pydantic", specifier = ">=2.11.7" },
-    { name = "redis", specifier = ">=6.4.0" },
+    { name = "redis", marker = "extra == 'all'", specifier = ">=6.4.0" },
+    { name = "redis", marker = "extra == 'redis'", specifier = ">=6.4.0" },
     { name = "ruff", specifier = ">=0.12.11" },
-    { name = "sqlalchemy", specifier = ">=2.0.43" },
+    { name = "sqlalchemy", marker = "extra == 'all'", specifier = ">=2.0.43" },
+    { name = "sqlalchemy", marker = "extra == 'sql'", specifier = ">=2.0.43" },
     { name = "typer", specifier = ">=0.17.3" },
 ]
-provides-extras = ["procrastinate", "rabbitmq", "celery"]
+provides-extras = ["api", "redis", "mongo", "sql", "rabbitmq", "procrastinate", "celery", "all"]
 
 [package.metadata.requires-dev]
 dev = [
