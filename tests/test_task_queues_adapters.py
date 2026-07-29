@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, AsyncMock, ANY
 sys.modules["celery"] = MagicMock()
 sys.modules["procrastinate"] = MagicMock()
 
+from hexcore.infrastructure.task_queues import celery_adapter, procrastinate_adapter
 from hexcore.infrastructure.task_queues.celery_adapter import CeleryEnqueuer, register_hexcore_celery_tasks
 from hexcore.infrastructure.task_queues.procrastinate_adapter import ProcrastinateEnqueuer, register_hexcore_procrastinate_tasks
 
@@ -99,3 +100,63 @@ async def test_celery_enqueue_event_raises_instead_of_losing_the_event():
 
     with pytest.raises(NotImplementedError, match="background_handler"):
         await enqueuer.enqueue_event("SomeEvent", {"data": 1}, "default")
+
+
+# ── P1-6: registrar dos veces no debe reventar ─────────────────────────────────
+
+
+class FakeApp:
+    """App mínima referenciable débilmente que rechaza nombres duplicados."""
+
+    def __init__(self) -> None:
+        self.registered: list[str] = []
+
+    def task(self, *args, **kwargs):
+        name = kwargs.get("name")
+
+        def decorator(func):
+            if name in self.registered:
+                raise ValueError(f"Task name already registered: {name}")
+            self.registered.append(name)
+            return func
+
+        return decorator
+
+
+def test_register_procrastinate_tasks_is_idempotent():
+    app = FakeApp()
+    consumer = MagicMock()
+
+    assert register_hexcore_procrastinate_tasks(app, consumer) is True
+    assert procrastinate_adapter.is_registered(app) is True
+    # Sin idempotencia, esta segunda llamada revienta con "already registered".
+    assert register_hexcore_procrastinate_tasks(app, consumer) is False
+    assert app.registered == list(procrastinate_adapter.HEXCORE_TASK_NAMES)
+
+
+def test_register_celery_tasks_is_idempotent():
+    app = FakeApp()
+    consumer = MagicMock()
+
+    assert register_hexcore_celery_tasks(app, consumer) is True
+    assert celery_adapter.is_registered(app) is True
+    assert register_hexcore_celery_tasks(app, consumer) is False
+    assert app.registered == list(celery_adapter.HEXCORE_TASK_NAMES)
+
+
+def test_is_registered_is_per_app():
+    app_a, app_b = FakeApp(), FakeApp()
+    register_hexcore_procrastinate_tasks(app_a, MagicMock())
+
+    assert procrastinate_adapter.is_registered(app_a) is True
+    assert procrastinate_adapter.is_registered(app_b) is False
+
+
+def test_force_reregisters():
+    app = FakeApp()
+    register_hexcore_celery_tasks(app, MagicMock())
+
+    # `force` reintenta el registro; esta app lo rechaza, que es justo lo que
+    # documenta el parámetro.
+    with pytest.raises(ValueError, match="already registered"):
+        register_hexcore_celery_tasks(app, MagicMock(), force=True)

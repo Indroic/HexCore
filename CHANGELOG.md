@@ -34,6 +34,11 @@
   acotar el catch-up, aviso `RuntimeWarning` si el tick es sub-minuto y no hay
   `lock_provider`, primer tick sin esperar el intervalo, `stop()` interrumpible al
   instante, y `except` que loguean traceback en vez de tragarse el error (P1-1)
+- **task_queues**: `register_hexcore_procrastinate_tasks` y
+  `register_hexcore_celery_tasks` son idempotentes y devuelven `bool`; se añade
+  `is_registered(app)` y `force=True`. Antes llamarlas dos veces reventaba porque la
+  cola rechaza nombres duplicados, así que cada aplicación tenía que protegerlas con
+  un flag de módulo (P1-6)
 - **cqrs**: `HandlerRegistry` es realmente thread-safe: el docstring lo afirmaba pero
   no había ningún lock, y `resolve_*` hace lazy-init con escritura en el dict, así que
   dos hilos podían instanciar el mismo handler dos veces (relevante con el

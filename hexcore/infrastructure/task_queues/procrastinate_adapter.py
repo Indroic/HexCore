@@ -5,9 +5,13 @@ utilidades para auto-registrar las tareas asíncronas en el Worker.
 """
 from __future__ import annotations
 
+import logging
 import typing as t
+import weakref
 
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
+
+logger = logging.getLogger("hexcore.task_queues.procrastinate")
 
 if t.TYPE_CHECKING:
     try:
@@ -49,10 +53,51 @@ class ProcrastinateEnqueuer(ITaskEnqueuer):
         await task.defer_async(task_name=task_name, payload=payload)
 
 
-def register_hexcore_procrastinate_tasks(app: "procrastinate.App", consumer: "CQRSConsumer") -> None:
+HEXCORE_TASK_NAMES = (
+    "hexcore.process_command",
+    "hexcore.process_handler",
+    "hexcore.process_task",
+)
+
+# Apps en las que ya se registraron las tareas. Se guarda por `id()` en un
+# WeakValueDictionary para no mantener viva la app y para tolerar varias apps en el
+# mismo proceso (tests, scripts que construyen y descartan apps).
+_registered_apps: "weakref.WeakValueDictionary[int, t.Any]" = weakref.WeakValueDictionary()
+
+
+def is_registered(app: "procrastinate.App") -> bool:
+    """Indica si `register_hexcore_procrastinate_tasks` ya corrió sobre esta app."""
+    return id(app) in _registered_apps
+
+
+def register_hexcore_procrastinate_tasks(
+    app: "procrastinate.App",
+    consumer: "CQRSConsumer",
+    *,
+    force: bool = False,
+) -> bool:
     """
     Auto-registra las tareas base de HexCore en una aplicación Procrastinate.
+
+    Es **idempotente**: llamarla dos veces sobre la misma app no hace nada la segunda
+    vez, en vez de reventar porque Procrastinate rechaza nombres duplicados. Antes cada
+    aplicación tenía que protegerla con un flag de módulo.
+
+    Args:
+        app: La aplicación de Procrastinate.
+        consumer: El `CQRSConsumer` que ejecutará los mensajes.
+        force: Registrar aunque ya se hubiera registrado. Útil para rebindear el
+            consumer; puede fallar si Procrastinate rechaza el nombre duplicado.
+
+    Returns:
+        True si se registraron las tareas, False si ya estaban registradas.
     """
+    if not force and is_registered(app):
+        logger.debug(
+            "Las tareas de HexCore ya estaban registradas en esta app de Procrastinate; "
+            "no se vuelven a registrar."
+        )
+        return False
 
     @app.task(name="hexcore.process_command")
     async def process_command(payload: dict[str, t.Any]) -> None:
@@ -65,3 +110,11 @@ def register_hexcore_procrastinate_tasks(app: "procrastinate.App", consumer: "CQ
     @app.task(name="hexcore.process_task")
     async def process_task(task_name: str, payload: dict[str, t.Any]) -> None:
         await consumer.process_task(task_name, payload)
+
+    try:
+        _registered_apps[id(app)] = app
+    except TypeError:
+        # Un objeto no referenciable débilmente (p. ej. un mock exótico): la
+        # idempotencia no se puede memorizar, pero el registro ya ocurrió.
+        logger.debug("No se pudo memorizar el registro para esta app de Procrastinate.")
+    return True
