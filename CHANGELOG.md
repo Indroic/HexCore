@@ -18,6 +18,11 @@
   rechazan en tiempo de decoración los objetos con `<locals>` en su `__qualname__`:
   una función definida dentro de otra función nunca será importable desde el worker
   (P0-3)
+- **cqrs**: `PostgresLockProvider` ya no filtra filas indefinidamente. Con una clave
+  por `(job_id, minuto)` y 7 jobs eran ~10.000 filas/día **para siempre** en la BD
+  principal. Ahora purga lo expirado en `setup()` y cada `purge_every` adquisiciones
+  (100 por defecto), crea un índice sobre `expires_at`, y expone `purge_expired()`
+  (P0-4)
 
 ### Test
 
