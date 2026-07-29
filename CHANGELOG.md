@@ -41,6 +41,50 @@
 - **cqrs**: los tests del consumer parcheaban `_resolve_callable` sin restaurarlo y
   contaminaban cualquier test posterior del mismo proceso; ahora usan `monkeypatch`
   (P3-2)
+## 2.5.0 (2026-07-28)
+
+### Feat
+
+- refactor repositories and make heavy dependencies optional
+
+### Fix
+
+- install anyio in pytest workflow to support async tests
+- add anyio to dev dependencies to fix pytest async execution in CI
+- make dummy classes generic and skip tests when optional dependencies are missing
+
+## 2.4.0 (2026-07-27)
+
+### Feat
+
+- Add Redis and PostgreSQL Event Buses for real-time Pub/Sub
+- Task queues adapters (Celery, Procrastinate) for smart routing
+
+## 2.3.0 (2026-07-27)
+
+### Feat
+
+- smart routing decorators and utilities for background tasks
+
+## 2.2.0 (2026-07-27)
+
+### Fix
+
+- **test**: mock aio_pika to prevent ModuleNotFoundError in CI
+
+### Refactor
+
+- make sqlalchemy engine initialization fully lazy for workers
+
+## 2.1.0 (2026-07-27)
+
+### Feat
+
+- add core CQRS abstractions, pipelines, and factory
+
+### Refactor
+
+- migrate IEventDispatcher to EventBus and ensure backward compatibility
 
 ## 2.0.6 (2026-06-25)
 
