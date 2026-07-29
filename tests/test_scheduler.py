@@ -38,6 +38,8 @@ def anyio_backend():
 
 
 @pytest.mark.anyio
+# tick=1s sin lock_provider avisa a propósito (P1-1); aquí es intencional.
+@pytest.mark.filterwarnings("ignore:DynamicScheduler con tick_interval_seconds:RuntimeWarning")
 async def test_dynamic_scheduler_enqueues_matched_jobs():
     enqueuer = AsyncMock()
     
