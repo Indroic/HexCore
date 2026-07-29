@@ -1,106 +1,24 @@
-## Unreleased
-
-### Fix
-
-- **cqrs**: el worker ya **ejecuta** los `@background_command` que saca de la cola en
-  vez de reencolarlos. Antes, pasarle al `CQRSConsumer` el mismo bus que usa el
-  proceso web —lo natural, y lo que sugería la documentación— producía un bucle
-  infinito silencioso: la cola crecía sin límite y el handler no corría jamás.
-  Nuevo contextvar `hexcore.domain.cqrs.context.IN_WORKER` (P0-1)
-- **cqrs**: mismo arreglo para los suscriptores marcados con `@background_handler`
-  cuando el evento llega por `CQRSConsumer.process_event` (P0-2)
-- **cqrs**: los FQN con `__qualname__` anidado (clases dentro de clases, tasks como
-  `@staticmethod`) ya se resuelven bien. Antes `rsplit(".", 1)` producía un module
-  path inválido y el mensaje se encolaba correctamente para **fallar en el worker**.
-  Nuevo helper `hexcore.domain.cqrs.resolution.resolve_dotted`, usado por
-  `PydanticSerializer.deserialize` y por `_resolve_callable` del consumer (P0-3)
-- **cqrs**: `@background_command` / `@background_handler` / `@background_task` ahora
-  rechazan en tiempo de decoración los objetos con `<locals>` en su `__qualname__`:
-  una función definida dentro de otra función nunca será importable desde el worker
-  (P0-3)
-- **cqrs**: `PostgresLockProvider` ya no filtra filas indefinidamente. Con una clave
-  por `(job_id, minuto)` y 7 jobs eran ~10.000 filas/día **para siempre** en la BD
-  principal. Ahora purga lo expirado en `setup()` y cada `purge_every` adquisiciones
-  (100 por defecto), crea un índice sobre `expires_at`, y expone `purge_expired()`
-  (P0-4)
+## 3.0.0 (2026-07-29)
 
 ### Feat
 
-- **cqrs**: `DynamicScheduler` implementa el catch-up que la versión anterior sólo
-  insinuaba: decide por "¿hubo alguna ocurrencia entre la última ejecución y ahora?"
-  en vez de `croniter.match(expr, minuto_actual)`. Con eso un minuto saltado por
-  drift del tick ya no pierde la ejecución, y `update_last_run` deduplica de verdad
-  cuando `tick_interval_seconds < 60`. Nuevo `catch_up_window_seconds` (1h) para
-  acotar el catch-up, aviso `RuntimeWarning` si el tick es sub-minuto y no hay
-  `lock_provider`, primer tick sin esperar el intervalo, `stop()` interrumpible al
-  instante, y `except` que loguean traceback en vez de tragarse el error (P1-1)
-- **sql**: capa de sesión usable en producción. `init_engine(url=None, *, pool=PoolSettings(), **engine_kwargs)`
-  y `dispose_engine()`; `PoolSettings` (`size`, `max_overflow`, `pre_ping`, `recycle`)
-  con `pre_ping=True` por defecto; normalización del DSN (`postgresql://` →
-  `postgresql+asyncpg://`, expuesta como `normalize_async_dsn`); URL explícita para
-  workers, scripts y tests; y lock alrededor de los globals `_engine`/`_session_factory`
-  (F2)
-- **uow**: `session_scope`, `uow_scope`, `open_uow_scope` y `nosql_uow_scope` en
-  `hexcore.infrastructure.uow` — scopes para workers, cron, scripts y seeds, donde
-  antes sólo había dependencias de FastAPI. `session_scope` no construye el UoW, así
-  que no paga el auto-discovery de repositorios para leer una tabla de infraestructura
-  (F3)
-- **api**: nueva dependencia `get_sql_uow_open` para endpoints que quieren el UoW ya
-  abierto (F3)
-- **cqrs**: `CQRSConsumer(command_bus)` — `event_bus` y `serializer` pasan a ser
-  opcionales. Un worker sólo-comandos ya no necesita `cast(Any, None)`, y si llega un
-  evento sin event bus el error dice qué hacer. `serializer` cae en
-  `PydanticSerializer` (P2-2)
-- **task_queues**: `register_hexcore_procrastinate_tasks` y
-  `register_hexcore_celery_tasks` son idempotentes y devuelven `bool`; se añade
-  `is_registered(app)` y `force=True`. Antes llamarlas dos veces reventaba porque la
-  cola rechaza nombres duplicados, así que cada aplicación tenía que protegerlas con
-  un flag de módulo (P1-6)
-- **cqrs**: `HandlerRegistry` es realmente thread-safe: el docstring lo afirmaba pero
-  no había ningún lock, y `resolve_*` hace lazy-init con escritura en el dict, así que
-  dos hilos podían instanciar el mismo handler dos veces (relevante con el
-  free-threading de Python 3.14). Nuevo `HandlerRegistry.factory(...)` como marcador
-  explícito de factory, para quitar la ambigüedad con los handlers que implementan
-  `__call__` (P1-5)
-- **cqrs**: `RedisLockProvider` y `PostgresLockProvider` aceptan
-  `on_error: "skip" | "raise"`. Antes capturaban `Exception` y devolvían `False`
-  siempre, así que una caída de Redis apagaba el cron **entero** con un `logger.error`
-  por job y por tick indistinguible del caso normal. Ahora "no pude decidir" se loguea
-  como `critical` y "el lock estaba tomado" como `debug` (P1-2)
-- **cqrs**: `CQRSFactory` acepta un `enqueuer` y lo propaga junto al serializer a los
-  buses in-memory, así que la vía oficial de construcción ya sirve para Smart Routing
-  sin cablear los buses a mano. Si hay `@background_command` registrados y falta el
-  enqueuer, falla **al construir** con el nombre de los comandos afectados, no en el
-  primer dispatch. El serializer se cachea para que buses y consumer compartan
-  instancia (P0-5)
+- **uow**: session_scope y uow_scope para código fuera de FastAPI
+- **sql**: capa de sesión configurable, con expire_on_commit=False y DSN normalizado
+- **cqrs**: event_bus y serializer opcionales en CQRSConsumer
+- **task_queues**: register_hexcore_*_tasks idempotente
+- **cqrs**: HandlerRegistry thread-safe de verdad y marcador explícito de factory
+- **cqrs**: on_error configurable en los lock providers y logs distinguibles
+- **cqrs**: catch-up real en DynamicScheduler y deduplicación por ocurrencia
+- **cqrs**: CQRSFactory propaga enqueuer y serializer a los buses in-memory
 
-### Behavior change
+### Fix
 
-- **sql**: el session factory de HexCore pasa a `expire_on_commit=False`. Con el
-  default de SQLAlchemy (`True`) los atributos de las entidades expiran al comitear y
-  el siguiente acceso dispara un lazy-load sobre una sesión cerrada
-  (`MissingGreenlet` / `DetachedInstanceError`) — y la documentación ya enseñaba
-  `async_sessionmaker(engine, expire_on_commit=False)`, o sea que doc e
-  implementación no coincidían. Quien necesite `True` debe construir su propio
-  `async_sessionmaker` (F2)
-- **api**: `get_sql_uow` ya **no entra** al UoW: cede el UoW sin abrir la transacción,
-  para que el use case controle su propio `async with uow:` sin anidar contextos. Si
-  dependías del comportamiento anterior, usá `get_sql_uow_open` (F3)
-- **cqrs**: `TransactionMiddleware` deja de ser el middleware por defecto de
-  `CQRSConfig.command_bus`, y `TransactionMiddleware()` sin `uow_factory` ahora lanza
-  `ValueError` en vez de adivinar. El default armaba la sesión con el session factory
-  *interno* de HexCore en vez del engine de la aplicación, y comiteaba después del
-  handler — así que un handler que ya comitea (el patrón que enseña la doc para los
-  use cases) comiteaba dos veces (P0-6)
-- **task_queues**: `enqueue_event` de los adaptadores de Procrastinate y Celery lanza
-  `NotImplementedError` con instrucciones en vez de ser un `pass` que perdía el
-  evento sin traza (P1-3)
+- **task_queues**: enqueue_event lanza NotImplementedError en vez de perder el evento
+- **cqrs**: TransactionMiddleware fuera del default y con uow_factory obligatorio
+- **cqrs**: PostgresLockProvider purga las filas de lock expiradas
+- **cqrs**: el worker ejecuta los background commands en vez de reencolarlos
+- **cqrs**: resuelve los __qualname__ anidados en serializer y consumer
 
-### Test
-
-- **cqrs**: los tests del consumer parcheaban `_resolve_callable` sin restaurarlo y
-  contaminaban cualquier test posterior del mismo proceso; ahora usan `monkeypatch`
-  (P3-2)
 ## 2.5.0 (2026-07-28)
 
 ### Feat
