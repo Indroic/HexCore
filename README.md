@@ -295,22 +295,35 @@ Si ya tienes una aplicación escrita con la abstracción `UseCase` de HexCore, p
 En lugar de instanciar un UseCase directamente en tu endpoint, envuélvelo en un comando:
 
 ```python
-from hexcore.application.cqrs.adapters import UseCaseCommandHandler
-from hexcore.application.cqrs.registry import HandlerRegistry
+import hexcore.cqrs as cqrs
 
-# 1. Tienes tu UseCase legado
+# 1. Tienes tu UseCase legado, con sus dependencias
 class CreateUserUseCase(UseCase[CreateUserCommand, UserDTO]):
+    def __init__(self, uow: IUnitOfWork) -> None:
+        self.uow = uow
+
     async def execute(self, request: CreateUserCommand) -> UserDTO:
         # logica legacy
-        pass
+        ...
 
 # 2. Lo registras en el registry de CQRS utilizando el adaptador
-registry = HandlerRegistry()
-registry.register_command(
-    CreateUserCommand, 
-    UseCaseCommandHandler(CreateUserUseCase())
+registry = cqrs.HandlerRegistry()
+registry.register_command_handler(
+    CreateUserCommand,
+    cqrs.UseCaseCommandHandler(CreateUserUseCase(uow)),
+)
+
+# O con un factory, si quieres resolver las dependencias en el momento del dispatch:
+registry.register_command_handler(
+    CreateUserCommand,
+    cqrs.HandlerRegistry.factory(
+        lambda: cqrs.UseCaseCommandHandler(CreateUserUseCase(build_uow()))
+    ),
 )
 ```
+
+> El método es `register_command_handler` (y `register_query_handler`), no
+> `register_command`.
 
 #### Paso 2: Consumirlo desde el endpoint usando el CommandBus
 
@@ -479,28 +492,30 @@ async def clean_old_records_task(days_retention: int):
     pass
 ```
 
-#### 2. Crear el Enqueuer (Adaptador)
+#### 2. Usar un Enqueuer (Adaptador)
 
-Implementa la interfaz genérica `ITaskEnqueuer` usando la SDK de tu Task Queue favorito:
+No hace falta escribirlo: HexCore trae `ProcrastinateEnqueuer` y `CeleryEnqueuer` listos, y
+registran las tareas del consumidor con los nombres `hexcore.process_command`,
+`hexcore.process_handler` y `hexcore.process_task`.
 
 ```python
-from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
+from hexcore.infrastructure.task_queues.procrastinate_adapter import ProcrastinateEnqueuer
 
-class ProcrastinateEnqueuer(ITaskEnqueuer):
-    async def enqueue_command(self, command_name: str, payload: dict, queue: str) -> None:
-        await process_cqrs_command.defer_async(payload=payload)
-        
-    async def enqueue_handler(self, handler_name: str, payload: dict, queue: str) -> None:
-        await process_cqrs_handler.defer_async(handler_name=handler_name, payload=payload)
-    
-    async def enqueue_event(self, event_name: str, payload: dict, queue: str) -> None:
-        pass # Usualmente no se usa directamente si utilizas @background_handler
-        
-    async def enqueue_task(self, task_name: str, payload: dict, queue: str) -> None:
-        await process_generic_task.defer_async(task_name=task_name, payload=payload)
+enqueuer = ProcrastinateEnqueuer(procrastinate_app)
 ```
 
-#### 2. Configurar tus Buses con un Adaptador Oficial
+Si necesitas otro broker, implementa `ITaskEnqueuer` (4 métodos). Dos advertencias:
+
+- **`enqueue_event` no es un `pass`.** Una cola de tareas no puede hacer fan-out a "todos
+  los suscriptores", así que los adaptadores oficiales lanzan `NotImplementedError` en vez
+  de perder el evento en silencio. Para ejecutar un suscriptor concreto en background usa
+  `@background_handler` (el EventBus llamará a `enqueue_handler`); para fan-out real usa
+  `RedisEventBus` o `PostgresEventBus`.
+- Si envuelves corutinas en un worker síncrono (Celery), no uses `asyncio.run()` por tarea:
+  cierra el event loop y deja el pool del `AsyncEngine` atado a un loop muerto. HexCore usa
+  un loop persistente por proceso, expuesto como `run_in_worker_loop(coro)`.
+
+#### 3. Configurar tus Buses con un Adaptador Oficial
 
 HexCore provee adaptadores *plug & play* para **Celery** y **Procrastinate**. Simplemente importa el enqueuer, pásale tu app y configúralo en los buses de memoria.
 
@@ -548,21 +563,47 @@ await enqueuer.enqueue_task(
 
 #### 5. Levantar el Worker (Consumidor Universal)
 
-En el entrypoint de tu worker, usa la función utilitaria `register_hexcore_celery_tasks` para autoconfigurar las rutas en una sola línea:
+En el entrypoint de tu worker, `register_hexcore_*_tasks` autoconfigura las rutas
+`hexcore.process_command`, `hexcore.process_handler` y `hexcore.process_task`:
 
 ```python
-from hexcore.infrastructure.workers.consumer import CQRSConsumer
+import hexcore.cqrs as cqrs
 from hexcore.infrastructure.task_queues.celery_adapter import register_hexcore_celery_tasks
 
-consumer = CQRSConsumer(
-    command_bus=command_bus, # Tu CommandBus configurado
-    event_bus=event_bus, 
-    serializer=serializer
-)
+# Le pasas el MISMO bus que usa el proceso web: el consumer marca el mensaje como
+# "viene del worker", así que el bus lo ejecuta en vez de reencolarlo.
+consumer = cqrs.CQRSConsumer(command_bus, event_bus)
 
-# ¡Magia! Registra las tareas 'hexcore.process_command', 'hexcore.process_handler', etc.
-register_hexcore_celery_tasks(app, consumer)
+register_hexcore_celery_tasks(app, consumer)  # idempotente: llamarla dos veces no revienta
 ```
+
+Un worker que sólo procesa comandos puede omitir el event bus: `cqrs.CQRSConsumer(command_bus)`.
+
+Y el entrypoint completo del worker (con scheduler, muerte mutua y SIGTERM) es una llamada:
+
+```python
+await cqrs.run_procrastinate_worker(
+    procrastinate_app,
+    queues=["default", "reactive"],
+    scheduler=cqrs.DynamicScheduler(repo, enqueuer, lock_provider=lock),
+    on_startup=[lambda: cqrs.seed_cron_jobs(CRON_JOBS)],
+)
+```
+
+#### 6. Ejecutar un comando "aquí y ahora"
+
+No hay una API separada para esto, y es a propósito: el contrato es que **el bus decide
+por contexto**.
+
+- Fuera de un worker, un `@background_command` se encola.
+- Dentro de un worker (es decir, cuando el mensaje viene del `CQRSConsumer`) el **mismo**
+  bus lo ejecuta localmente. Por eso puedes —y debes— compartir un único bus entre la app
+  web y el worker.
+- Si un handler despacha a propósito otro `@background_command`, ese sí se encola: el
+  contexto de worker se consume en el primer dispatch.
+
+Si necesitas comprobarlo desde tu código, `cqrs.is_worker_execution()` responde si el
+mensaje en curso viene de una cola.
 
 ---
 
@@ -570,52 +611,85 @@ register_hexcore_celery_tasks(app, consumer)
 
 HexCore incluye un **`DynamicScheduler`** que te permite programar tareas (`@background_task`) para que se ejecuten periódicamente. La ventaja clave es que lee la configuración desde un repositorio (como tu Base de Datos), permitiendo activar, desactivar o cambiar los horarios **sin necesidad de reiniciar tus servidores**.
 
-### 1. Implementa tu Repositorio
-Implementa `ICronJobRepository` para decirle al Scheduler de dónde leer la configuración (ej. usando SQLAlchemy, MongoDB o Redis):
+### 1. Usa el repositorio SQL de serie (o implementa el tuyo)
+
+Si tu cron vive en SQL —el caso normal— no escribas nada: HexCore trae la tabla, el
+repositorio y el seed (extra `[sql]`).
 
 ```python
-from hexcore.domain.cqrs.cron import ICronJobRepository, CronJobDefinition
+import hexcore.cqrs as cqrs
+
+CRON_JOBS = [
+    cqrs.cron_job(clean_old_records_task, "*/5 * * * *", payload={"days_retention": 30}),
+    cqrs.cron_job(cerrar_caja, "0 3 * * *"),
+]
+
+await cqrs.create_cron_tables()        # o una migración de Alembic
+await cqrs.seed_cron_jobs(CRON_JOBS)   # idempotente, y NO pisa lo editado en BD
+
+repo = cqrs.SqlAlchemyCronJobRepository()
+```
+
+`cron_job()` deriva el `task_name` de `__cqrs_task_name__`: escribirlo a mano es cómo se
+acaba con un cron que encola una tarea ya renombrada, y el fallo aparece en el worker.
+
+Si tu configuración vive en otro sitio (Mongo, Redis, un YAML), implementa
+`ICronJobRepository`:
+
+```python
 from datetime import datetime
 
-class MiCronRepository(ICronJobRepository):
-    async def get_active_jobs(self) -> list[CronJobDefinition]:
-        # SELECT * FROM cronjobs WHERE is_active = true
+import hexcore.cqrs as cqrs
+
+
+class MiCronRepository(cqrs.ICronJobRepository):
+    async def get_active_jobs(self) -> list[cqrs.CronJobDefinition]:
         return [
-            CronJobDefinition(
-                job_id="1",
-                task_name="hexcore.process_task", # o cualquier @background_task
-                cron_expression="*/5 * * * *",    # cada 5 minutos
-                payload={"task_name": "clean_db", "payload": {}}
+            cqrs.CronJobDefinition(
+                job_id="clean-db",
+                task_name="mi_app.tasks.clean_old_records_task",  # un @background_task
+                cron_expression="*/5 * * * *",
+                payload={"days_retention": 30},
+                queue="maintenance",
             )
         ]
-        
+
     async def update_last_run(self, job_id: str, run_time: datetime) -> None:
-        # UPDATE cronjobs SET last_run = run_time WHERE id = job_id
-        pass
+        # Importa implementarlo: es lo que deduplica el encolado entre ticks.
+        ...
 ```
 
 ### 2. Levanta el Scheduler
 En un proceso en background de tu API o en un microservicio separado, arranca el Scheduler inyectándole tu Enqueuer favorito (Celery, Procrastinate):
 
 ```python
-from hexcore.application.cqrs.scheduler import DynamicScheduler
-import asyncio
+import hexcore.cqrs as cqrs
 
-async def run_scheduler():
-    repo = MiCronRepository()
-    scheduler = DynamicScheduler(
-        repository=repo, 
-        enqueuer=enqueuer, 
-        tick_interval_seconds=60
-    )
-    
-    await scheduler.start() # Bucle infinito
+scheduler = cqrs.DynamicScheduler(
+    repository=repo,
+    enqueuer=enqueuer,
+    tick_interval_seconds=60,
+)
 
-# En FastAPI puedes usar lifespan para lanzarlo:
-# asyncio.create_task(run_scheduler())
+# Lo normal es dejar que el runner lo supervise junto al worker: si uno de los dos
+# muere, se cancela el otro y el proceso sale para que el orquestador lo reinicie.
+await cqrs.run_procrastinate_worker(procrastinate_app, scheduler=scheduler)
 ```
 
-El Scheduler evaluará las expresiones (gracias a `croniter`) y delegará la carga pesada al enqueuer. ¡Tu Worker no necesita saber de horarios, solo ejecuta las tareas cuando le llegan!
+El Scheduler evalúa las expresiones con `croniter` y delega la carga pesada al enqueuer. Tu
+Worker no necesita saber de horarios, sólo ejecuta las tareas cuando le llegan.
+
+**Cómo decide si toca ejecutar.** No compara contra el minuto actual, sino que busca si hubo
+alguna ocurrencia entre la última ejecución (`last_run_at`) y ahora. Dos consecuencias que
+importan:
+
+- Un minuto saltado por drift del tick **no** pierde la ejecución.
+- `update_last_run` deduplica de verdad, así que un `tick_interval_seconds < 60` no duplica
+  el encolado dentro del mismo proceso. Entre réplicas sí hace falta lock, y el scheduler
+  emite un `RuntimeWarning` si detecta tick sub-minuto sin `lock_provider`.
+
+`catch_up_window_seconds` (1 hora por defecto) acota el catch-up: un scheduler que estuvo
+caído una semana no dispara ocurrencias antiguas.
 
 ### 3. Distributed Locks (Evitar ejecuciones dobles)
 
@@ -645,7 +719,7 @@ Si usas Procrastinate o bases de datos SQL y no quieres levantar Redis:
 from hexcore.infrastructure.cqrs.postgres_lock import PostgresLockProvider
 
 lock_provider = PostgresLockProvider(my_asyncpg_pool)
-await lock_provider.setup() # Crea la tabla de locks si no existe
+await lock_provider.setup() # Crea la tabla y el índice, y purga lo expirado
 
 scheduler = DynamicScheduler(
     repository=repo, 
@@ -653,6 +727,23 @@ scheduler = DynamicScheduler(
     lock_provider=lock_provider
 )
 ```
+
+> El provider purga las filas expiradas solo (en `setup()` y cada 100 adquisiciones), así
+> que la tabla de locks no crece sin límite. `purge_expired()` es pública si prefieres
+> purgar desde un job propio, y `purge_every=0` desactiva la purga automática.
+
+#### Qué pasa si el lock no responde
+
+Si Redis (o Postgres) se cae, `acquire_lock` no puede decidir, y las dos respuestas
+posibles son malas de formas distintas. La decisión es tuya y explícita:
+
+```python
+RedisLockProvider(redis_client, on_error="skip")   # default: no correr. El cron se detiene.
+RedisLockProvider(redis_client, on_error="raise")  # propagar, para que el supervisor lo vea.
+```
+
+En los logs, "no pude decidir" es `critical` y "el lock estaba tomado por otra réplica"
+—el caso normal— es `debug`.
 
 ---
 

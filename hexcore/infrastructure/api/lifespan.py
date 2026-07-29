@@ -200,7 +200,7 @@ class SqlEngineStep:
             init_engine,
         )
 
-        init_engine(self._url, pool=self._pool, **self._engine_kwargs)
+        init_engine(url=self._url, pool=self._pool, **self._engine_kwargs)
 
     async def stop(self) -> None:
         from hexcore.infrastructure.repositories.orms.sqlalchemy.session import (

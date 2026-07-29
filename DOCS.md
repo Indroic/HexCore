@@ -33,6 +33,95 @@ HexCore organiza el código siguiendo los principios DDD y arquitectura hexagona
 
 ---
 
+## 0. Arranque: una app HexCore en una pantalla
+
+Este es el arranque completo de una aplicación estándar. Todo lo que aparece aquí tiene un
+default que funciona, así que lo que no necesites lo puedes quitar.
+
+```python
+# main.py
+from hexcore.fastapi import build_lifespan, create_app, SqlEngineStep
+
+app = create_app(
+    lifespan=build_lifespan(SqlEngineStep()),
+    routers=[usuarios_router, tickets_router],
+)
+```
+
+`create_app()` a secas ya da una app usable: título y versión salen de `ServerConfig`, CORS
+de `config.allow_origins`, y `/health` (liveness) y `/health/ready` (readiness, con sondas
+reales a SQL/Redis/Mongo) existen. También trae el middleware `X-Request-ID`, el de timing y
+el mapeo de excepciones de dominio a HTTP.
+
+Para desactivar algo, hay un solo objeto de interruptores:
+
+```python
+from hexcore.fastapi import AppFeatures
+
+app = create_app(features=AppFeatures(cors=False))
+```
+
+### Los tres imports
+
+Hay un módulo fachada por tarea. Las rutas largas siguen funcionando; estas son las que
+usa esta documentación.
+
+```python
+import hexcore.fastapi as hx    # create_app, build_lifespan, providers, middlewares, health
+import hexcore.cqrs as cqrs     # Command, Query, handlers, decoradores, buses, worker, cron
+import hexcore.sql as sql       # init_engine, session_scope, uow_scope, Base, DTOs de query
+```
+
+### El worker, en una llamada
+
+```python
+# worker.py
+import hexcore.cqrs as cqrs
+
+async def main() -> None:
+    consumer = cqrs.CQRSConsumer(command_bus, event_bus)
+    register_hexcore_procrastinate_tasks(procrastinate_app, consumer)
+
+    await cqrs.run_procrastinate_worker(
+        procrastinate_app,
+        queues=["default", "reactive"],
+        scheduler=cqrs.DynamicScheduler(repo, enqueuer, lock_provider=lock),
+        on_startup=[lambda: cqrs.seed_cron_jobs(CRON_JOBS)],
+    )
+```
+
+Si cualquiera de los dos bucles muere, el runner cancela el otro y el proceso sale con
+`WorkerDied`, para que el orquestador lo reinicie completo: correr con un bucle caído
+—encolar sin consumir, o al revés— es peor que caerse. `SIGTERM` se traduce a drenaje
+ordenado.
+
+### Fuera de un request
+
+Los scopes de `hexcore.sql` sirven en workers, tasks, cron, scripts y seeds:
+
+```python
+import hexcore.sql as sql
+
+async with sql.session_scope() as session:       # sesión pelada, sin construir el UoW
+    ...
+
+async with sql.uow_scope() as uow:               # UoW sin abrir: el use case hace su `async with`
+    await CerrarTicketUseCase(uow).execute(request)
+```
+
+`session_scope` no construye el UoW a propósito: construirlo corre el auto-discovery e
+instancia **todos** los repositorios de dominio, un coste absurdo para leer una tabla de
+infraestructura.
+
+### Nombres canónicos
+
+Conviven dos nombres para varios conceptos por retrocompatibilidad
+(`AbstractCommandBus`/`ICommandBus`, `AbstractSerializer`/`ISerializer`, etc.). Los
+canónicos son los `Abstract*`, y son los únicos que exponen las fachadas y usa esta
+documentación. Los alias `I*` siguen importables por su ruta de siempre.
+
+---
+
 ## 1.1 Configuración v2: root-first y discovery explícito
 
 En v2, HexCore no adivina rutas de repositorios. Debes declararlas en configuración.
