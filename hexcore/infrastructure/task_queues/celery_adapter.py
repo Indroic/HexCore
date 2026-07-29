@@ -7,12 +7,104 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import threading
 import typing as t
 import weakref
 
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
 
 logger = logging.getLogger("hexcore.task_queues.celery")
+
+
+class _PersistentLoop:
+    """
+    Un event loop por proceso worker, en un hilo dedicado.
+
+    `asyncio.run()` por tarea crea y **cierra** un loop nuevo cada vez. Con un
+    `AsyncEngine` de SQLAlchemy compartido eso produce `Event loop is closed` y
+    `Future attached to a different loop`: el pool guarda conexiones atadas al loop de la
+    tarea anterior, que ya no existe.
+
+    Detalle imprescindible con el pool *prefork* de Celery: el loop se crea de forma
+    perezosa y se comprueba el PID en cada uso. Un loop y un hilo creados antes del fork
+    no son utilizables en el hijo, así que al detectar un PID distinto se crean de nuevo.
+    """
+
+    def __init__(self) -> None:
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+        self._pid: int | None = None
+        self._lock = threading.RLock()
+
+    def run(self, coro: t.Coroutine[t.Any, t.Any, t.Any]) -> t.Any:
+        """Ejecuta la corutina en el loop del proceso y espera su resultado."""
+        loop = self._ensure_loop()
+        return asyncio.run_coroutine_threadsafe(coro, loop).result()
+
+    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
+        with self._lock:
+            current_pid = os.getpid()
+            if (
+                self._loop is not None
+                and self._pid == current_pid
+                and self._thread is not None
+                and self._thread.is_alive()
+            ):
+                return self._loop
+
+            if self._loop is not None and self._pid != current_pid:
+                logger.debug(
+                    "Fork detectado (pid %s → %s): se crea un event loop nuevo.",
+                    self._pid,
+                    current_pid,
+                )
+
+            loop = asyncio.new_event_loop()
+            thread = threading.Thread(
+                target=loop.run_forever,
+                name="hexcore-celery-loop",
+                daemon=True,
+            )
+            thread.start()
+            self._loop, self._thread, self._pid = loop, thread, current_pid
+            return loop
+
+    def shutdown(self, timeout: float = 5.0) -> None:
+        """Para el loop y su hilo. Idempotente."""
+        with self._lock:
+            loop, thread = self._loop, self._thread
+            self._loop = self._thread = self._pid = None
+
+        if loop is None:
+            return
+        loop.call_soon_threadsafe(loop.stop)
+        if thread is not None:
+            thread.join(timeout=timeout)
+        loop.close()
+
+
+_LOOP = _PersistentLoop()
+
+
+def run_in_worker_loop(coro: t.Coroutine[t.Any, t.Any, t.Any]) -> t.Any:
+    """
+    Ejecuta una corutina en el event loop persistente del proceso worker.
+
+    Útil para tareas de Celery propias que también toquen el `AsyncEngine`: si usás
+    `asyncio.run()` en ellas, vuelve el problema que este módulo resuelve.
+    """
+    return _LOOP.run(coro)
+
+
+def shutdown_worker_loop(timeout: float = 5.0) -> None:
+    """
+    Para el event loop persistente.
+
+    Llamalo desde la señal `worker_shutdown` de Celery si querés un apagado limpio; no es
+    obligatorio, porque el hilo es daemon.
+    """
+    _LOOP.shutdown(timeout)
 
 if t.TYPE_CHECKING:
     try:
@@ -96,8 +188,14 @@ def register_hexcore_celery_tasks(
     Es **idempotente**: llamarla dos veces sobre la misma app no vuelve a registrar.
     Antes cada aplicación tenía que protegerla con un flag de módulo.
 
-    Dado que las tareas de Celery son síncronas y el Consumer de HexCore es
-    asíncrono, se envuelven en `asyncio.run()`.
+    Las tareas de Celery son síncronas y el Consumer de HexCore es asíncrono, así que se
+    ejecutan en un **event loop persistente por proceso** (ver `_PersistentLoop`), no con
+    `asyncio.run()` por tarea. Con `asyncio.run()` y un `AsyncEngine` compartido aparecen
+    `Event loop is closed` y `attached to a different loop`.
+
+    Limitación conocida: las tareas se ejecutan en un hilo distinto al que Celery usa para
+    la tarea. Si tu código depende de estado thread-local puesto por Celery (algunos
+    plugins de tracing lo hacen), pásalo explícitamente al handler.
 
     Returns:
         True si se registraron las tareas, False si ya estaban registradas.
@@ -111,15 +209,15 @@ def register_hexcore_celery_tasks(
 
     @app.task(name="hexcore.process_command", bind=True)
     def process_command(self: t.Any, payload: dict[str, t.Any]) -> None:
-        asyncio.run(consumer.process_command(payload))
+        _LOOP.run(consumer.process_command(payload))
 
     @app.task(name="hexcore.process_handler", bind=True)
     def process_handler(self: t.Any, handler_name: str, payload: dict[str, t.Any]) -> None:
-        asyncio.run(consumer.process_handler(handler_name, payload))
+        _LOOP.run(consumer.process_handler(handler_name, payload))
 
     @app.task(name="hexcore.process_task", bind=True)
     def process_task(self: t.Any, task_name: str, payload: dict[str, t.Any]) -> None:
-        asyncio.run(consumer.process_task(task_name, payload))
+        _LOOP.run(consumer.process_task(task_name, payload))
 
     try:
         _registered_apps[id(app)] = app
