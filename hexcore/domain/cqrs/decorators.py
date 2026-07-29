@@ -6,6 +6,13 @@ from __future__ import annotations
 
 import typing as t
 
+from .resolution import build_fqn, ensure_resolvable_qualname
+
+
+def _unwrap(func: t.Any) -> t.Any:
+    """Descarta envoltorios (`staticmethod`/`classmethod`) para leer el objeto real."""
+    return getattr(func, "__func__", func)
+
 
 def background_command(queue: str = "default") -> t.Callable[[t.Type[t.Any]], t.Type[t.Any]]:
     """
@@ -21,6 +28,8 @@ def background_command(queue: str = "default") -> t.Callable[[t.Type[t.Any]], t.
             ...
     """
     def wrapper(cls: t.Type[t.Any]) -> t.Type[t.Any]:
+        # El worker tiene que poder importar la clase para deserializar el payload.
+        ensure_resolvable_qualname(cls, decorator="background_command")
         cls.__cqrs_background__ = True
         cls.__cqrs_queue__ = queue
         return cls
@@ -42,15 +51,17 @@ def background_handler(queue: str = "default") -> t.Callable[[t.Callable[..., t.
             ...
     """
     def wrapper(func: t.Callable[..., t.Any]) -> t.Callable[..., t.Any]:
-        func.__cqrs_background_handler__ = True
-        func.__cqrs_queue__ = queue
-        
-        # Guardamos el nombre calificado del handler para poder resolverlo luego en el Worker
-        if not hasattr(func, "__qualname__"):
-            func.__cqrs_handler_name__ = func.__name__
-        else:
-            func.__cqrs_handler_name__ = f"{func.__module__}.{func.__qualname__}"
-            
+        target = _unwrap(func)
+        ensure_resolvable_qualname(target, decorator="background_handler")
+
+        target.__cqrs_background_handler__ = True
+        target.__cqrs_queue__ = queue
+
+        # Guardamos el nombre calificado del handler para poder resolverlo luego en
+        # el Worker. `build_fqn` conserva el __qualname__ completo (métodos incluidos)
+        # y `resolve_dotted` sabe resolverlo del otro lado.
+        target.__cqrs_handler_name__ = build_fqn(target)
+
         return func
 
     return wrapper
@@ -65,14 +76,13 @@ def background_task(queue: str = "default") -> t.Callable[[t.Callable[..., t.Any
     `TaskManager` de HexCore o ejecutada directamente usando el `ITaskEnqueuer`.
     """
     def wrapper(func: t.Callable[..., t.Any]) -> t.Callable[..., t.Any]:
-        func.__cqrs_background_task__ = True
-        func.__cqrs_queue__ = queue
-        
-        if not hasattr(func, "__qualname__"):
-            func.__cqrs_task_name__ = func.__name__
-        else:
-            func.__cqrs_task_name__ = f"{func.__module__}.{func.__qualname__}"
-            
+        target = _unwrap(func)
+        ensure_resolvable_qualname(target, decorator="background_task")
+
+        target.__cqrs_background_task__ = True
+        target.__cqrs_queue__ = queue
+        target.__cqrs_task_name__ = build_fqn(target)
+
         return func
 
     return wrapper

@@ -1,5 +1,17 @@
 ## Unreleased
 
+### Fix
+
+- **cqrs**: los FQN con `__qualname__` anidado (clases dentro de clases, tasks como
+  `@staticmethod`) ya se resuelven bien. Antes `rsplit(".", 1)` producía un module
+  path inválido y el mensaje se encolaba correctamente para **fallar en el worker**.
+  Nuevo helper `hexcore.domain.cqrs.resolution.resolve_dotted`, usado por
+  `PydanticSerializer.deserialize` y por `_resolve_callable` del consumer (P0-3)
+- **cqrs**: `@background_command` / `@background_handler` / `@background_task` ahora
+  rechazan en tiempo de decoración los objetos con `<locals>` en su `__qualname__`:
+  una función definida dentro de otra función nunca será importable desde el worker
+  (P0-3)
+
 ### Test
 
 - **cqrs**: los tests del consumer parcheaban `_resolve_callable` sin restaurarlo y
