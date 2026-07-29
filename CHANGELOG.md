@@ -24,6 +24,15 @@
   (100 por defecto), crea un índice sobre `expires_at`, y expone `purge_expired()`
   (P0-4)
 
+### Feat
+
+- **cqrs**: `CQRSFactory` acepta un `enqueuer` y lo propaga junto al serializer a los
+  buses in-memory, así que la vía oficial de construcción ya sirve para Smart Routing
+  sin cablear los buses a mano. Si hay `@background_command` registrados y falta el
+  enqueuer, falla **al construir** con el nombre de los comandos afectados, no en el
+  primer dispatch. El serializer se cachea para que buses y consumer compartan
+  instancia (P0-5)
+
 ### Behavior change
 
 - **cqrs**: `TransactionMiddleware` deja de ser el middleware por defecto de
