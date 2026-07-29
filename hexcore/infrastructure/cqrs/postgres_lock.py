@@ -6,7 +6,7 @@ sin necesidad de añadir Redis a tu stack.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, timedelta
+import typing as t
 from typing import TYPE_CHECKING
 
 from hexcore.domain.cqrs.cron import ILockProvider
@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     import asyncpg
 
 logger = logging.getLogger(__name__)
+
+LockErrorPolicy = t.Literal["skip", "raise"]
 
 
 class PostgresLockProvider(ILockProvider):
@@ -33,6 +35,12 @@ class PostgresLockProvider(ILockProvider):
 
     `purge_expired()` es pública si preferís purgar desde un job propio; poné
     `purge_every=0` para desactivar la purga automática.
+
+    **Qué pasa si Postgres no responde.** Igual que en `RedisLockProvider`:
+    `on_error="skip"` (default) loguea `critical` y devuelve `False`, o sea que el
+    cron se detiene mientras la BD esté caída; `on_error="raise"` propaga para que el
+    supervisor del scheduler lo vea. El log distingue "no pude decidir" (`critical`)
+    de "el lock estaba tomado" (`debug`).
     """
 
     def __init__(
@@ -40,6 +48,7 @@ class PostgresLockProvider(ILockProvider):
         pool: asyncpg.Pool | asyncpg.Connection,
         table_name: str = "hexcore_cron_locks",
         *,
+        on_error: LockErrorPolicy = "skip",
         purge_every: int = 100,
         purge_grace_seconds: int = 3600,
     ) -> None:
@@ -47,6 +56,7 @@ class PostgresLockProvider(ILockProvider):
         Args:
             pool: Pool de conexiones o conexión simple de `asyncpg`.
             table_name: Nombre de la tabla a utilizar para los locks.
+            on_error: Qué hacer si Postgres no responde. Ver el docstring de la clase.
             purge_every: Cada cuántas adquisiciones purgar lo expirado. 0 desactiva.
             purge_grace_seconds: Margen antes de borrar una fila expirada. Evita
                 borrar locks que acaban de vencer y que otra réplica podría estar
@@ -54,6 +64,7 @@ class PostgresLockProvider(ILockProvider):
         """
         self.pool = pool
         self.table_name = table_name
+        self.on_error = on_error
         self.purge_every = purge_every
         self.purge_grace_seconds = purge_grace_seconds
         self._acquisitions_since_purge = 0
@@ -113,7 +124,11 @@ class PostgresLockProvider(ILockProvider):
             
         Returns:
             True si el lock fue adquirido con éxito.
-            False si el lock ya estaba tomado y aún no ha expirado.
+            False si el lock ya estaba tomado y aún no ha expirado, o si Postgres
+            falló y `on_error="skip"`.
+
+        Raises:
+            Exception: El error original de asyncpg, si `on_error="raise"`.
         """
         # Usamos UPSERT (ON CONFLICT) condicional
         # Si no existe, lo inserta.
@@ -133,8 +148,25 @@ class PostgresLockProvider(ILockProvider):
             result = await self.pool.fetchrow(query, lock_key, str(ttl_seconds)) # type: ignore
             acquired = result is not None
         except Exception as e:
-            logger.error(f"Error intentando adquirir lock de Postgres para {lock_key}: {e}")
+            if self.on_error == "raise":
+                logger.critical(
+                    "No se pudo decidir el lock de Postgres para %s: %s. "
+                    "on_error='raise': se propaga.",
+                    lock_key,
+                    e,
+                )
+                raise
+            # "No pude decidir" es un incidente de infraestructura, no un lock tomado.
+            logger.critical(
+                "No se pudo decidir el lock de Postgres para %s: %s. "
+                "on_error='skip': el job NO se ejecuta en este tick.",
+                lock_key,
+                e,
+            )
             return False
+
+        if not acquired:
+            logger.debug("Lock de Postgres %s ya estaba tomado por otro proceso.", lock_key)
 
         await self._maybe_purge()
         return acquired

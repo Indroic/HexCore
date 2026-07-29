@@ -16,17 +16,21 @@ logger = logging.getLogger("hexcore.workers.rabbitmq")
 @asynccontextmanager
 async def setup_sqlalchemy():
     """Context manager para inicializar y limpiar conexiones SQL en el worker."""
-    from hexcore.infrastructure.repositories.orms.sqlalchemy.session import reset_sqlalchemy_engine, engine
-    
-    # 1. Resetear el pool para atarlo a ESTE event loop
+    from hexcore.infrastructure.repositories.orms.sqlalchemy.session import (
+        dispose_engine,
+        init_engine,
+    )
+
+    # 1. Descartar cualquier pool heredado y crear el engine dentro de ESTE event loop.
     logger.info("[Worker Lifecycle] Inicializando engine de SQLAlchemy...")
-    await reset_sqlalchemy_engine()
-    
+    await dispose_engine()
+    init_engine()
+
     try:
         yield
     finally:
         logger.info("[Worker Lifecycle] Cerrando conexiones de SQLAlchemy...")
-        await engine.dispose()
+        await dispose_engine()
 
 
 @asynccontextmanager

@@ -30,6 +30,27 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 async def get_sql_uow(
     session: AsyncSession = Depends(get_session),
 ) -> AsyncGenerator[IUnitOfWork, None]:
+    """
+    Cede un `SqlAlchemyUnitOfWork` **sin entrar** en él.
+
+    Es la convención de los ejemplos de use case: el use case hace su propio
+    ``async with self.uow:`` y controla el commit. Si esta dependencia entrara al UoW,
+    ese ``async with`` del use case anidaría contextos.
+
+    Si necesitás el UoW ya abierto en el endpoint, usá `get_sql_uow_open`.
+    """
+    yield SqlAlchemyUnitOfWork(session=session)
+
+
+async def get_sql_uow_open(
+    session: AsyncSession = Depends(get_session),
+) -> AsyncGenerator[IUnitOfWork, None]:
+    """
+    Cede un `SqlAlchemyUnitOfWork` ya **abierto** (dentro de ``async with``).
+
+    Para endpoints que operan sobre el UoW directamente, sin pasar por un use case.
+    No comitea: el commit sigue siendo explícito.
+    """
     async with SqlAlchemyUnitOfWork(session=session) as uow:
         yield uow
 
