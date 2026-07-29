@@ -36,31 +36,55 @@ class CQRSConsumer:
     Ayudante universal para recibir mensajes serializados desde un Worker 
     y despacharlos a los handlers locales usando buses en memoria.
     
-    Uso (ej. Procrastinate):
-    
-        consumer = CQRSConsumer(local_cmd_bus, local_evt_bus, serializer)
-        
-        @app.task(name="process_cqrs_command")
-        async def process_cqrs_command(payload: dict):
-            await consumer.process_command(payload)
+    Uso (ej. Procrastinate)::
+
+        consumer = CQRSConsumer(command_bus, event_bus)
+        register_hexcore_procrastinate_tasks(app, consumer)
+
+    Un worker sólo-comandos puede omitir el event bus::
+
+        consumer = CQRSConsumer(command_bus)
     """
 
     def __init__(
         self,
         command_bus: AbstractCommandBus,
-        event_bus: AbstractEventBus,
-        serializer: ISerializer,
+        event_bus: AbstractEventBus | None = None,
+        serializer: ISerializer | None = None,
     ) -> None:
         """
         Args:
             command_bus: El bus de comandos *local* (usualmente InMemoryCommandBus)
                          que tiene registrados los handlers.
             event_bus: El bus de eventos *local* (usualmente InMemoryEventBus).
-            serializer: El serializador usado (ej. PydanticSerializer).
+                       Opcional: un worker sólo-comandos no lo necesita, y antes había
+                       que pasar `cast(Any, None)` para satisfacer el tipo.
+            serializer: El serializador usado. Por defecto `PydanticSerializer`.
         """
+        if serializer is None:
+            from hexcore.infrastructure.cqrs.pydantic_serializer import PydanticSerializer
+
+            serializer = PydanticSerializer()
+
         self._command_bus = command_bus
         self._event_bus = event_bus
         self._serializer = serializer
+
+    @property
+    def event_bus(self) -> AbstractEventBus:
+        """
+        El event bus configurado.
+
+        Raises:
+            RuntimeError: Si el consumer se construyó sin event bus y llega un evento.
+        """
+        if self._event_bus is None:
+            raise RuntimeError(
+                "Llegó un evento pero este CQRSConsumer se construyó sin 'event_bus'. "
+                "Pasá un AbstractEventBus al construirlo si el worker tiene que "
+                "procesar eventos, o enrutá los eventos a otra cola."
+            )
+        return self._event_bus
 
     async def process_command(self, payload: dict[str, t.Any]) -> None:
         """
@@ -97,7 +121,7 @@ class CQRSConsumer:
 
             logger.info("[CQRSConsumer] Procesando evento en background: %s", evt.event_name)
             with worker_execution():
-                await self._event_bus.publish(evt)
+                await self.event_bus.publish(evt)
 
         except Exception as exc:
             logger.exception("[CQRSConsumer] Error procesando evento: %s", exc)
