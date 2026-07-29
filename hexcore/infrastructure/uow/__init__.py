@@ -187,3 +187,23 @@ class BeanieUnitOfWork(IUnitOfWork):
 
 # Alias por retrocompatibilidad
 NoSqlUnitOfWork = BeanieUnitOfWork
+
+
+# Scopes para código fuera de FastAPI (workers, cron, scripts, seeds).
+# Se importan al final: `scopes` sólo importa de este módulo de forma perezosa.
+from .scopes import (  # noqa: E402
+    nosql_uow_scope,
+    open_uow_scope,
+    session_scope,
+    uow_scope,
+)
+
+__all__ = [
+    "SqlAlchemyUnitOfWork",
+    "BeanieUnitOfWork",
+    "NoSqlUnitOfWork",
+    "session_scope",
+    "uow_scope",
+    "open_uow_scope",
+    "nosql_uow_scope",
+]
