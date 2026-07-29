@@ -9,6 +9,10 @@
   Nuevo contextvar `hexcore.domain.cqrs.context.IN_WORKER` (P0-1)
 - **cqrs**: mismo arreglo para los suscriptores marcados con `@background_handler`
   cuando el evento llega por `CQRSConsumer.process_event` (P0-2)
+- **cqrs**: los buses in-memory comprueban `enqueuer is None` en vez de su truthiness. Un
+  enqueuer que implemente `__len__` o `__bool__` (un doble de test que cuenta lo encolado)
+  es falsy cuando está vacío, y se descartaba justo al empezar un test, lanzando
+  `RuntimeError` en el primer `@background_command`
 - **cqrs**: los FQN con `__qualname__` anidado (clases dentro de clases, tasks como
   `@staticmethod`) ya se resuelven bien. Antes `rsplit(".", 1)` producía un module
   path inválido y el mensaje se encolaba correctamente para **fallar en el worker**.
@@ -26,6 +30,28 @@
 
 ### Feat
 
+- **api**: `create_app()` — factory de la aplicación FastAPI. Sin argumentos ya produce
+  una app usable (`title`/`version` de `ServerConfig`, CORS de `config.allow_origins`,
+  `/health`). Los interruptores van en un único `AppFeatures` en vez de ocho keywords, y
+  los `**fastapi_kwargs` se reenvían tal cual. Nuevos campos `app_title` y `app_version`
+  en `ServerConfig` (F1)
+- **api**: `build_lifespan(*steps, on_error=...)` con teardown en orden inverso,
+  garantizado sólo para los steps que arrancaron, y `on_error="warn"` por step. Steps de
+  serie: `SqlEngineStep`, `BeanieStep`, `EventBusStep`, `CacheStep`,
+  `ProcrastinateStep`, `CronSeedStep` y `CallableStep` (F4)
+- **api**: `register_query_endpoint` acepta `dependencies` (auth), `response_model`,
+  `extra_params` y `**route_kwargs`; los parámetros de lista usan `default_factory=list`
+  en vez de una lista mutable compartida; y los errores de campo inválido salen como un
+  422 estructurado (`message`, `field`, `allowed`) vía la nueva
+  `UnsupportedQueryFieldError` (F10)
+- **dtos**: paginación por cursor — `CursorPageDTO`, `CursorRequestDTO`,
+  `encode_cursor`/`decode_cursor` (cursor opaco base64url de `(sort_key, id)`) y
+  `query_cursor()` en el repositorio SQLAlchemy. `QueryResponseDTO` no cambia: se añade,
+  no se sustituye (F15)
+- **testing**: nuevo paquete `hexcore.testing` con `InMemoryTaskEnqueuer`,
+  `FakeLockProvider`, `build_test_buses()`, `override_cqrs()` y las fixtures de pytest
+  en `hexcore.testing.fixtures` (`cqrs_buses`, `sqlite_engine`, `sqlite_session`, `uow`).
+  Se importa sin dependencias opcionales duras (F9)
 - **cqrs**: `DynamicScheduler` implementa el catch-up que la versión anterior sólo
   insinuaba: decide por "¿hubo alguna ocurrencia entre la última ejecución y ahora?"
   en vez de `croniter.match(expr, minuto_actual)`. Con eso un minuto saltado por
