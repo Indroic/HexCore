@@ -26,6 +26,14 @@
 
 ### Feat
 
+- **cqrs**: `DynamicScheduler` implementa el catch-up que la versión anterior sólo
+  insinuaba: decide por "¿hubo alguna ocurrencia entre la última ejecución y ahora?"
+  en vez de `croniter.match(expr, minuto_actual)`. Con eso un minuto saltado por
+  drift del tick ya no pierde la ejecución, y `update_last_run` deduplica de verdad
+  cuando `tick_interval_seconds < 60`. Nuevo `catch_up_window_seconds` (1h) para
+  acotar el catch-up, aviso `RuntimeWarning` si el tick es sub-minuto y no hay
+  `lock_provider`, primer tick sin esperar el intervalo, `stop()` interrumpible al
+  instante, y `except` que loguean traceback en vez de tragarse el error (P1-1)
 - **cqrs**: `CQRSFactory` acepta un `enqueuer` y lo propaga junto al serializer a los
   buses in-memory, así que la vía oficial de construcción ya sirve para Smart Routing
   sin cablear los buses a mano. Si hay `@background_command` registrados y falta el
