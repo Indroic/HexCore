@@ -54,8 +54,24 @@ class LoggingMiddleware(IMiddleware):
 
 class RetryMiddleware(IMiddleware):
     """
-    Middleware de reintentos con backoff exponencial.
+    Middleware de reintentos con backoff exponencial, **in-process**.
     Solo reintenta excepciones en ``retryable_exceptions``.
+
+    **Cuidado al combinarlo con Smart Routing.** Los reintentos se multiplican: si la cola
+    reintenta el job 3 veces y este middleware reintenta 3 veces dentro de cada intento,
+    el handler corre hasta 12 veces, no 6. Con un handler no idempotente eso son 12
+    cobros, no 12 logs.
+
+    Elegí uno de los dos:
+
+    - **El de la cola** (recomendado para `@background_command`): la cola persiste el
+      intento, sobrevive a un reinicio del worker y su backoff se ve en el panel.
+      Instanciá el bus sin este middleware.
+    - **Éste** para comandos síncronos, donde no hay cola que reintente y el usuario está
+      esperando la respuesta.
+
+    Si lo declarás y el mensaje además va a background, el middleware avisa una vez por
+    tipo de comando con un `warning`.
     """
 
     def __init__(
@@ -68,8 +84,12 @@ class RetryMiddleware(IMiddleware):
         self._max_retries = max_retries
         self._base_delay = base_delay
         self._retryable_exceptions = retryable_exceptions
+        self._warned: set[str] = set()
+        self._logger = logging.getLogger("hexcore.cqrs.retry")
 
     async def handle(self, message: t.Any, next_handler: NextHandler) -> t.Any:
+        self._warn_if_also_retried_by_the_queue(message)
+
         last_exception: Exception | None = None
         for attempt in range(self._max_retries + 1):
             try:
@@ -80,6 +100,29 @@ class RetryMiddleware(IMiddleware):
                     delay = self._base_delay * (2**attempt)
                     await asyncio.sleep(delay)
         raise last_exception  # type: ignore[misc]
+
+    def _warn_if_also_retried_by_the_queue(self, message: t.Any) -> None:
+        """
+        Avisa una vez por tipo si el mensaje también lo reintenta la cola.
+
+        Una vez por tipo y no por mensaje: en un worker con carga, un warning por job
+        llena el log y deja de leerse.
+        """
+        message_type = type(message)
+        if not getattr(message_type, "__cqrs_background__", False):
+            return
+
+        name = message_type.__qualname__
+        if name in self._warned:
+            return
+        self._warned.add(name)
+        self._logger.warning(
+            "'%s' está decorado con @background_command y además pasa por "
+            "RetryMiddleware: los reintentos se multiplican (%d in-process x los de la "
+            "cola). Si el handler no es idempotente, quitá uno de los dos.",
+            name,
+            self._max_retries,
+        )
 
 
 class ValidationMiddleware(IMiddleware):
