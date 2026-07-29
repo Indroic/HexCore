@@ -1,6 +1,6 @@
 [project]
 name = "hexcore"
-version = "3.0.0"
+version = "4.0.0"
 authors = [
   { name="David Latosefki (Indroic)", email="indroic@outlook.com" },
 ]
