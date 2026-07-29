@@ -34,6 +34,12 @@
   acotar el catch-up, aviso `RuntimeWarning` si el tick es sub-minuto y no hay
   `lock_provider`, primer tick sin esperar el intervalo, `stop()` interrumpible al
   instante, y `except` que loguean traceback en vez de tragarse el error (P1-1)
+- **cqrs**: `HandlerRegistry` es realmente thread-safe: el docstring lo afirmaba pero
+  no había ningún lock, y `resolve_*` hace lazy-init con escritura en el dict, así que
+  dos hilos podían instanciar el mismo handler dos veces (relevante con el
+  free-threading de Python 3.14). Nuevo `HandlerRegistry.factory(...)` como marcador
+  explícito de factory, para quitar la ambigüedad con los handlers que implementan
+  `__call__` (P1-5)
 - **cqrs**: `RedisLockProvider` y `PostgresLockProvider` aceptan
   `on_error: "skip" | "raise"`. Antes capturaban `Exception` y devolvían `False`
   siempre, así que una caída de Redis apagaba el cron **entero** con un `logger.error`
