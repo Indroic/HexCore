@@ -72,11 +72,30 @@ async def test_procrastinate_enqueuer():
 def test_register_procrastinate_tasks():
     mock_app = MagicMock()
     mock_consumer = MagicMock()
-    
+
     register_hexcore_procrastinate_tasks(mock_app, mock_consumer)
-    
+
     assert mock_app.task.call_count == 3
     args = [call.kwargs.get("name") for call in mock_app.task.call_args_list]
     assert "hexcore.process_command" in args
     assert "hexcore.process_handler" in args
     assert "hexcore.process_task" in args
+
+
+# ── P1-3: enqueue_event no puede tragarse el evento en silencio ───────────────
+
+
+@pytest.mark.anyio
+async def test_procrastinate_enqueue_event_raises_instead_of_losing_the_event():
+    enqueuer = ProcrastinateEnqueuer(MagicMock())
+
+    with pytest.raises(NotImplementedError, match="background_handler"):
+        await enqueuer.enqueue_event("SomeEvent", {"data": 1}, "default")
+
+
+@pytest.mark.anyio
+async def test_celery_enqueue_event_raises_instead_of_losing_the_event():
+    enqueuer = CeleryEnqueuer(MagicMock())
+
+    with pytest.raises(NotImplementedError, match="background_handler"):
+        await enqueuer.enqueue_event("SomeEvent", {"data": 1}, "default")

@@ -1,3 +1,46 @@
+## Unreleased
+
+### Fix
+
+- **cqrs**: el worker ya **ejecuta** los `@background_command` que saca de la cola en
+  vez de reencolarlos. Antes, pasarle al `CQRSConsumer` el mismo bus que usa el
+  proceso web —lo natural, y lo que sugería la documentación— producía un bucle
+  infinito silencioso: la cola crecía sin límite y el handler no corría jamás.
+  Nuevo contextvar `hexcore.domain.cqrs.context.IN_WORKER` (P0-1)
+- **cqrs**: mismo arreglo para los suscriptores marcados con `@background_handler`
+  cuando el evento llega por `CQRSConsumer.process_event` (P0-2)
+- **cqrs**: los FQN con `__qualname__` anidado (clases dentro de clases, tasks como
+  `@staticmethod`) ya se resuelven bien. Antes `rsplit(".", 1)` producía un module
+  path inválido y el mensaje se encolaba correctamente para **fallar en el worker**.
+  Nuevo helper `hexcore.domain.cqrs.resolution.resolve_dotted`, usado por
+  `PydanticSerializer.deserialize` y por `_resolve_callable` del consumer (P0-3)
+- **cqrs**: `@background_command` / `@background_handler` / `@background_task` ahora
+  rechazan en tiempo de decoración los objetos con `<locals>` en su `__qualname__`:
+  una función definida dentro de otra función nunca será importable desde el worker
+  (P0-3)
+- **cqrs**: `PostgresLockProvider` ya no filtra filas indefinidamente. Con una clave
+  por `(job_id, minuto)` y 7 jobs eran ~10.000 filas/día **para siempre** en la BD
+  principal. Ahora purga lo expirado en `setup()` y cada `purge_every` adquisiciones
+  (100 por defecto), crea un índice sobre `expires_at`, y expone `purge_expired()`
+  (P0-4)
+
+### Behavior change
+
+- **cqrs**: `TransactionMiddleware` deja de ser el middleware por defecto de
+  `CQRSConfig.command_bus`, y `TransactionMiddleware()` sin `uow_factory` ahora lanza
+  `ValueError` en vez de adivinar. El default armaba la sesión con el session factory
+  *interno* de HexCore en vez del engine de la aplicación, y comiteaba después del
+  handler — así que un handler que ya comitea (el patrón que enseña la doc para los
+  use cases) comiteaba dos veces (P0-6)
+- **task_queues**: `enqueue_event` de los adaptadores de Procrastinate y Celery lanza
+  `NotImplementedError` con instrucciones en vez de ser un `pass` que perdía el
+  evento sin traza (P1-3)
+
+### Test
+
+- **cqrs**: los tests del consumer parcheaban `_resolve_callable` sin restaurarlo y
+  contaminaban cualquier test posterior del mismo proceso; ahora usan `monkeypatch`
+  (P3-2)
 ## 2.5.0 (2026-07-28)
 
 ### Feat

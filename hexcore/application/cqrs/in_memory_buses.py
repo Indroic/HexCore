@@ -8,6 +8,7 @@ import logging
 
 from hexcore.domain.cqrs.buses import ICommandBus, IQueryBus, IEventBus
 from hexcore.domain.cqrs.commands import Command
+from hexcore.domain.cqrs.context import is_worker_execution, local_execution
 from hexcore.domain.cqrs.queries import Query
 from hexcore.domain.events import DomainEvent
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
@@ -28,6 +29,10 @@ class InMemoryCommandBus(ICommandBus):
     Si el comando está decorado con `@background_command` y se provee un `enqueuer`,
     el comando es automáticamente encolado para su ejecución en segundo plano
     sin bloquear el proceso actual (retornando None).
+
+    Cuando el mensaje viene de un worker (``IN_WORKER`` activo, lo pone el
+    ``CQRSConsumer``), el bus lo ejecuta **localmente** en vez de reencolarlo.
+    Esto permite usar el mismo bus en el proceso web y en el worker.
     """
 
     def __init__(
@@ -44,17 +49,19 @@ class InMemoryCommandBus(ICommandBus):
 
     async def dispatch(self, command: Command) -> t.Any:
         cmd_type = type(command)
-        
+
         # 1. Smart Routing: ¿Debe irse a background?
+        # Si ya estamos dentro de un worker, el mensaje viene de la cola: hay que
+        # ejecutarlo, no volver a encolarlo.
         is_background = getattr(cmd_type, "__cqrs_background__", False)
-        
-        if is_background:
+
+        if is_background and not is_worker_execution():
             if not self._enqueuer or not self._serializer:
                 raise RuntimeError(
                     f"El comando '{cmd_type.__name__}' requiere ejecución en background, "
                     "pero el InMemoryCommandBus no tiene configurado un 'enqueuer' o 'serializer'."
                 )
-            
+
             async def background_dispatcher(cmd: Command) -> None:
                 queue_name = getattr(cmd_type, "__cqrs_queue__", "default")
                 payload = self._serializer.serialize(cmd) # type: ignore
@@ -70,7 +77,10 @@ class InMemoryCommandBus(ICommandBus):
         async def final_handler(cmd: t.Any) -> t.Any:
             return await handler.handle(cmd)
 
-        return await self._pipeline.execute(command, final_handler)
+        # `local_execution` consume el flag de worker: si el handler despacha otro
+        # `@background_command`, ese sí debe encolarse.
+        with local_execution():
+            return await self._pipeline.execute(command, final_handler)
 
 
 class InMemoryQueryBus(IQueryBus):
@@ -129,9 +139,15 @@ class InMemoryEventBus(IEventBus):
 
     async def publish(self, event: DomainEvent) -> None:
         handlers = self._handlers.get(type(event), [])
+        # Si el evento viene de un worker, sus handlers de background se ejecutan
+        # aquí; reencolarlos sería un bucle infinito.
+        in_worker = is_worker_execution()
 
         for event_handler in handlers:
-            is_background = getattr(event_handler, "__cqrs_background_handler__", False)
+            is_background = (
+                getattr(event_handler, "__cqrs_background_handler__", False)
+                and not in_worker
+            )
 
             if is_background:
                 # Enrutamiento hacia background
@@ -161,4 +177,5 @@ class InMemoryEventBus(IEventBus):
                 ) -> None:
                     await _h(evt)
 
-                await self._pipeline.execute(event, final_handler)
+                with local_execution():
+                    await self._pipeline.execute(event, final_handler)

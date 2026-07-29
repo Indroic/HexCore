@@ -32,7 +32,13 @@ class ProcrastinateEnqueuer(ITaskEnqueuer):
         await task.defer_async(payload=payload)
 
     async def enqueue_event(self, event_name: str, payload: dict[str, t.Any], queue: str) -> None:
-        pass
+        raise NotImplementedError(
+            "ProcrastinateEnqueuer no encola eventos completos: Procrastinate es una "
+            "cola de tareas, no un bus de fan-out, así que un evento encolado aquí no "
+            "llegaría a los suscriptores. Para ejecutar un suscriptor concreto en "
+            "background, decoralo con @background_handler (el EventBus llamará a "
+            "enqueue_handler). Para fan-out real, usá RedisEventBus o PostgresEventBus."
+        )
 
     async def enqueue_handler(self, handler_name: str, payload: dict[str, t.Any], queue: str) -> None:
         task = self.app.configure_task(name="hexcore.process_handler", queue=queue)

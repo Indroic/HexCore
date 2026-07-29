@@ -39,9 +39,13 @@ class CeleryEnqueuer(ITaskEnqueuer):
         )
 
     async def enqueue_event(self, event_name: str, payload: dict[str, t.Any], queue: str) -> None:
-        # Los eventos genéricos (publish a todos los workers) rara vez se envían a Celery
-        # de esta forma. Normalmente se usa enqueue_handler. Se provee para completitud.
-        pass
+        raise NotImplementedError(
+            "CeleryEnqueuer no encola eventos completos: Celery es una cola de tareas, "
+            "no un bus de fan-out, así que un evento encolado aquí no llegaría a los "
+            "suscriptores. Para ejecutar un suscriptor concreto en background, "
+            "decoralo con @background_handler (el EventBus llamará a enqueue_handler). "
+            "Para fan-out real, usá RedisEventBus o PostgresEventBus."
+        )
 
     async def enqueue_handler(self, handler_name: str, payload: dict[str, t.Any], queue: str) -> None:
         await asyncio.to_thread(

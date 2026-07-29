@@ -22,6 +22,8 @@ from .buses import ICommandBus, IQueryBus, IEventBus
 from .middleware import IMiddleware
 from .serializer import ISerializer
 from .cron import CronJobDefinition, ICronJobRepository, ILockProvider
+from .context import IN_WORKER, is_worker_execution, local_execution, worker_execution
+from .resolution import build_fqn, resolve_dotted
 
 __all__ = [
     # Nombres canónicos (Abstract*)
@@ -39,6 +41,13 @@ __all__ = [
     "CronJobDefinition",
     "ICronJobRepository",
     "ILockProvider",
+    # Contexto de ejecución y resolución de FQN
+    "IN_WORKER",
+    "is_worker_execution",
+    "local_execution",
+    "worker_execution",
+    "build_fqn",
+    "resolve_dotted",
     # Aliases (I*)
     "ICommandHandler",
     "IQueryHandler",

@@ -2,9 +2,17 @@ name: Python tests
 
 on:
   push:
-    branches: ["master"]
+    branches:
+      - master
+      - "release/**"
+      - "feat/**"
   pull_request:
-    branches: ["master"]
+    # Filtra por rama **base**, así que sin `release/**` y `feat/**` los PRs de una
+    # cadena apilada no disparan ningún check y el PR aparece sin CI.
+    branches:
+      - master
+      - "release/**"
+      - "feat/**"
 
 permissions:
   contents: read
@@ -17,17 +25,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.12"
+          enable-cache: true
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest anyio
-          pip install -e .
+        # `--extra all` es lo que hace que el suite se ejecute de verdad. Con sólo
+        # `pip install -e .` faltan SQLAlchemy, FastAPI, Redis, aiosqlite y httpx, así que
+        # los tests que dependen de ellos hacen `importorskip` y se saltan: CI reportaba
+        # verde habiendo ejecutado menos de la mitad.
+        # `--group dev` trae pytest, anyio y httpx desde el lockfile, para que el entorno
+        # de CI y el de desarrollo no se puedan desincronizar.
+        run: uv sync --extra all --group dev
 
       - name: Run tests
+        # `-rs` lista los tests saltados. Con todos los extras instalados no debe haber
+        # ninguno, así que un SKIPPED aquí significa que un extra no llegó al entorno y que
+        # estaríamos reportando verde habiendo saltado tests. Se falla a propósito.
+        # `python -m pytest` y no `pytest`: este proyecto no declara `build-system`, así que
+        # `uv sync` no lo instala en el venv y el script `pytest` no vería el paquete
+        # `hexcore`. Con `-m`, el directorio de trabajo entra en `sys.path`.
         run: |
-          pytest -q
+          set -o pipefail
+          uv run python -m pytest -q -rs | tee pytest-output.txt
+          if grep -q '^SKIPPED' pytest-output.txt; then
+            echo "::error::Hay tests saltados: falta alguna dependencia opcional en el entorno de CI."
+            grep '^SKIPPED' pytest-output.txt
+            exit 1
+          fi

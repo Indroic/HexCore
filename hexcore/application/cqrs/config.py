@@ -55,13 +55,12 @@ class CQRSConfig(BaseModel):
     """
 
     enabled: bool = True
-    command_bus: BusConfig = Field(
-        default_factory=lambda: BusConfig(
-            middlewares=[
-                "hexcore.infrastructure.cqrs.middlewares.TransactionMiddleware"
-            ]
-        )
-    )
+    # Sin middlewares por defecto (P0-6). `TransactionMiddleware` *era* el default,
+    # pero adivinaba la sesión con el session factory interno de HexCore en vez del
+    # engine de la aplicación, y comiteaba por segunda vez sobre los handlers que ya
+    # gestionan su transacción. Si lo querés, declaralo explícitamente con su
+    # `uow_factory`.
+    command_bus: BusConfig = Field(default_factory=BusConfig)
     query_bus: BusConfig = Field(default_factory=BusConfig)
     event_bus: BusConfig = Field(default_factory=BusConfig)
     serializer: t.Optional[str] = None  # None = PydanticSerializer por defecto
