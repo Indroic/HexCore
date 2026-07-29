@@ -453,6 +453,7 @@ sql = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "anyio" },
     { name = "commitizen" },
     { name = "pyright" },
     { name = "pytest" },
@@ -491,6 +492,7 @@ provides-extras = ["api", "redis", "mongo", "sql", "rabbitmq", "procrastinate", 
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "anyio", specifier = ">=4.0.0" },
     { name = "commitizen", specifier = ">=4.9.1" },
     { name = "pyright", specifier = ">=1.1.405" },
     { name = "pytest", specifier = ">=8.4.2" },
