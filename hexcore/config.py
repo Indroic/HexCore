@@ -21,6 +21,11 @@ class ServerConfig(BaseModel):
     port: int = 8000
     debug: bool = True
 
+    # Identidad de la app. La usa `create_app()` para el título y la versión de FastAPI,
+    # de modo que el camino feliz no necesite pasarlos.
+    app_title: str = "HexCore API"
+    app_version: str = "0.1.0"
+
     # DB CONFIG
     sql_database_url: str = "sqlite:///./db.sqlite3"
     async_sql_database_url: str = "sqlite+aiosqlite:///./db.sqlite3"

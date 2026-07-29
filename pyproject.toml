@@ -49,6 +49,9 @@ dev = [
     "pyright>=1.1.405",
     "pytest>=8.4.2",
     "anyio>=4.0.0",
+    # Requerido por fastapi.testclient (starlette.testclient) para los tests de la
+    # capa API: create_app, middlewares, routing, health checks.
+    "httpx>=0.27.0",
 ]
 
 [tool.setuptools]

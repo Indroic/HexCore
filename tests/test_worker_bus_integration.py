@@ -145,6 +145,44 @@ async def test_worker_executes_background_command_instead_of_reenqueueing():
 
 
 @pytest.mark.anyio
+async def test_a_falsy_but_present_enqueuer_is_not_discarded():
+    """
+    El bus comprobaba `if not self._enqueuer`, así que un enqueuer que implemente
+    `__len__`/`__bool__` —un doble de test que cuenta lo encolado, por ejemplo— se
+    descartaba justo cuando estaba vacío, y el dispatch lanzaba RuntimeError.
+    """
+    class FalsyEnqueuer(SpyEnqueuer):
+        def __bool__(self) -> bool:
+            return False
+
+    registry = HandlerRegistry()
+    registry.register_command_handler(ReactiveCommand, ReactiveCommandHandler())
+    enqueuer = FalsyEnqueuer()
+    bus = InMemoryCommandBus(
+        registry=registry, enqueuer=enqueuer, serializer=PydanticSerializer()
+    )
+
+    await bus.dispatch(ReactiveCommand(value="x"))
+
+    assert [name for name, _p, _q in enqueuer.commands] == ["ReactiveCommand"]
+
+
+@pytest.mark.anyio
+async def test_a_falsy_but_present_enqueuer_is_not_discarded_by_the_event_bus():
+    class FalsyEnqueuer(SpyEnqueuer):
+        def __bool__(self) -> bool:
+            return False
+
+    enqueuer = FalsyEnqueuer()
+    event_bus = InMemoryEventBus(enqueuer=enqueuer, serializer=PydanticSerializer())
+    event_bus.subscribe(IntegrationEvent, on_integration_event)
+
+    await event_bus.publish(IntegrationEvent(info="x"))
+
+    assert len(enqueuer.handlers) == 1
+
+
+@pytest.mark.anyio
 async def test_same_bus_outside_worker_still_enqueues():
     """Fuera del worker, el mismo bus debe seguir encolando."""
     registry, enqueuer, _ser, bus, _evt, _consumer = _build()
