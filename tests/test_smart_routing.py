@@ -91,37 +91,36 @@ async def test_smart_routing_event_bus_enqueues_background_handlers():
 
 
 @pytest.mark.anyio
-async def test_cqrs_consumer_processes_handler_resolution():
+async def test_cqrs_consumer_processes_handler_resolution(monkeypatch):
     # En este test simulamos la recepción de un mensaje de "handler individual"
     local_cmd_bus = AsyncMock()
     local_evt_bus = AsyncMock()
     serializer = PydanticSerializer()
-    
+
     consumer = CQRSConsumer(
         command_bus=local_cmd_bus,
         event_bus=local_evt_bus,
         serializer=serializer
     )
-    
+
     evt = DummyTaskEvent(info="consumed_event")
     payload = serializer.serialize(evt)
-    
+
     # Modificamos dummy_event_handler temporalmente para comprobar si fue llamado
     dummy_event_handler_was_called = False
-    
-    # Necesitamos mockear la funcion porque el import module va a buscar `dummy_event_handler` real
-    # Pero el resolve import funciona sobre modulos. Como esto es un script de tests,
-    # probaremos usando un modulo global conocido o un mock a _resolve_callable.
+
+    # Parcheamos la resolución con monkeypatch para que se restaure al terminar:
+    # asignar directamente sobre el módulo contamina los tests posteriores (P3-2).
     import hexcore.infrastructure.workers.consumer as consumer_module
-    
+
     async def mock_handler(e):
         nonlocal dummy_event_handler_was_called
         dummy_event_handler_was_called = True
-    
-    consumer_module._resolve_callable = lambda x: mock_handler
-    
-    await consumer.process_handler("tests.test_smart_routing.dummy_event_handler", payload)
-    
+
+    monkeypatch.setattr(consumer_module, "_resolve_callable", lambda x: mock_handler)
+
+    await consumer.process_handler(f"{__name__}.dummy_event_handler", payload)
+
     assert dummy_event_handler_was_called is True
 
 
@@ -190,29 +189,40 @@ async def test_background_handler_raises_if_no_enqueuer():
 
 
 @pytest.mark.anyio
-async def test_cqrs_consumer_processes_generic_task():
+async def test_cqrs_consumer_processes_generic_task(monkeypatch):
     local_cmd_bus = AsyncMock()
     local_evt_bus = AsyncMock()
     serializer = PydanticSerializer()
-    
+
     consumer = CQRSConsumer(
         command_bus=local_cmd_bus,
         event_bus=local_evt_bus,
         serializer=serializer
     )
-    
+
     generic_task_was_called = False
-    
+
     import hexcore.infrastructure.workers.consumer as consumer_module
-    
+
     async def mock_task(**kwargs):
         nonlocal generic_task_was_called
         assert kwargs["days"] == 30
         generic_task_was_called = True
-    
-    consumer_module._resolve_callable = lambda x: mock_task
-    
+
+    monkeypatch.setattr(consumer_module, "_resolve_callable", lambda x: mock_task)
+
     await consumer.process_task("my_maintenance_task", {"days": 30})
-    
+
     assert generic_task_was_called is True
+
+
+def test_resolve_callable_is_not_left_patched():
+    """
+    P3-2: los tests anteriores parcheaban `_resolve_callable` sin restaurarlo, así
+    que cualquier test posterior en el mismo proceso veía el parche.
+    """
+    from hexcore.infrastructure.workers.consumer import _resolve_callable
+
+    with pytest.raises(RuntimeError):
+        _resolve_callable("modulo.que.no.existe.jamas")
 

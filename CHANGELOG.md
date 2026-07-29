@@ -1,3 +1,11 @@
+## Unreleased
+
+### Test
+
+- **cqrs**: los tests del consumer parcheaban `_resolve_callable` sin restaurarlo y
+  contaminaban cualquier test posterior del mismo proceso; ahora usan `monkeypatch`
+  (P3-2)
+
 ## 2.0.6 (2026-06-25)
 
 ### Fix
