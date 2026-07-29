@@ -23,10 +23,20 @@ T = t.TypeVar("T", bound=BaseEntity)
 class BaseDomainService:
     def __init__(
         self,
-        event_bus: EventBus = LazyConfig().get_config().event_bus,
+        event_bus: EventBus | None = None,
     ) -> None:
+        """
+        Args:
+            event_bus: El bus de eventos. Si es None, se toma de la configuración **en
+                este momento**, no en import time.
+
+        El default era `LazyConfig().get_config().event_bus`, evaluado al importar el
+        módulo: eso resolvía la configuración antes de que la aplicación pudiera llamar a
+        `LazyConfig.set_config_modules()`, y congelaba el bus de la primera resolución
+        para todas las instancias posteriores.
+        """
         self.config = LazyConfig.get_config()
-        self.event_bus = event_bus
+        self.event_bus = event_bus if event_bus is not None else self.config.event_bus
 
     async def list_entities(
         self,
