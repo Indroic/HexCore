@@ -34,6 +34,10 @@
   acotar el catch-up, aviso `RuntimeWarning` si el tick es sub-minuto y no hay
   `lock_provider`, primer tick sin esperar el intervalo, `stop()` interrumpible al
   instante, y `except` que loguean traceback en vez de tragarse el error (P1-1)
+- **cqrs**: `CQRSConsumer(command_bus)` — `event_bus` y `serializer` pasan a ser
+  opcionales. Un worker sólo-comandos ya no necesita `cast(Any, None)`, y si llega un
+  evento sin event bus el error dice qué hacer. `serializer` cae en
+  `PydanticSerializer` (P2-2)
 - **task_queues**: `register_hexcore_procrastinate_tasks` y
   `register_hexcore_celery_tasks` son idempotentes y devuelven `bool`; se añade
   `is_registered(app)` y `force=True`. Antes llamarlas dos veces reventaba porque la
