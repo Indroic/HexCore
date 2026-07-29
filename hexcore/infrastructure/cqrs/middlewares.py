@@ -100,33 +100,42 @@ class ValidationMiddleware(IMiddleware):
 class TransactionMiddleware(IMiddleware):
     """
     Middleware que envuelve la ejecución del handler en un contexto transaccional
-    usando el Unit of Work de Hexcore.
+    usando el Unit of Work de Hexcore, y comitea al terminar.
 
-    Requiere que el handler tenga acceso al UoW (inyectado vía constructor).
-    Este middleware se encarga del commit/rollback.
+    **Es para handlers que NO gestionan su propia transacción.** Si tu handler ya
+    hace ``async with self.uow:`` y ``await self.uow.commit()`` —el patrón que
+    enseña `DOCS.md` para los use cases— no uses este middleware: comitearías dos
+    veces.
+
+    ``uow_factory`` es obligatorio. Antes existía un default que armaba la sesión
+    con el session factory *interno* de HexCore en vez del engine de la aplicación,
+    lo que producía transacciones contra un engine distinto al del resto del
+    request. Adivinar aquí es peor que no funcionar.
+
+    Uso::
+
+        TransactionMiddleware(uow_factory=lambda: SqlAlchemyUnitOfWork(session=my_factory()))
     """
 
     def __init__(self, uow_factory: t.Callable[[], t.Any] | None = None) -> None:
         """
         Args:
-            uow_factory: Callable que retorna un IUnitOfWork context manager.
-                         Si es None, usa un factory por defecto (intenta SQL, luego NoSQL).
-        """
-        self._uow_factory = uow_factory or self._default_uow_factory
+            uow_factory: Callable que retorna un IUnitOfWork usable como context
+                manager. Obligatorio.
 
-    @staticmethod
-    def _default_uow_factory() -> t.Any:
-        from hexcore.config import LazyConfig
-        from hexcore.infrastructure.uow import SqlAlchemyUnitOfWork, NoSqlUnitOfWork
-        
-        config = LazyConfig.get_config()
-        # Heurística simple: Si hay una URL de SQL (por defecto siempre la hay), asume SQL.
-        # En una app real de Hexcore se puede inyectar esto mejor, pero provee un default funcional.
-        if config.sql_database_url:
-            from hexcore.infrastructure.repositories.orms.sqlalchemy.session import get_session_factory
-            factory = get_session_factory()
-            return SqlAlchemyUnitOfWork(session=factory())
-        return NoSqlUnitOfWork()
+        Raises:
+            ValueError: Si no se provee `uow_factory`.
+        """
+        if uow_factory is None:
+            raise ValueError(
+                "TransactionMiddleware requiere un 'uow_factory' explícito. "
+                "Pasá un callable que construya el UoW con el engine de tu "
+                "aplicación, p. ej. "
+                "TransactionMiddleware(uow_factory=lambda: SqlAlchemyUnitOfWork(session=session_factory())). "
+                "Recordá que este middleware comitea: no lo uses con handlers que "
+                "ya gestionan su propia transacción."
+            )
+        self._uow_factory = uow_factory
 
     async def handle(self, message: t.Any, next_handler: NextHandler) -> t.Any:
         uow = self._uow_factory()

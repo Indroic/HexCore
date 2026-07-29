@@ -24,6 +24,18 @@
   (100 por defecto), crea un índice sobre `expires_at`, y expone `purge_expired()`
   (P0-4)
 
+### Behavior change
+
+- **cqrs**: `TransactionMiddleware` deja de ser el middleware por defecto de
+  `CQRSConfig.command_bus`, y `TransactionMiddleware()` sin `uow_factory` ahora lanza
+  `ValueError` en vez de adivinar. El default armaba la sesión con el session factory
+  *interno* de HexCore en vez del engine de la aplicación, y comiteaba después del
+  handler — así que un handler que ya comitea (el patrón que enseña la doc para los
+  use cases) comiteaba dos veces (P0-6)
+- **task_queues**: `enqueue_event` de los adaptadores de Procrastinate y Celery lanza
+  `NotImplementedError` con instrucciones en vez de ser un `pass` que perdía el
+  evento sin traza (P1-3)
+
 ### Test
 
 - **cqrs**: los tests del consumer parcheaban `_resolve_callable` sin restaurarlo y

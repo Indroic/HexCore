@@ -252,7 +252,7 @@ HexCore v2 integra de forma nativa soporte para el patrón **CQRS (Command Query
 
 El sistema se basa en 3 buses principales, configurables e independientes:
 
-1. **`AbstractCommandBus`**: Despacha inteniones de mutación (`Command`) a un único `AbstractCommandHandler`. Los commands modifican el estado del sistema y se ejecutan (por defecto) dentro de una transacción de base de datos (Unit of Work).
+1. **`AbstractCommandBus`**: Despacha inteniones de mutación (`Command`) a un único `AbstractCommandHandler`. Los commands modifican el estado del sistema. La transacción la gestiona el handler (el patrón que enseñan los ejemplos de use case); si preferís que la gestione el bus, añadí `TransactionMiddleware` explícitamente con su `uow_factory`.
 2. **`AbstractQueryBus`**: Despacha intenciones de lectura (`Query`) a un único `AbstractQueryHandler`. Retornan un resultado sin mutar el estado.
 3. **`EventBus`**: Distribuye eventos de dominio (`DomainEvent`) a múltiples suscriptores asíncronamente (vía `subscribe`/`publish`).
 
@@ -265,14 +265,24 @@ from hexcore.application.cqrs.config import CQRSConfig, BusConfig
 config = ServerConfig(
     cqrs=CQRSConfig(
         command_bus=BusConfig(
-            # Por defecto incluye TransactionMiddleware
-            middlewares=["hexcore.infrastructure.cqrs.middlewares.TransactionMiddleware"]
+            # Sin middlewares por defecto. Los que no necesitan configuración se
+            # pueden declarar por dotted path:
+            middlewares=["hexcore.infrastructure.cqrs.middlewares.LoggingMiddleware"]
         ),
         # Puedes sustituir el backend en memoria por uno distribuido (Ej: Celery, Procrastinate)
         # backend="mi_app.infrastructure.ProcrastinateCommandBus" 
     )
 )
 ```
+
+> **`TransactionMiddleware` no es el default.** Comitea después del handler, así que
+> con un handler que ya gestiona su propia transacción comitearías dos veces. Y
+> necesita un `uow_factory` construido con *tu* engine, cosa que no se puede expresar
+> como dotted path: instancialo a mano y pasá el pipeline al bus.
+>
+> ```python
+> TransactionMiddleware(uow_factory=lambda: SqlAlchemyUnitOfWork(session=session_factory()))
+> ```
 
 ---
 
