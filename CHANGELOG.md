@@ -1,5 +1,26 @@
 ## Unreleased
 
+Esta entrada cubre la aplicación completa del plan de mejora del subsistema CQRS: los
+seis P0, los seis P1, los cinco P2, los dieciséis F, los dos P3 y las reglas de
+simplicidad S3–S7.
+
+### BREAKING
+
+- **cqrs**: se elimina `MiddlewareConfig` de `hexcore.application.cqrs`. Era código
+  muerto: `_build_middlewares` instancia con `cls()` y nunca leía
+  `enabled`/`order`/`options`, así que el `options={"max_retries": 3}` del ejemplo iba al
+  **bus**, no al middleware. Quien lo declaraba no pierde comportamiento —no tenía—, sólo
+  tiene que quitar el import (P2-1, S7)
+
+### Feat
+
+- **fachadas**: nuevos módulos `hexcore.cqrs`, `hexcore.sql` y `hexcore.fastapi`, que
+  reexportan lo público **sin mover nada de sitio**: un import obvio por tarea, y las
+  rutas largas siguen funcionando y devolviendo el mismo objeto. La resolución es
+  perezosa, así que `import hexcore.cqrs` funciona sin los extras y sin ejecutar I/O en
+  import time. Sólo exponen los nombres canónicos `Abstract*`; los alias `I*` siguen
+  importables por su ruta de siempre (S3, S4)
+
 ### Fix
 
 - **cqrs**: el worker ya **ejecuta** los `@background_command` que saca de la cola en
@@ -165,8 +186,38 @@
   `NotImplementedError` con instrucciones en vez de ser un `pass` que perdía el
   evento sin traza (P1-3)
 
+- **task_queues**: el adaptador de Celery ejecuta las corutinas en un **event loop
+  persistente por proceso** en vez de `asyncio.run()` por tarea. Con un `AsyncEngine`
+  compartido, cerrar el loop en cada tarea produce `Event loop is closed` y
+  `attached to a different loop`. Se detecta el fork del pool prefork comparando el PID.
+  Se exponen `run_in_worker_loop(coro)` y `shutdown_worker_loop()` (P1-4)
+- **domain**: `BaseDomainService.__init__` ya no resuelve la configuración en un default
+  de argumento, evaluado en import time, que congelaba el event bus de la primera
+  resolución para todas las instancias (S5)
+- **cli**: las rutas del proyecto se resuelven al ejecutar el comando, no al importar el
+  módulo. `hexcore/__init__.py` importa la CLI, así que la constante a nivel de módulo
+  resolvía la configuración antes de que la app pudiera llamar a
+  `LazyConfig.set_config_modules()` (S5). Se borran además siete constantes sin uso (S7)
+
+### Docs
+
+- **cqrs**: `RetryMiddleware` documenta que sus reintentos se **multiplican** con los de
+  la cola (3 x 3 = 12 ejecuciones, no 6) y avisa con un `warning` —una vez por tipo de
+  comando— si el mensaje también va a background (P2-3)
+- se alinean `README.md` y `DOCS.md` con la API real: `register_command_handler` (no
+  `register_command`), `hexcore.process_command` (no `process_cqrs_command`), y
+  `UseCaseCommandHandler` con las dependencias del use case. Los ejemplos usan las
+  fachadas y los nombres canónicos (P2-4, S4)
+- **DOCS.md** abre con el arranque completo de una app en una pantalla, y documenta el
+  contrato de "ejecutar este comando aquí y ahora": el bus decide por contexto, y
+  `is_worker_execution()` lo expone (P2-5)
+
 ### Test
 
+- se añade `tests/test_documentation_examples.py`, que **ejecuta** los ejemplos de
+  arranque, migración de use case, Smart Routing y cron, y verifica contra la API real
+  que los símbolos y atributos que la documentación menciona existen. Un rename ahora
+  rompe el CI, no la app de alguien (P2-4)
 - **cqrs**: los tests del consumer parcheaban `_resolve_callable` sin restaurarlo y
   contaminaban cualquier test posterior del mismo proceso; ahora usan `monkeypatch`
   (P3-2)
