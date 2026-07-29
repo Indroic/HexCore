@@ -2,6 +2,7 @@ import typing as t
 import types
 import importlib
 import pkgutil
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, cast, func, or_, select, String
@@ -13,6 +14,9 @@ from hexcore.application.dtos.query import (
     QueryRequestDTO,
     SortDirection,
 )
+
+if t.TYPE_CHECKING:
+    from hexcore.application.dtos.cursor import CursorRequestDTO
 from hexcore.types import FieldResolversType, RelationsType
 
 from . import BaseModel
@@ -112,8 +116,20 @@ def _require_model_column(
 ) -> t.Any:
     column = _resolve_model_column(model, field_name)
     if column is None:
-        raise ValueError(f"Campo de {context} no soportado: {field_name}")
+        from hexcore.application.dtos.errors import UnsupportedQueryFieldError
+
+        raise UnsupportedQueryFieldError(
+            field_name, context, allowed=_queryable_field_names(model)
+        )
     return column
+
+
+def _queryable_field_names(model: t.Type[T]) -> list[str]:
+    """Los campos que el modelo sí acepta, para poder ofrecerlos en el error."""
+    try:
+        return [column.name for column in model.__table__.columns]
+    except AttributeError:  # pragma: no cover - modelo sin tabla
+        return []
 
 
 def _build_filter_expression(model: t.Type[T], query: QueryRequestDTO) -> list[t.Any]:
@@ -207,6 +223,129 @@ async def db_query(
 
     result = await session.execute(data_stmt)
     return list(result.scalars().all()), total
+
+
+async def db_query_cursor(
+    session: AsyncSession,
+    model: t.Type[T],
+    query: "CursorRequestDTO",
+) -> tuple[list[T], str | None]:
+    """
+    Página por cursor: salta con un `WHERE (sort_key, id) > (...)` en vez de `OFFSET`.
+
+    Devuelve `(filas, next_cursor)`. `next_cursor` es None cuando no queda nada más. No
+    se cuenta el total: contar es exactamente lo que esta paginación evita.
+
+    El desempate por `id` es imprescindible: con sólo el campo de orden, varias filas con
+    el mismo `created_at` se saltarían o se repetirían entre páginas.
+    """
+    from hexcore.application.dtos.cursor import decode_cursor, encode_cursor
+
+    sort_column = _require_model_column(model, query.sort_field, "orden")
+    id_column = _require_model_column(model, "id", "orden")
+    descending = query.direction == SortDirection.DESC
+
+    where_expressions = _build_filter_expression(
+        model,
+        QueryRequestDTO(
+            search=query.search,
+            search_fields=list(query.search_fields),
+            filters=list(query.filters),
+        ),
+    )
+
+    if query.cursor:
+        last_sort_value, last_id = decode_cursor(query.cursor)
+        comparison = _cursor_predicate(
+            sort_column, id_column, last_sort_value, last_id, descending=descending
+        )
+        where_expressions.append(comparison)
+
+    stmt = select(model).options(*load_relations(model))
+    if where_expressions:
+        stmt = stmt.where(and_(*where_expressions))
+
+    ordering = (
+        [sort_column.desc(), id_column.desc()]
+        if descending
+        else [sort_column.asc(), id_column.asc()]
+    )
+    # Se piden `limit + 1` filas para saber si hay página siguiente sin contar el total.
+    stmt = stmt.order_by(*ordering).limit(query.limit + 1)
+
+    result = await session.execute(stmt)
+    rows = list(result.scalars().all())
+
+    if len(rows) <= query.limit:
+        return rows, None
+
+    page = rows[: query.limit]
+    last = page[-1]
+    next_cursor = encode_cursor(getattr(last, query.sort_field), getattr(last, "id"))
+    return page, next_cursor
+
+
+def _cursor_predicate(
+    sort_column: t.Any,
+    id_column: t.Any,
+    last_sort_value: t.Any,
+    last_id: t.Any,
+    *,
+    descending: bool,
+) -> t.Any:
+    """
+    Predicado de "después de esta posición" como comparación de tupla, expandida.
+
+    Se expande a `(k < v) OR (k = v AND id < i)` en vez de usar la comparación de tuplas
+    de SQL, que no todos los dialectos soportan (SQLite entre ellos).
+    """
+    sort_value = _coerce_cursor_value(sort_column, last_sort_value)
+    id_value = _coerce_cursor_value(id_column, last_id)
+
+    if descending:
+        return or_(
+            sort_column < sort_value,
+            and_(sort_column == sort_value, id_column < id_value),
+        )
+    return or_(
+        sort_column > sort_value,
+        and_(sort_column == sort_value, id_column > id_value),
+    )
+
+
+def _coerce_cursor_value(column: t.Any, raw: t.Any) -> t.Any:
+    """
+    Reconstruye el tipo Python que espera la columna a partir del valor del cursor.
+
+    El cursor viaja como JSON, así que un `datetime` vuelve como string ISO y un `UUID`
+    como su representación textual. Comparar el string crudo contra una columna tipada
+    falla en Postgres.
+    """
+    if raw is None:
+        return None
+
+    python_type: t.Any = None
+    try:
+        python_type = column.type.python_type
+    except (NotImplementedError, AttributeError):
+        return raw
+
+    if isinstance(raw, python_type):
+        return raw
+
+    if python_type is UUID and isinstance(raw, str):
+        try:
+            return UUID(raw)
+        except ValueError:
+            return raw
+
+    if python_type is datetime and isinstance(raw, str):
+        try:
+            return datetime.fromisoformat(raw)
+        except ValueError:
+            return raw
+
+    return raw
 
 
 async def db_save(session: AsyncSession, entity: T) -> T:

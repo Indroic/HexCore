@@ -9,6 +9,9 @@ from hexcore.types import FieldResolversType, FieldSerializersType
 from .base import T, BaseSQLAlchemyRepository, BaseBeanieRepository
 from .utils import to_entity_from_model_or_document
 
+if t.TYPE_CHECKING:
+    from hexcore.application.dtos.cursor import CursorPageDTO, CursorRequestDTO
+
 A = t.TypeVar("A")
 
 
@@ -96,6 +99,27 @@ try:
                 for model in models
             ]
             return entities, total
+
+        async def query_cursor(
+            self, query: "CursorRequestDTO"
+        ) -> "CursorPageDTO[T]":
+            """
+            Página por cursor (F15). Alternativa a `query_all` para listados grandes,
+            donde `OFFSET` degrada. No devuelve `total`: contar es lo que evita.
+            """
+            from hexcore.application.dtos.cursor import CursorPageDTO
+            from .orms.sqlalchemy.utils import db_query_cursor
+
+            models, next_cursor = await db_query_cursor(
+                self.session, self.model_cls, query
+            )
+            entities = [
+                await to_entity_from_model_or_document(
+                    model, self.entity_cls, self.fields_resolvers
+                )
+                for model in models
+            ]
+            return CursorPageDTO[T](items=entities, next_cursor=next_cursor)
 
         async def save(self, entity: T) -> T:
             saved = await sql_save_entity(

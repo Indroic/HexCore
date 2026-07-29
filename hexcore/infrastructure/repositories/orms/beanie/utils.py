@@ -207,7 +207,9 @@ def _require_document_field(
 ) -> None:
     model_fields = getattr(document_class, "model_fields", {})
     if field_name not in model_fields:
-        raise ValueError(f"Campo de {context} no soportado: {field_name}")
+        from hexcore.application.dtos.errors import UnsupportedQueryFieldError
+
+        raise UnsupportedQueryFieldError(field_name, context, allowed=model_fields.keys())
 
 
 def _build_sort_query(

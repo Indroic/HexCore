@@ -165,7 +165,9 @@ def test_build_query_endpoint_translates_value_error_to_http_422() -> None:
 
         assert raised is not None
         assert raised.status_code == 422
-        assert raised.detail == "Campo de filtro no soportado: typo"
+        # F10: el cuerpo pasa a ser estructurado. Con un ValueError pelado sólo hay
+        # `message`; con UnsupportedQueryFieldError llegan además `field` y `allowed`.
+        assert raised.detail == {"message": "Campo de filtro no soportado: typo"}
 
     asyncio.run(_run())
 
