@@ -56,7 +56,10 @@ class InMemoryCommandBus(ICommandBus):
         is_background = getattr(cmd_type, "__cqrs_background__", False)
 
         if is_background and not is_worker_execution():
-            if not self._enqueuer or not self._serializer:
+            # `is None` y no truthiness: un enqueuer que implemente `__len__` o
+            # `__bool__` (un doble de test que cuenta lo encolado, p. ej.) es falsy
+            # cuando está vacío, y con `not self._enqueuer` se descartaría.
+            if self._enqueuer is None or self._serializer is None:
                 raise RuntimeError(
                     f"El comando '{cmd_type.__name__}' requiere ejecución en background, "
                     "pero el InMemoryCommandBus no tiene configurado un 'enqueuer' o 'serializer'."
@@ -150,8 +153,9 @@ class InMemoryEventBus(IEventBus):
             )
 
             if is_background:
-                # Enrutamiento hacia background
-                if not self._enqueuer or not self._serializer:
+                # Enrutamiento hacia background. `is None` por el mismo motivo que en
+                # `InMemoryCommandBus.dispatch`.
+                if self._enqueuer is None or self._serializer is None:
                     raise RuntimeError(
                         f"El handler de eventos '{event_handler.__name__}' requiere ejecución en background, "
                         "pero el InMemoryEventBus no tiene configurado un 'enqueuer' o 'serializer'."
