@@ -34,6 +34,29 @@
   acotar el catch-up, aviso `RuntimeWarning` si el tick es sub-minuto y no hay
   `lock_provider`, primer tick sin esperar el intervalo, `stop()` interrumpible al
   instante, y `except` que loguean traceback en vez de tragarse el error (P1-1)
+- **api**: `register_exception_handlers(app, mapping=..., include_detail=...)` mapea las
+  excepciones de dominio a HTTP. El default cubre `InactiveEntityException`→409,
+  `DeserializationError`→400, `HandlerNotFoundError`→501 y `ValueError`→422 — este último
+  antes sólo se capturaba **dentro** de `build_query_endpoint`, así que una query
+  construida a mano devolvía 500 (F5)
+- **api**: providers CQRS en `hexcore.infrastructure.api.cqrs`: `configure_cqrs()`,
+  `provide_command_bus` / `provide_query_bus` / `provide_event_bus` / `provide_registry`
+  y `CQRSContainer.build_consumer()`, que construye el consumer del worker sobre los
+  mismos buses que la app web — una sola fuente de verdad. Son funciones para poder
+  sobreescribirlos con `app.dependency_overrides` en los tests (F6)
+- **api**: `rate_limit(limit, window_seconds, key=..., cache=...)` como dependencia,
+  sobre el puerto `ICache` (funciona con `MemoryCache` en tests). Devuelve **429 con
+  `Retry-After`**, y la política ante un backend caído es explícita
+  (`on_backend_error="allow" | "deny"`) en vez de una decisión enterrada en un `except`
+  (F12)
+- **api**: `sse_stream()` con heartbeat y cabeceras anti-buffering, `format_sse_event()`,
+  `ws_heartbeat()` y `connection_slot()` en `hexcore.infrastructure.api.streaming`.
+  `connection_slot` libera el slot aunque el bloque lance o se cancele, que es el bug
+  clásico de los límites de conexión por usuario (F14)
+- **api**: `check_health(deep=...)` y `register_health_routes(app)`. `{path}` es liveness
+  (200 sin I/O) y `{path}/ready` es readiness: sondea SQL, Redis y Mongo con timeout
+  propio por sonda y devuelve **503** con el detalle y la latencia por dependencia. Una
+  dependencia no crítica reporta `degraded` en vez de `down` (F16)
 - **cqrs**: implementación SQL del cron de serie en
   `hexcore.infrastructure.cqrs.cron_sql` (extra `[sql]`): `CronJobModel` /
   `CronJobModelMixin`, `SqlAlchemyCronJobRepository`, `seed_cron_jobs()` idempotente y no
