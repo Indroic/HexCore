@@ -163,29 +163,6 @@ simplicidad S3–S7.
   enqueuer, falla **al construir** con el nombre de los comandos afectados, no en el
   primer dispatch. El serializer se cachea para que buses y consumer compartan
   instancia (P0-5)
-
-### Behavior change
-
-- **sql**: el session factory de HexCore pasa a `expire_on_commit=False`. Con el
-  default de SQLAlchemy (`True`) los atributos de las entidades expiran al comitear y
-  el siguiente acceso dispara un lazy-load sobre una sesión cerrada
-  (`MissingGreenlet` / `DetachedInstanceError`) — y la documentación ya enseñaba
-  `async_sessionmaker(engine, expire_on_commit=False)`, o sea que doc e
-  implementación no coincidían. Quien necesite `True` debe construir su propio
-  `async_sessionmaker` (F2)
-- **api**: `get_sql_uow` ya **no entra** al UoW: cede el UoW sin abrir la transacción,
-  para que el use case controle su propio `async with uow:` sin anidar contextos. Si
-  dependías del comportamiento anterior, usá `get_sql_uow_open` (F3)
-- **cqrs**: `TransactionMiddleware` deja de ser el middleware por defecto de
-  `CQRSConfig.command_bus`, y `TransactionMiddleware()` sin `uow_factory` ahora lanza
-  `ValueError` en vez de adivinar. El default armaba la sesión con el session factory
-  *interno* de HexCore en vez del engine de la aplicación, y comiteaba después del
-  handler — así que un handler que ya comitea (el patrón que enseña la doc para los
-  use cases) comiteaba dos veces (P0-6)
-- **task_queues**: `enqueue_event` de los adaptadores de Procrastinate y Celery lanza
-  `NotImplementedError` con instrucciones en vez de ser un `pass` que perdía el
-  evento sin traza (P1-3)
-
 - **task_queues**: el adaptador de Celery ejecuta las corutinas en un **event loop
   persistente por proceso** en vez de `asyncio.run()` por tarea. Con un `AsyncEngine`
   compartido, cerrar el loop en cada tarea produce `Event loop is closed` y
@@ -221,6 +198,28 @@ simplicidad S3–S7.
 - **cqrs**: los tests del consumer parcheaban `_resolve_callable` sin restaurarlo y
   contaminaban cualquier test posterior del mismo proceso; ahora usan `monkeypatch`
   (P3-2)
+
+## 3.0.0 (2026-07-29)
+
+### Feat
+
+- **uow**: session_scope y uow_scope para código fuera de FastAPI
+- **sql**: capa de sesión configurable, con expire_on_commit=False y DSN normalizado
+- **cqrs**: event_bus y serializer opcionales en CQRSConsumer
+- **task_queues**: register_hexcore_*_tasks idempotente
+- **cqrs**: HandlerRegistry thread-safe de verdad y marcador explícito de factory
+- **cqrs**: on_error configurable en los lock providers y logs distinguibles
+- **cqrs**: catch-up real en DynamicScheduler y deduplicación por ocurrencia
+- **cqrs**: CQRSFactory propaga enqueuer y serializer a los buses in-memory
+
+### Fix
+
+- **task_queues**: enqueue_event lanza NotImplementedError en vez de perder el evento
+- **cqrs**: TransactionMiddleware fuera del default y con uow_factory obligatorio
+- **cqrs**: PostgresLockProvider purga las filas de lock expiradas
+- **cqrs**: el worker ejecuta los background commands en vez de reencolarlos
+- **cqrs**: resuelve los __qualname__ anidados en serializer y consumer
+
 ## 2.5.0 (2026-07-28)
 
 ### Feat
