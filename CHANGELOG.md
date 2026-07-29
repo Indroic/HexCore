@@ -199,6 +199,27 @@ simplicidad S3–S7.
   contaminaban cualquier test posterior del mismo proceso; ahora usan `monkeypatch`
   (P3-2)
 
+## 4.0.0 (2026-07-29)
+
+### Feat
+
+- **testing**: publica hexcore.testing con dobles, helpers y fixtures
+- **api,dtos**: paginación por cursor y mejoras a build_query_endpoint
+- **api**: create_app() con cero configuración en el camino feliz
+- **api**: build_lifespan composable con teardown garantizado en orden inverso
+- **api**: health checks que sondean las dependencias de verdad
+- **api**: utilidades de SSE, heartbeat de WebSocket y límite de conexiones
+- **api**: rate limiting como dependencia sobre el puerto ICache
+- **api**: providers FastAPI del CQRS con una sola fuente de verdad
+- **api**: register_exception_handlers para mapear excepciones de dominio a HTTP
+- **workers**: run_cqrs_worker con muerte mutua y drenaje ordenado
+- **cqrs**: tabla, repositorio y seed de cron_jobs de serie
+- **api**: middlewares de request-id/timing y composición declarativa de routers
+
+### Fix
+
+- **cqrs**: no descartes un enqueuer presente pero falsy
+
 ## 3.0.0 (2026-07-29)
 
 ### Feat
