@@ -34,6 +34,11 @@
   acotar el catch-up, aviso `RuntimeWarning` si el tick es sub-minuto y no hay
   `lock_provider`, primer tick sin esperar el intervalo, `stop()` interrumpible al
   instante, y `except` que loguean traceback en vez de tragarse el error (P1-1)
+- **cqrs**: `RedisLockProvider` y `PostgresLockProvider` aceptan
+  `on_error: "skip" | "raise"`. Antes capturaban `Exception` y devolvían `False`
+  siempre, así que una caída de Redis apagaba el cron **entero** con un `logger.error`
+  por job y por tick indistinguible del caso normal. Ahora "no pude decidir" se loguea
+  como `critical` y "el lock estaba tomado" como `debug` (P1-2)
 - **cqrs**: `CQRSFactory` acepta un `enqueuer` y lo propaga junto al serializer a los
   buses in-memory, así que la vía oficial de construcción ya sirve para Smart Routing
   sin cablear los buses a mano. Si hay `@background_command` registrados y falta el
