@@ -19,6 +19,11 @@ __all__ = [
     "TransactionMiddleware",
 ]
 
-# ProcrastinateCommandBus no se exporta aquí intencionalmente.
-# Importarlo directamente: from hexcore.infrastructure.cqrs.procrastinate import ProcrastinateCommandBus
-# Esto evita ImportError si procrastinate no está instalado.
+# Los adaptadores con dependencias opcionales no se exportan aquí intencionalmente:
+# importarlos aquí haría fallar el import de este paquete cuando la dependencia no está
+# instalada. Importalos por su ruta:
+#
+#   from hexcore.infrastructure.cqrs.procrastinate import ProcrastinateCommandBus   # [procrastinate]
+#   from hexcore.infrastructure.cqrs.cron_sql import SqlAlchemyCronJobRepository    # [sql]
+#   from hexcore.infrastructure.cqrs.redis_lock import RedisLockProvider            # [redis]
+#   from hexcore.infrastructure.cqrs.postgres_lock import PostgresLockProvider      # [sql]

@@ -34,6 +34,18 @@
   acotar el catch-up, aviso `RuntimeWarning` si el tick es sub-minuto y no hay
   `lock_provider`, primer tick sin esperar el intervalo, `stop()` interrumpible al
   instante, y `except` que loguean traceback en vez de tragarse el error (P1-1)
+- **cqrs**: implementación SQL del cron de serie en
+  `hexcore.infrastructure.cqrs.cron_sql` (extra `[sql]`): `CronJobModel` /
+  `CronJobModelMixin`, `SqlAlchemyCronJobRepository`, `seed_cron_jobs()` idempotente y no
+  destructivo, `create_cron_tables()` y `cron_job()`, que deriva el `task_name` de
+  `__cqrs_task_name__` en vez de escribirlo a mano. El modelo no hereda de `BaseModel[T]`
+  y el repositorio no hereda de `BaseSQLAlchemyRepository`, para que ni el UoW ni el
+  auto-discovery los traten como dominio (F7)
+- **workers**: `run_cqrs_worker(*loops, scheduler=..., on_startup=..., on_shutdown=...)`
+  y el atajo `run_procrastinate_worker(app, queues=..., concurrency=...)`. Si cualquiera
+  de los bucles muere se cancela el resto y el proceso sale con `WorkerDied`, para que el
+  orquestador lo reinicie completo; incluye manejo de SIGTERM/SIGINT para drenaje
+  ordenado (F8)
 - **api**: `RequestIDMiddleware` y `TimingMiddleware` de serie, en
   `hexcore.infrastructure.api.middlewares`. El request-id se reusa del header entrante
   si viene, se expone por `ContextVar` (`get_request_id()`) y por `request.state`, y hay
