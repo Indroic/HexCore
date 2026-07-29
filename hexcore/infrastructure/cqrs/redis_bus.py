@@ -11,6 +11,7 @@ import typing as t
 import uuid
 
 from hexcore.domain.cqrs.buses import IEventBus
+from hexcore.domain.cqrs.context import is_worker_execution, local_execution
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
 from hexcore.domain.events import DomainEvent
 
@@ -120,18 +121,25 @@ class RedisEventBus(IEventBus):
             event = self._serializer.deserialize(payload_dict)
             handlers = self._handlers.get(event_type, [])
             
-            # Ejecutar handlers (respetando Smart Routing)
+            # Ejecutar handlers (respetando Smart Routing).
+            # Si ya estamos dentro de un worker, el mensaje viene de la cola:
+            # ejecutar en vez de reencolar (ver hexcore.domain.cqrs.context).
+            in_worker = is_worker_execution()
             for handler in handlers:
-                is_background = getattr(handler, "__cqrs_background_handler__", False)
+                is_background = (
+                    getattr(handler, "__cqrs_background_handler__", False)
+                    and not in_worker
+                )
                 if is_background:
                     queue_name = getattr(handler, "__cqrs_queue__", "default")
                     if not self.enqueuer:
                         raise RuntimeError(f"El handler asíncrono {handler.__name__} requiere un enqueuer.")
-                    
+
                     handler_ref = getattr(handler, "__cqrs_handler_name__", f"{handler.__module__}.{handler.__name__}")
                     await self.enqueuer.enqueue_handler(handler_ref, payload_dict, queue_name)
                 else:
-                    await handler(event)
+                    with local_execution():
+                        await handler(event)
 
             # Confirmar mensaje
             await self.redis.xack(self.stream_name, self.group_name, message_id)

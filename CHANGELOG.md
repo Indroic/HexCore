@@ -2,6 +2,13 @@
 
 ### Fix
 
+- **cqrs**: el worker ya **ejecuta** los `@background_command` que saca de la cola en
+  vez de reencolarlos. Antes, pasarle al `CQRSConsumer` el mismo bus que usa el
+  proceso web —lo natural, y lo que sugería la documentación— producía un bucle
+  infinito silencioso: la cola crecía sin límite y el handler no corría jamás.
+  Nuevo contextvar `hexcore.domain.cqrs.context.IN_WORKER` (P0-1)
+- **cqrs**: mismo arreglo para los suscriptores marcados con `@background_handler`
+  cuando el evento llega por `CQRSConsumer.process_event` (P0-2)
 - **cqrs**: los FQN con `__qualname__` anidado (clases dentro de clases, tasks como
   `@staticmethod`) ya se resuelven bien. Antes `rsplit(".", 1)` producía un module
   path inválido y el mensaje se encolaba correctamente para **fallar en el worker**.
