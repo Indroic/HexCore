@@ -9,6 +9,13 @@ import pytest
     ("beanie", "hexcore.infrastructure.repositories.implementations"),
     ("sqlalchemy", "hexcore.infrastructure.repositories.utils"),
     ("beanie", "hexcore.infrastructure.repositories.utils"),
+    # Los scopes de F3 no deben arrastrar SQLAlchemy en import time.
+    ("sqlalchemy", "hexcore.infrastructure.uow.scopes"),
+    # El módulo de contexto y el de resolución de FQN son stdlib puro.
+    ("sqlalchemy", "hexcore.domain.cqrs.context"),
+    ("sqlalchemy", "hexcore.domain.cqrs.resolution"),
+    ("fastapi", "hexcore.domain.cqrs"),
+    ("fastapi", "hexcore.application.cqrs"),
 ])
 def test_optional_dependencies_do_not_crash_imports(module_to_hide, module_to_import):
     """
