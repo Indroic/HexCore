@@ -34,6 +34,14 @@
   acotar el catch-up, aviso `RuntimeWarning` si el tick es sub-minuto y no hay
   `lock_provider`, primer tick sin esperar el intervalo, `stop()` interrumpible al
   instante, y `except` que loguean traceback en vez de tragarse el error (P1-1)
+- **api**: `RequestIDMiddleware` y `TimingMiddleware` de serie, en
+  `hexcore.infrastructure.api.middlewares`. El request-id se reusa del header entrante
+  si viene, se expone por `ContextVar` (`get_request_id()`) y por `request.state`, y hay
+  un `RequestIDLogFilter` + `install_request_id_logging()` que lo inyectan en cada línea
+  de log — sin eso, tener el header no correlaciona nada (F11)
+- **api**: `build_root_router(prefix, children, dependencies=..., tags=...)` y
+  `mount_routers(app, routers)` en `hexcore.infrastructure.api.routing`, para declarar
+  la composición de routers en vez de escribir un `*_root_router.py` por área (F13)
 - **sql**: capa de sesión usable en producción. `init_engine(url=None, *, pool=PoolSettings(), **engine_kwargs)`
   y `dispose_engine()`; `PoolSettings` (`size`, `max_overflow`, `pre_ping`, `recycle`)
   con `pre_ping=True` por defecto; normalización del DSN (`postgresql://` →
