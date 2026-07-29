@@ -34,6 +34,19 @@
   acotar el catch-up, aviso `RuntimeWarning` si el tick es sub-minuto y no hay
   `lock_provider`, primer tick sin esperar el intervalo, `stop()` interrumpible al
   instante, y `except` que loguean traceback en vez de tragarse el error (P1-1)
+- **sql**: capa de sesión usable en producción. `init_engine(url=None, *, pool=PoolSettings(), **engine_kwargs)`
+  y `dispose_engine()`; `PoolSettings` (`size`, `max_overflow`, `pre_ping`, `recycle`)
+  con `pre_ping=True` por defecto; normalización del DSN (`postgresql://` →
+  `postgresql+asyncpg://`, expuesta como `normalize_async_dsn`); URL explícita para
+  workers, scripts y tests; y lock alrededor de los globals `_engine`/`_session_factory`
+  (F2)
+- **uow**: `session_scope`, `uow_scope`, `open_uow_scope` y `nosql_uow_scope` en
+  `hexcore.infrastructure.uow` — scopes para workers, cron, scripts y seeds, donde
+  antes sólo había dependencias de FastAPI. `session_scope` no construye el UoW, así
+  que no paga el auto-discovery de repositorios para leer una tabla de infraestructura
+  (F3)
+- **api**: nueva dependencia `get_sql_uow_open` para endpoints que quieren el UoW ya
+  abierto (F3)
 - **cqrs**: `CQRSConsumer(command_bus)` — `event_bus` y `serializer` pasan a ser
   opcionales. Un worker sólo-comandos ya no necesita `cast(Any, None)`, y si llega un
   evento sin event bus el error dice qué hacer. `serializer` cae en
@@ -63,6 +76,16 @@
 
 ### Behavior change
 
+- **sql**: el session factory de HexCore pasa a `expire_on_commit=False`. Con el
+  default de SQLAlchemy (`True`) los atributos de las entidades expiran al comitear y
+  el siguiente acceso dispara un lazy-load sobre una sesión cerrada
+  (`MissingGreenlet` / `DetachedInstanceError`) — y la documentación ya enseñaba
+  `async_sessionmaker(engine, expire_on_commit=False)`, o sea que doc e
+  implementación no coincidían. Quien necesite `True` debe construir su propio
+  `async_sessionmaker` (F2)
+- **api**: `get_sql_uow` ya **no entra** al UoW: cede el UoW sin abrir la transacción,
+  para que el use case controle su propio `async with uow:` sin anidar contextos. Si
+  dependías del comportamiento anterior, usá `get_sql_uow_open` (F3)
 - **cqrs**: `TransactionMiddleware` deja de ser el middleware por defecto de
   `CQRSConfig.command_bus`, y `TransactionMiddleware()` sin `uow_factory` ahora lanza
   `ValueError` en vez de adivinar. El default armaba la sesión con el session factory
