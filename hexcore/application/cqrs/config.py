@@ -8,18 +8,17 @@ import typing as t
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class MiddlewareConfig(BaseModel):
-    """Configuración de un middleware individual."""
-
-    enabled: bool = True
-    order: int = 0  # Menor = se ejecuta primero
-    options: dict[str, t.Any] = Field(default_factory=dict)
-
-    model_config = ConfigDict(frozen=True)
-
-
 class BusConfig(BaseModel):
-    """Configuración de un bus individual (command, query o event)."""
+    """
+    Configuración de un bus individual (command, query o event).
+
+    `middlewares` sólo admite middlewares construibles sin argumentos: se instancian con
+    `cls()`. Los que necesitan configuración —`TransactionMiddleware` y su `uow_factory`,
+    `RetryMiddleware` y su política— hay que instanciarlos a mano y pasar el
+    `MiddlewarePipeline` al bus.
+
+    `options` se reenvía al **bus**, no a los middlewares.
+    """
 
     # Clase del bus a instanciar (dotted path o referencia directa)
     # Si es None, usa el bus in-memory por defecto
@@ -46,12 +45,14 @@ class CQRSConfig(BaseModel):
                     backend="hexcore.infrastructure.cqrs.procrastinate.ProcrastinateCommandBus",
                     middlewares=[
                         "hexcore.infrastructure.cqrs.middlewares.LoggingMiddleware",
-                        "hexcore.infrastructure.cqrs.middlewares.RetryMiddleware",
                     ],
-                    options={"max_retries": 3},
+                    options={"queue_name": "hexcore_commands"},
                 ),
             ),
         )
+
+    Nota: `options` se le pasa al **bus**, no a los middlewares. Un middleware que
+    necesite configuración se instancia a mano y se le pasa el pipeline al bus.
     """
 
     enabled: bool = True

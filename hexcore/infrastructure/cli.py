@@ -8,21 +8,21 @@ app = typer.Typer(
     help="CLI para ayudar con tareas de desarrollo en el proyecto Euphoria."
 )
 
-# Asumiendo que el script se ejecuta desde la raíz del proyecto.
-PROJECT_ROOT = LazyConfig.get_config().base_dir
-DOMAIN_PATH = PROJECT_ROOT / "src" / "domain"
-APPLICATION_PATH = PROJECT_ROOT / "src" / "application"
-INFRAESTRUCTURE_PATH = PROJECT_ROOT / "src" / "infrastructure"
-DB_PATH = INFRAESTRUCTURE_PATH / "database"
+# Las rutas se resuelven al ejecutar el comando, no al importar el módulo: `hexcore/__init__.py`
+# importa este módulo, así que una constante a nivel de módulo resolvía la configuración
+# en import time — antes de que la aplicación pudiera llamar a
+# `LazyConfig.set_config_modules()`, y por tanto contra la config equivocada.
+def _project_root() -> Path:
+    """La raíz del proyecto, según la configuración vigente."""
+    return LazyConfig.get_config().base_dir
 
-MODELS_PATH = DB_PATH / "models"
-DOCUMENTS_PATH = DB_PATH / "documents"
 
-TESTS_DOMAIN_PATH = PROJECT_ROOT / "tests" / "domain"
+def _domain_path() -> Path:
+    return _project_root() / "src" / "domain"
 
-README = PROJECT_ROOT / "README.md"
-GITIGNORE = PROJECT_ROOT / ".gitignore"
-MANAGE = PROJECT_ROOT / "manage.py"
+
+def _tests_domain_path() -> Path:
+    return _project_root() / "tests" / "domain"
 
 
 @app.command(name="init")
@@ -126,7 +126,7 @@ def create_domain_module(
         )
         raise typer.Exit(code=1)
 
-    module_path = DOMAIN_PATH / module_name
+    module_path = _domain_path() / module_name
 
     if module_path.exists():
         typer.secho(
@@ -162,7 +162,7 @@ def create_domain_module(
             typer.secho(f"  -> Archivo creado: {file_path}", fg=typer.colors.GREEN)
 
         # 3. Crear directorio y archivos de test
-        test_module_path = TESTS_DOMAIN_PATH / module_name
+        test_module_path = _tests_domain_path() / module_name
         typer.echo(f"Creando el módulo de tests '{module_name}' en: {test_module_path}")
         test_module_path.mkdir(parents=True, exist_ok=True)
         typer.secho(
@@ -194,7 +194,7 @@ def create_domain_module(
             f"2. Define las interfaces de repositorio en 'src/domain/{module_name}/repositories.py'."
         )
         typer.echo(
-            f"3. Escribe pruebas para tus entidades en '{test_entities_path.relative_to(PROJECT_ROOT)}'."
+            f"3. Escribe pruebas para tus entidades en '{test_entities_path.relative_to(_project_root())}'."
         )
 
     except OSError as e:
