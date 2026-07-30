@@ -673,6 +673,28 @@ otro origen (Mongo, Redis, un YAML), implementá `cqrs.ICronJobRepository`.
 `cron_job()` deriva el `task_name` de `__cqrs_task_name__`: escribirlo a mano es cómo se acaba
 con un cron que encola una tarea ya renombrada, y el fallo aparece en el worker.
 
+Cada job lleva además una `description` que viaja a la tabla. El scheduler no la usa: es lo que
+un panel le muestra al operador para que sepa **qué hace** un cron antes de desactivarlo — con
+sólo `task_name` y una expresión cron no se distingue apagar algo inofensivo de dejar de
+facturar. Por defecto sale de la primera línea del docstring de la tarea, que suele ser
+exactamente eso:
+
+```python
+@cqrs.background_task(queue="billing")
+async def emitir_facturas() -> None:
+    """Emite las facturas del mes y las envía por email."""
+    ...
+
+cqrs.cron_job(emitir_facturas, "0 6 1 * *")
+# description == "Emite las facturas del mes y las envía por email."
+
+cqrs.cron_job(cerrar_caja, "0 3 * * *", description="Cierra la caja del día.")
+```
+
+> Si tu tabla es anterior a esta columna, la migración es un `add_column` nullable —
+> `create_cron_tables()` lo trae escrito en su docstring. Un modelo propio que no la tenga no
+> rompe: el seed inserta lo que la tabla admita.
+
 **Cómo decide si toca ejecutar.** No compara contra el minuto actual, sino que busca si hubo
 alguna ocurrencia entre `last_run_at` y ahora:
 
