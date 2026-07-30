@@ -1,3 +1,9 @@
+## 6.0.0 (2026-07-30)
+
+### Feat
+
+- emite DeprecationWarning en toda la superficie de API anterior a 5.0
+
 ## 5.0.0 (2026-07-29)
 
 ### Feat
