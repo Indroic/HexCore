@@ -6,7 +6,7 @@ from __future__ import annotations
 import typing as t
 
 from hexcore.application.use_cases.base import UseCase
-from hexcore.domain.cqrs.handlers import ICommandHandler
+from hexcore.domain.cqrs.handlers import AbstractCommandHandler
 from hexcore.domain.cqrs.commands import Command
 
 
@@ -14,9 +14,9 @@ T = t.TypeVar("T", bound=Command)
 R = t.TypeVar("R")
 
 
-class UseCaseCommandHandler(ICommandHandler[T, R]):
+class UseCaseCommandHandler(AbstractCommandHandler[T, R]):
     """
-    Adaptador que envuelve un UseCase existente como un ICommandHandler.
+    Adaptador que envuelve un UseCase existente como un AbstractCommandHandler.
     Permite migrar progresivamente sin reescribir use cases.
 
     Uso::

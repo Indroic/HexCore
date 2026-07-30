@@ -1,22 +1,55 @@
 # HexCore [![PyPI Downloads](https://static.pepy.tech/personalized-badge/hexcore?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/hexcore)
-HexCore es un módulo base reutilizable para proyectos Python que implementan arquitectura hexagonal y event handling.
+
+Núcleo reutilizable para aplicaciones Python con **arquitectura hexagonal**, **DDD**, **CQRS**
+y **tareas en background**. HexCore trae las abstracciones (entidades, repositorios, UoW,
+buses) *y* la infraestructura que normalmente reescribe cada proyecto: la capa de sesión SQL,
+las factories de FastAPI, el runner del worker, el cron dinámico y las utilidades de test.
+
+El objetivo de diseño es que el camino feliz sea **cero configuración**: `create_app()` sin
+argumentos da una app usable, `init_engine()` sin argumentos da un engine de producción
+correcto.
+
+```python
+# main.py — el arranque completo de una app HexCore
+from hexcore.fastapi import build_lifespan, create_app, SqlEngineStep
+
+app = create_app(
+    lifespan=build_lifespan(SqlEngineStep()),
+    routers=[usuarios_router, tickets_router],
+)
+```
+
+```python
+# worker.py — el worker completo, con cron, muerte mutua y SIGTERM
+import hexcore.cqrs as cqrs
+
+await cqrs.run_procrastinate_worker(
+    procrastinate_app,
+    queues=["default", "reactive"],
+    scheduler=cqrs.DynamicScheduler(repo, enqueuer, lock_provider=lock),
+    on_startup=[lambda: cqrs.seed_cron_jobs(CRON_JOBS)],
+)
+```
 
 ---
 
-## Skills del Proyecto
+## Índice
 
-Este repositorio cuenta con un conjunto de skills adicionales para extender y personalizar funcionalidades en VS Code y otros entornos compatibles. Puedes encontrarlas en:
-
-- [Repositorio de Skills de HexCore](https://github.com/Indroic/hexcore-skill)
-
----
-
-## ¿Qué provee HexCore?
-
-- **Clases base y abstracciones** para entidades, repositorios, servicios y unidad de trabajo (UoW), siguiendo los principios de DDD y arquitectura hexagonal.
-- **Interfaces y contratos** para caché, eventos y manejo de dependencias, desacoplando la lógica de negocio de la infraestructura.
-- **Utilidades para event sourcing y event dispatching** listas para usar en cualquier proyecto.
-- **Estructura flexible** para que puedas construir microservicios o aplicaciones monolíticas desacopladas y testeables.
+- [Instalación](#instalación)
+- [Los tres imports](#los-tres-imports)
+- [Qué trae, de un vistazo](#qué-trae-de-un-vistazo)
+- [Capa SQL: engine, sesiones y scopes](#capa-sql-engine-sesiones-y-scopes)
+- [Utilidades FastAPI](#utilidades-fastapi)
+- [Arquitectura CQRS](#arquitectura-cqrs)
+- [Task Queues (Smart Routing)](#task-queues-smart-routing)
+- [Tareas periódicas dinámicas (cron en caliente)](#tareas-periódicas-dinámicas-cron-en-caliente)
+- [Utilidades de test](#utilidades-de-test)
+- [Repositorios y entidades](#repositorios-y-entidades)
+- [Configuración](#configuración)
+- [Templates de proyecto (CLI)](#templates-de-proyecto-cli)
+- [Versiones y soporte](#versiones-y-soporte) ← **todo lo anterior a 5.0 está deprecado**
+- [Guía de migración a 5.x](#guía-de-migración-a-5x)
+- [Contribuir](#contribuir)
 
 ---
 
@@ -26,477 +59,489 @@ Este repositorio cuenta con un conjunto de skills adicionales para extender y pe
 pip install hexcore
 ```
 
-## Templates de Proyecto (CLI)
+HexCore no arrastra dependencias pesadas: todo lo que no es el núcleo va en **extras**, y los
+módulos que las necesitan sólo las importan cuando los usás.
 
-HexCore incluye templates base para bootstrap de proyectos:
+| Extra | Trae | Habilita |
+| :-- | :-- | :-- |
+| `[api]` | FastAPI, Uvicorn | `hexcore.fastapi`: `create_app`, lifespan, middlewares, health, rate limit, streaming |
+| `[sql]` | SQLAlchemy, asyncpg, Alembic | `hexcore.sql`, repositorios SQL, cron en SQL, `PostgresLockProvider` |
+| `[mongo]` | Beanie, PyMongo | Repositorios y UoW de MongoDB |
+| `[redis]` | redis | `RedisEventBus`, `RedisLockProvider`, `RedisCache` |
+| `[procrastinate]` | Procrastinate | `ProcrastinateEnqueuer`, `run_procrastinate_worker` |
+| `[rabbitmq]` | aio-pika | `RabbitMQEventBus` y su worker |
+| `[all]` | todo lo anterior | — |
 
 ```sh
-hexcore init mi_proyecto --template hexagonal
-hexcore init mi_proyecto --template vertical-slice
+pip install "hexcore[api,sql,procrastinate]"
+pip install "hexcore[all]"
 ```
 
-- `hexagonal`: crea `src/domain`, `src/application`, `src/infrastructure`.
-- `vertical-slice`: crea `src/features`, `src/shared/domain`, `src/shared/application`, `src/shared/infrastructure`.
-
-En ambos templates se generan:
-- `config.py` en raíz con `repository_discovery_paths` de ejemplo.
-- estructura de migraciones con Alembic.
+> `import hexcore.cqrs` funciona sin ningún extra: la resolución de nombres es perezosa, así
+> que `hexcore.cqrs.SqlAlchemyCronJobRepository` sólo exige `[sql]` en el momento en que lo
+> pedís.
 
 ---
 
-## Configuración v2 (Folder-Agnostic)
+## Los tres imports
 
-Desde v2, HexCore usa configuración explícita y no aplica fallback implícito para descubrir repositorios.
-
-### 1. Configuración visible en raíz
-
-Define un archivo `config.py` en la raíz del proyecto:
+Hay un módulo fachada por tarea. Reexportan lo público **sin mover nada de sitio**: las rutas
+largas siguen funcionando y devuelven el mismo objeto.
 
 ```python
-from hexcore.config import ServerConfig
+import hexcore.fastapi as hx    # create_app, build_lifespan, providers, middlewares, health
+import hexcore.cqrs as cqrs     # Command, Query, handlers, decoradores, buses, worker, cron
+import hexcore.sql as sql       # init_engine, session_scope, uow_scope, Base, DTOs de query
+```
 
-config = ServerConfig(
-    repository_discovery_paths={
-        "myapp.features.users.infrastructure.repositories",
-        "myapp.features.billing.infrastructure.repositories",
-    }
+Las fachadas exponen **sólo los nombres canónicos** (`AbstractCommandBus`,
+`AbstractSerializer`, …). Los alias históricos `I*` siguen importables por su ruta de siempre,
+pero están deprecados — ver [Versiones y soporte](#versiones-y-soporte).
+
+---
+
+## Qué trae, de un vistazo
+
+| Necesitás | API | Extra |
+| :-- | :-- | :-- |
+| Una app FastAPI cableada | `hx.create_app()`, `hx.AppFeatures` | `api` |
+| Orquestar el arranque y el apagado | `hx.build_lifespan()` + steps | `api` |
+| Engine y sesiones SQL | `sql.init_engine()`, `sql.dispose_engine()`, `sql.PoolSettings` | `sql` |
+| Sesión o UoW fuera de un request | `sql.session_scope()`, `sql.uow_scope()` | `sql` |
+| Request-id correlacionado en los logs | `hx.RequestIDMiddleware`, `hx.install_request_id_logging()` | `api` |
+| Excepciones de dominio → HTTP | `hx.register_exception_handlers()` | `api` |
+| Health checks que sondean de verdad | `hx.register_health_routes()`, `hx.check_health()` | `api` |
+| Rate limiting | `hx.rate_limit()` | `api` |
+| SSE / WebSocket / límite de conexiones | `hx.sse_stream()`, `hx.ws_heartbeat()`, `hx.connection_slot()` | `api` |
+| Composición de routers | `hx.build_root_router()`, `hx.mount_routers()` | `api` |
+| Endpoints de listado y búsqueda | `hx.register_query_endpoint()` | `api` |
+| Paginación por cursor | `sql.CursorPageDTO`, `sql.CursorRequestDTO` | `sql` |
+| Commands, Queries y eventos | `cqrs.Command`, `cqrs.Query`, `cqrs.HandlerRegistry` | — |
+| Ejecutar en background | `cqrs.background_command`, `cqrs.background_handler`, `cqrs.background_task` | — |
+| Entrypoint del worker | `cqrs.run_cqrs_worker()`, `cqrs.run_procrastinate_worker()` | — |
+| Cron editable en caliente | `cqrs.DynamicScheduler`, `cqrs.SqlAlchemyCronJobRepository` | `sql` |
+| Locks distribuidos | `cqrs.RedisLockProvider`, `cqrs.PostgresLockProvider` | `redis` / `sql` |
+| Testear todo lo anterior | `hexcore.testing` | — |
+
+---
+
+## Capa SQL: engine, sesiones y scopes
+
+```python
+import hexcore.sql as sql
+
+sql.init_engine()          # en el arranque; sin argumentos usa config.async_sql_database_url
+await sql.dispose_engine() # en el apagado
+```
+
+`init_engine()` sin argumentos ya produce un engine correcto para producción. Lo que **no** es
+configurable porque es la única respuesta correcta:
+
+- **`expire_on_commit=False`.** Con el default de SQLAlchemy (`True`) los atributos de las
+  entidades expiran al comitear, y el siguiente acceso dispara un lazy-load sobre una sesión
+  cerrada → `MissingGreenlet` / `DetachedInstanceError`.
+- **Normalización del DSN.** Un `DATABASE_URL` de PaaS viene como `postgresql://…` y
+  `create_async_engine` no lo acepta. Se traduce a `postgresql+asyncpg://` solo. Si tu DSN ya
+  declara driver, se respeta.
+
+Lo que sí se configura va en un objeto de settings, no en una lista de keywords:
+
+```python
+sql.init_engine(
+    url="postgresql://user:pass@host/db",           # opcional; se normaliza
+    pool=sql.PoolSettings(size=20, max_overflow=10, recycle=1800),
+    echo=True,                                      # cualquier kwarg de create_async_engine
 )
 ```
 
-### 2. Prioridad para cargar configuración
+`pool.pre_ping` va en `True` por defecto a propósito: un pool sin pre-ping contra Postgres
+detrás de un balanceador entrega conexiones muertas al primer failover.
 
-`LazyConfig` resuelve módulos en este orden:
+### Fuera de un request
 
-1. `HEXCORE_CONFIG_MODULE`
-2. `HEXCORE_CONFIG_MODULES` (lista separada por comas)
-3. módulos configurados por `LazyConfig.set_config_modules(...)`
-4. `config` por defecto (raíz del proyecto)
-
-### 3. Regla de discovery en v2
-
-- Si `repository_discovery_paths` está vacío, no se cargan módulos de repositorios.
-- UoW falla con error explícito para evitar comportamiento ambiguo.
-
----
-
-## Pautas de Colaboración
-
-¡Gracias por tu interés en contribuir a HexCore! Para mantener una colaboración organizada y eficiente, sigue estas pautas:
-
-### 1. Código de Conducta
-Mantén siempre una comunicación respetuosa y profesional. Revisa el [Código de Conducta](CODE_OF_CONDUCT.md) antes de interactuar.
-
-### 2. Cómo Contribuir
-- **Forkea** el repositorio y crea una rama para tu contribución (`feature/nombre`, `fix/nombre`, etc.).
-- Realiza tus cambios en la rama y asegúrate de que el código funcione correctamente.
-- Escribe una descripción clara y detallada en tu pull request (PR).
-- Relaciona los issues relevantes en tu PR si aplica.
-
-### 3. Estilo y Formato de Código
-- Sigue la guía de estilos de Python ([PEP8](https://pep8.org/)).
-- Usa comentarios cuando sea necesario para clarificar el propósito del código.
-- Idealmente, incluye pruebas unitarias para nuevas funciones y arreglos.
-
-### 4. Revisión de Pull Requests
-- Todos los PR serán revisados antes de ser aceptados. Se pueden solicitar cambios o aclaraciones.
-- Responde a los comentarios de los revisores para facilitar el proceso.
-
-### 5. Issues
-- Describe claramente los problemas que encuentres.
-- Proporciona información relevante (logs, versiones, pasos para reproducir, etc.).
-
-### 6. Comunicación
-- Usa los issues y las discusiones para preguntas, sugerencias o propuestas.
-- Si tienes dudas sobre cómo empezar, puedes abrir un issue para orientación.
-
-### 7. Licencia
-Al contribuir, aceptas que tu código será distribuido bajo la licencia del repositorio.
-
----
-
-## Documentación Básica
-
-### Estructura principal
-
-HexCore se organiza con los siguientes submódulos y carpetas:
-
-- **src/domain/**: Módulos de dominio, entidades, repositorios, servicios, objetos de valor, eventos, enums y excepciones.
-  ```
-  src/domain/{modulo}/
-    ├─ __init__.py
-    ├─ entities.py
-    ├─ repositories.py
-    ├─ services.py
-    ├─ value_objects.py
-    ├─ events.py
-    ├─ enums.py
-    └─ exceptions.py
-  ```
-- **src/application/**: Casos de uso (UseCase) y DTOs para orquestar la lógica de negocio.
-- **src/infrastructure/**: Implementaciones técnicas (ORM/ODM, CLI, caché, base de datos, repositorios, unit of work).
-- **src/infrastructure/database/models/**: Modelos SQLAlchemy para base de datos relacional.
-- **src/infrastructure/database/documents/**: Documentos Beanie para MongoDB.
-- **tests/**: Pruebas para módulos de dominio e infraestructura.
-
----
-
-### Abstracciones de Entidades y Eventos
-
-#### BaseEntity
-
-Clase base para entidades de dominio. Provee atributos comunes y gestión de eventos.
+`get_session`/`get_sql_uow` son dependencias de FastAPI. Para workers, tasks, cron, scripts y
+seeds hay scopes:
 
 ```python
-from hexcore.domain.base import BaseEntity
+async with sql.session_scope() as session:      # sesión pelada
+    rows = (await session.execute(select(CronJobModel))).scalars().all()
 
-class User(BaseEntity):
-    id: UUID
-    name: str
+async with sql.uow_scope() as uow:              # UoW SIN abrir
+    await CerrarTicketUseCase(uow).execute(request)
+
+async with sql.open_uow_scope() as uow:         # UoW ya abierto
+    await uow.tickets.save(ticket)
+    await uow.commit()
 ```
 
-#### DomainEvent y eventos de entidad
+`session_scope` no construye el UoW a propósito: construirlo corre el auto-discovery e
+instancia **todos** los repositorios de dominio, un coste absurdo para leer una tabla de
+infraestructura.
 
-Abstracciones para eventos de dominio y para ciclo de vida de entidades.
-
-```python
-from hexcore.domain.events import DomainEvent, EntityCreatedEvent
-
-class UserCreatedEvent(EntityCreatedEvent[User]):
-    pass
-
-user = User(...)
-event = UserCreatedEvent(entity_id=user.id, payload={"name": user.name})
-```
+**Convención de transacción.** `uow_scope` y la dependencia `hx.get_sql_uow` ceden el UoW
+**sin entrar** en él, para que el use case controle su propio `async with self.uow:` sin anidar
+contextos. Si querés el UoW ya abierto, usá `open_uow_scope` / `hx.get_sql_uow_open`.
 
 ---
 
-### Implementaciones de Repositorios
+## Utilidades FastAPI
 
-#### SQLAlchemyCommonImplementationsRepo
-
-Repositorio genérico para modelos SQLAlchemy con métodos CRUD reutilizables.
+### `create_app()`
 
 ```python
-class SQLAlchemyCommonImplementationsRepo(BaseSQLAlchemyRepository[T], HasBasicArgs[T, M], t.Generic[T, M]):
-    # Métodos principales: get_by_id, list_all, save, delete
-    ...
+from hexcore.fastapi import create_app
+
+app = create_app()   # ya es una app usable
 ```
 
-**Ejemplo:**
+Sin argumentos cablea: `title`/`version` desde `ServerConfig`, CORS desde
+`config.allow_origins`, middleware `X-Request-ID`, middleware de timing, mapeo de excepciones
+de dominio a HTTP, y las rutas `/health` y `/health/ready`.
+
+Los interruptores van en **un solo objeto**, no en ocho keywords:
 
 ```python
-class UserRepository(SQLAlchemyCommonImplementationsRepo[UserEntity, UserModel]):
-    def __init__(self, uow):
-        super().__init__(
-            entity_cls=UserEntity,
-            model_cls=UserModel,
-            not_found_exception=UserNotFoundException,
-            fields_resolvers=None,
-            fields_serializers=None,
-            uow=uow
-        )
-```
+from hexcore.fastapi import AppFeatures, create_app
 
-#### BeanieODMCommonImplementationsRepo
-
-Repositorio genérico para documentos Beanie ODM (MongoDB) con métodos CRUD reutilizables.
-
-```python
-class BeanieODMCommonImplementationsRepo(IBaseRepository[T], HasBasicArgs[T, D], t.Generic[T, D]):
-    # Métodos principales: get_by_id, list_all, save, delete
-    ...
-```
-
-**Ejemplo:**
-
-```python
-class UserRepository(BeanieODMCommonImplementationsRepo[UserEntity, UserDocument]):
-    def __init__(self, uow):
-        super().__init__(
-            entity_cls=UserEntity,
-            document_cls=UserDocument,
-            not_found_exception=UserNotFoundException,
-            fields_resolvers=None,
-            fields_serializers=None,
-            uow=uow
-        )
-```
-
----
-
-### Inicialización y Descubrimiento de Documentos Beanie
-
-Para inicializar y registrar automáticamente todos los documentos Beanie:
-
-```python
-from hexcore.infrastructure.repositories.orms.beanie.utils import init_beanie_documents
-
-await init_beanie_documents()
-```
-
----
-
-### Conversión entre modelos/documentos y entidades
-
-Ambos repositorios utilizan `to_entity_from_model_or_document` para convertir modelos ORM/ODM en entidades del dominio, aplicando resolvers para atributos complejos.
-
----
-
----
-
-## Arquitectura CQRS en HexCore
-
-HexCore v2 integra de forma nativa soporte para el patrón **CQRS (Command Query Responsibility Segregation)**, permitiendo separar conceptual y técnicamente las operaciones de escritura (Commands) de las de lectura (Queries). 
-
-### ¿Cómo funciona el CQRS en HexCore?
-
-El sistema se basa en 3 buses principales, configurables e independientes:
-
-1. **`AbstractCommandBus`**: Despacha inteniones de mutación (`Command`) a un único `AbstractCommandHandler`. Los commands modifican el estado del sistema. La transacción la gestiona el handler (el patrón que enseñan los ejemplos de use case); si preferís que la gestione el bus, añadí `TransactionMiddleware` explícitamente con su `uow_factory`.
-2. **`AbstractQueryBus`**: Despacha intenciones de lectura (`Query`) a un único `AbstractQueryHandler`. Retornan un resultado sin mutar el estado.
-3. **`EventBus`**: Distribuye eventos de dominio (`DomainEvent`) a múltiples suscriptores asíncronamente (vía `subscribe`/`publish`).
-
-La configuración de CQRS se activa mediante el `CQRSConfig` en tu `ServerConfig`:
-
-```python
-from hexcore.config import ServerConfig
-from hexcore.application.cqrs.config import CQRSConfig, BusConfig
-
-config = ServerConfig(
-    cqrs=CQRSConfig(
-        command_bus=BusConfig(
-            # Sin middlewares por defecto. Los que no necesitan configuración se
-            # pueden declarar por dotted path:
-            middlewares=["hexcore.infrastructure.cqrs.middlewares.LoggingMiddleware"]
-        ),
-        # Puedes sustituir el backend en memoria por uno distribuido (Ej: Celery, Procrastinate)
-        # backend="mi_app.infrastructure.ProcrastinateCommandBus" 
-    )
+app = create_app(
+    features=AppFeatures(cors=False, timing=False),
+    routers=[(usuarios_router, {"prefix": "/api/v1"})],
+    title="Red API",          # cualquier kwarg de FastAPI se reenvía tal cual
 )
 ```
 
-> **`TransactionMiddleware` no es el default.** Comitea después del handler, así que
-> con un handler que ya gestiona su propia transacción comitearías dos veces. Y
-> necesita un `uow_factory` construido con *tu* engine, cosa que no se puede expresar
-> como dotted path: instancialo a mano y pasá el pipeline al bus.
->
-> ```python
-> TransactionMiddleware(uow_factory=lambda: SqlAlchemyUnitOfWork(session=session_factory()))
-> ```
-
----
-
-### Guía de Migración: De Casos de Uso Clásicos a CQRS
-
-Si ya tienes una aplicación escrita con la abstracción `UseCase` de HexCore, puedes migrar progresivamente a CQRS sin reescribir todo tu código, utilizando los adaptadores incluidos.
-
-#### Paso 1: Usar el adaptador `UseCaseCommandHandler`
-
-En lugar de instanciar un UseCase directamente en tu endpoint, envuélvelo en un comando:
+### `build_lifespan()`
 
 ```python
-import hexcore.cqrs as cqrs
-
-# 1. Tienes tu UseCase legado, con sus dependencias
-class CreateUserUseCase(UseCase[CreateUserCommand, UserDTO]):
-    def __init__(self, uow: IUnitOfWork) -> None:
-        self.uow = uow
-
-    async def execute(self, request: CreateUserCommand) -> UserDTO:
-        # logica legacy
-        ...
-
-# 2. Lo registras en el registry de CQRS utilizando el adaptador
-registry = cqrs.HandlerRegistry()
-registry.register_command_handler(
-    CreateUserCommand,
-    cqrs.UseCaseCommandHandler(CreateUserUseCase(uow)),
+from hexcore.fastapi import (
+    BeanieStep, CallableStep, CronSeedStep, EventBusStep,
+    ProcrastinateStep, SqlEngineStep, build_lifespan, create_app,
 )
 
-# O con un factory, si quieres resolver las dependencias en el momento del dispatch:
-registry.register_command_handler(
-    CreateUserCommand,
-    cqrs.HandlerRegistry.factory(
-        lambda: cqrs.UseCaseCommandHandler(CreateUserUseCase(build_uow()))
+app = create_app(
+    lifespan=build_lifespan(
+        SqlEngineStep(),
+        BeanieStep(documents=MONGO_DOCUMENTS),
+        EventBusStep(RealtimeEventDispatcher()),
+        ProcrastinateStep(procrastinate_app),
+        CronSeedStep(CRON_JOBS),
+        CallableStep("warm-caches", warm_validation_cache, on_error="warn"),
     ),
 )
 ```
 
-> El método es `register_command_handler` (y `register_query_handler`), no
-> `register_command`.
+Garantías que son la razón de existir del helper:
 
-#### Paso 2: Consumirlo desde el endpoint usando el CommandBus
+- **Teardown en orden inverso**, y sólo de los steps que **sí** arrancaron.
+- `on_error="warn"` **por step**: un warmup de caché no debe tumbar el arranque, y eso se
+  declara en el step sin relajar la política de todo el arranque.
+- Un log por step con su duración.
+- Un teardown que falla no impide los siguientes ni tapa la excepción que provocó el apagado.
+
+### Health checks
 
 ```python
-@router.post("/users")
-async def create_user(
-    cmd: CreateUserCommand, 
-    # factory inyectado por dependencias
-    bus: AbstractCommandBus = Depends(get_command_bus)
-):
-    # El bus despacha el comando al UseCase legacy de forma transparente
-    result = await bus.dispatch(cmd)
-    return result
+from hexcore.fastapi import Probe, register_health_routes
+
+register_health_routes(app)                      # /health y /health/ready
+register_health_routes(app, path="/_status")     # o donde quieras
 ```
 
-#### Paso 3 (Final): Refactor a Handler Puro
+- `/health` → **liveness**: 200 sin tocar nada. Es lo correcto: si sondeara dependencias, un
+  Redis caído provocaría que Kubernetes reiniciara una app perfectamente sana.
+- `/health/ready` → **readiness**: `SELECT 1` al engine, `ping` a Redis y a Mongo, con timeout
+  propio por sonda y todas concurrentes. Devuelve **503** con el detalle y la latencia por
+  dependencia.
 
-Cuando estés listo, convierte tu UseCase directamente en un `AbstractCommandHandler`:
+Una dependencia no crítica reporta `degraded` en vez de `down` (sin Redis la app sirve más
+lento, no deja de servir):
+
+```python
+register_health_routes(app, probes=[
+    Probe("sql", check_database),
+    Probe("cache", check_redis, timeout=1.0, critical=False),
+])
+```
+
+### Rate limiting
+
+```python
+from fastapi import Depends
+from hexcore.fastapi import rate_limit
+
+@router.get("/reports", dependencies=[Depends(rate_limit(10, 60))])
+async def reports(): ...
+
+por_usuario = rate_limit(100, 3600, key=lambda r: r.state.user_id)
+```
+
+Se apoya en el puerto `ICache`, no en Redis directamente, así que funciona con `MemoryCache` en
+tests. Devuelve **429 con `Retry-After`**, y la política ante un backend caído es explícita:
+
+```python
+rate_limit(10, 60, on_backend_error="allow")  # default: un Redis caído no tumba la API
+rate_limit(10, 60, on_backend_error="deny")
+```
+
+### Request-id correlacionado
+
+```python
+from hexcore.fastapi import get_request_id, install_request_id_logging
+
+install_request_id_logging(fmt="%(asctime)s [%(request_id)s] %(message)s")
+```
+
+`RequestIDMiddleware` reusa el header entrante si viene (romper la cadena del gateway es perder
+la traza) y lo publica en un `ContextVar` y en `request.state`. `install_request_id_logging()`
+lo inyecta en **cada línea de log**, que es la mitad del valor: sin eso, tener el header no
+correlaciona nada.
+
+### Streaming: SSE, WebSocket y límite de conexiones
+
+```python
+from hexcore.fastapi import connection_slot, sse_stream, ws_heartbeat
+
+@router.get("/events")
+async def events():
+    return sse_stream(mi_generador(), heartbeat_seconds=30)
+```
+
+El heartbeat es un comentario SSE que los clientes ignoran y los proxies cuentan como tráfico:
+sin él, un balanceador con idle timeout corta la conexión. Se añade también
+`X-Accel-Buffering: no`, sin el cual nginx acumula los eventos y el stream llega a bloques.
+
+```python
+async with connection_slot(cache, f"ws:{user_id}", max_connections=3) as granted:
+    if not granted:
+        await ws.close(code=1013)
+        return
+    await ws.accept()
+    async with ws_heartbeat(ws, interval=30):
+        ...
+```
+
+`connection_slot` libera el slot **aunque el bloque lance o se cancele**: filtrar un slot al
+desconectarse mal deja al usuario sin poder reconectar hasta que expire, y es el bug clásico de
+estos límites.
+
+### Composición de routers
+
+```python
+from fastapi import Depends
+from hexcore.fastapi import build_root_router, mount_routers
+
+admin = build_root_router(
+    "/admin",
+    {"/users": users_router, "/reports": reports_router},
+    dependencies=[Depends(require_admin)],
+    tags=["admin"],
+)
+
+mount_routers(app, [admin, (public_router, {"prefix": "/v1"})])
+```
+
+### Endpoints de listado y búsqueda
+
+```python
+from fastapi import Depends
+from hexcore.fastapi import register_query_endpoint
+
+register_query_endpoint(
+    router,
+    path="/tickets",
+    use_case_factory=lambda: QueryEntitiesUseCase(repo),
+    dependencies=[Depends(get_current_user)],
+)
+```
+
+Soporta `limit`/`offset`, `search`, `search_fields`, `filters` (`campo:operador:valor`) y `sort`
+(`campo:asc|desc`). Un campo inválido devuelve un **422 estructurado** con `field` y `allowed`,
+no un string crudo.
+
+Para listados grandes, donde `OFFSET 100000` obliga a escanear 100.000 filas, hay paginación
+por cursor:
+
+```python
+import hexcore.sql as sql
+
+page = await repo.query_cursor(sql.CursorRequestDTO(limit=50, sort_field="created_at"))
+page.items, page.next_cursor
+```
+
+El cursor es opaco (base64url de `(sort_key, id)`) a propósito: si fuera legible, los clientes
+lo construirían a mano y quedaría congelado como API pública.
+
+### Providers CQRS
+
+```python
+from fastapi import Depends
+from hexcore.fastapi import configure_cqrs, provide_command_bus
+
+container = configure_cqrs(registry, enqueuer=enqueuer)   # una vez, al arrancar
+
+@router.post("/tickets")
+async def crear(cmd: CrearTicket, bus=Depends(provide_command_bus)):
+    return await bus.dispatch(cmd)
+```
+
+Existen como funciones por una única razón: poder sobreescribirlas con
+`app.dependency_overrides` en los tests. Y `container.build_consumer()` construye el consumer
+del worker sobre **los mismos** buses y el mismo serializer, así que no hay dos fuentes de
+verdad entre la web y el worker.
+
+---
+
+## Arquitectura CQRS
+
+HexCore integra CQRS de forma nativa, separando las operaciones de escritura (Commands) de las
+de lectura (Queries).
+
+Tres buses configurables e independientes:
+
+1. **`AbstractCommandBus`** — despacha intenciones de mutación (`Command`) a un único handler.
+   La transacción la gestiona el handler; si preferís que la gestione el bus, añadí
+   `TransactionMiddleware` con su `uow_factory`.
+2. **`AbstractQueryBus`** — despacha intenciones de lectura (`Query`) y retorna un resultado sin
+   mutar estado.
+3. **`AbstractEventBus`** — distribuye eventos de dominio a múltiples suscriptores.
+
+```python
+import hexcore.cqrs as cqrs
+
+class CrearTicket(cqrs.Command):
+    titulo: str
+
+class CrearTicketHandler:
+    async def handle(self, cmd: CrearTicket) -> str: ...
+
+registry = cqrs.HandlerRegistry()
+registry.register_command_handler(CrearTicket, CrearTicketHandler())
+
+bus = cqrs.InMemoryCommandBus(registry=registry)
+await bus.dispatch(CrearTicket(titulo="Algo se rompió"))
+```
+
+Para resolver dependencias en el momento del dispatch, registrá un factory:
+
+```python
+registry.register_command_handler(
+    CrearTicket,
+    cqrs.HandlerRegistry.factory(lambda: CrearTicketHandler(build_uow())),
+)
+```
+
+`HandlerRegistry.factory()` es un marcador explícito. Sin él, un handler que implemente
+`__call__` sería indistinguible de un factory.
+
+### Configuración declarativa
+
+```python
+from hexcore.application.cqrs.config import BusConfig, CQRSConfig
+from hexcore.config import ServerConfig
+
+config = ServerConfig(
+    cqrs=CQRSConfig(
+        command_bus=BusConfig(
+            middlewares=["hexcore.infrastructure.cqrs.middlewares.LoggingMiddleware"],
+        ),
+    ),
+)
+```
+
+`middlewares` admite sólo middlewares construibles sin argumentos: se instancian con `cls()`.
+Los que necesitan configuración se instancian a mano y se le pasa el `MiddlewarePipeline` al
+bus. `options` se reenvía al **bus**, no a los middlewares.
+
+> **`TransactionMiddleware` no es el default.** Comitea después del handler, así que con un
+> handler que ya gestiona su transacción comitearías dos veces. Y necesita un `uow_factory`
+> construido con *tu* engine, que no se puede expresar como dotted path:
+>
+> ```python
+> cqrs.TransactionMiddleware(uow_factory=lambda: SqlAlchemyUnitOfWork(session=session_factory()))
+> ```
+
+> **`RetryMiddleware` y el retry de la cola se multiplican.** Si la cola reintenta 3 veces y el
+> middleware 3 veces dentro de cada intento, el handler corre hasta 12 veces, no 6. Con un
+> handler no idempotente eso son 12 cobros. Elegí uno: el de la cola para
+> `@background_command` (persiste el intento y sobrevive a un reinicio del worker), éste para
+> comandos síncronos. El middleware avisa si detecta las dos cosas juntas.
+
+### Migrar desde `UseCase`
+
+Si ya tenés una aplicación escrita con la abstracción `UseCase`, podés migrar
+progresivamente con el adaptador incluido:
+
+```python
+import hexcore.cqrs as cqrs
+
+class CreateUserUseCase(UseCase[CreateUserCommand, UserDTO]):
+    def __init__(self, uow: IUnitOfWork) -> None:
+        self.uow = uow
+
+    async def execute(self, request: CreateUserCommand) -> UserDTO: ...
+
+registry.register_command_handler(
+    CreateUserCommand,
+    cqrs.UseCaseCommandHandler(CreateUserUseCase(uow)),
+)
+```
+
+Cuando estés listo, el use case pasa a ser un handler puro:
 
 ```python
 from hexcore.domain.cqrs import AbstractCommandHandler
 
 class CreateUserHandler(AbstractCommandHandler[CreateUserCommand, UserDTO]):
-    def __init__(self, uow: IUnitOfWork):
+    def __init__(self, uow) -> None:
         self.uow = uow
 
-    async def handle(self, command: CreateUserCommand) -> UserDTO:
-        # Lógica refactorizada
-        return dto
+    async def handle(self, command: CreateUserCommand) -> UserDTO: ...
 ```
 
----
+### Almacenamiento híbrido para lecturas
 
-### Guía: Almacenamiento Híbrido para Queries (Mongo, Redis, SQL)
-
-La mayor ventaja de CQRS es optimizar las lecturas. HexCore permite que tus **Commands** escriban en una base de datos relacional (SQLAlchemy) fuertemente normalizada, mientras que los **Queries** leen de vistas desnormalizadas súper rápidas en MongoDB o Redis.
-
-#### 1. Sincronización a través del EventBus (La Proyección)
-
-Cuando un Command modifica SQL, dispara un Evento de Dominio. Un handler de eventos intercepta este evento y actualiza el "Read Model" en MongoDB o Redis.
+Los Commands escriben en SQL normalizado; las Queries leen de proyecciones desnormalizadas en
+Mongo o Redis, sincronizadas por el EventBus.
 
 ```python
-from hexcore.domain.events import EventBus, DomainEvent
+async def project_user_to_mongodb(event: UserCreatedEvent) -> None:
+    await UserReadDocument(id=event.user_id, name=event.full_name).insert()
 
-class UserCreatedEvent(DomainEvent):
-    user_id: str
-    full_name: str
-    email: str
-
-async def project_user_to_mongodb(event: UserCreatedEvent):
-    """Proyecta el evento en la BD de lectura (MongoDB)"""
-    doc = UserReadDocument(
-        id=event.user_id, 
-        name=event.full_name, 
-        email=event.email
-    )
-    await doc.insert() # usando Beanie (Mongo)
-
-# Registrar la proyección
 event_bus.subscribe(UserCreatedEvent, project_user_to_mongodb)
 ```
 
-#### 2. Query Handler leyendo del Read Model
-
-Tu QueryHandler nunca toca SQL, simplemente ataca directamente a Mongo o Redis para máxima velocidad.
-
-```python
-from hexcore.domain.cqrs import AbstractQueryHandler, Query
-
-class GetUserQuery(Query[UserReadDTO]):
-    user_id: str
-
-class GetUserQueryHandler(AbstractQueryHandler[GetUserQuery, UserReadDTO]):
-    async def handle(self, query: GetUserQuery) -> UserReadDTO:
-        # Consulta ultra rápida a la colección de lectura en MongoDB
-        doc = await UserReadDocument.get(query.user_id)
-        
-        # O desde Redis:
-        # data = await redis_client.get(f"user:{query.user_id}")
-        
-        if not doc:
-            raise UserNotFoundException()
-        return UserReadDTO(**doc.dict())
-```
-
-Con este esquema, alcanzas una alta escalabilidad: tus endpoints GET son despachados por el `QueryBus` respondiendo en milisegundos desde Mongo/Redis, y tus operaciones POST/PUT/DELETE van por el `CommandBus` transaccionando con ACID en SQL.
-
-#### 3. Definición de Modelos de Lectura (Proyecciones)
-
-Una pregunta frecuente es: **¿HexCore genera automáticamente estos modelos de lectura?** 
-La respuesta es **No**. El patrón CQRS sugiere que tus modelos de lectura estén diseñados *específicamente* para lo que tus interfaces visuales (UI) o APIs van a consultar. Por lo tanto, debes definir estos modelos manualmente.
-
-**Si usas MongoDB (Beanie) para lecturas:**
-Debes crear un documento manual optimizado. Por ejemplo, en lugar de tener joins, puedes embeber datos:
-```python
-from beanie import Document
-
-# Modelo desnormalizado optimizado para la lectura
-class UserReadDocument(Document):
-    id: str  # ID referenciado de la tabla SQL
-    name: str
-    email: str
-    total_purchases_cache: int = 0  # Dato pre-calculado por eventos
-
-    class Settings:
-        name = "users_read_projections"
-```
-
-**Si usas PostgreSQL/MySQL (SQLAlchemy) para lecturas:**
-Si prefieres mantenerte 100% en SQL pero aislando lecturas, puedes crear tablas específicas para proyecciones (Materialized Views o tablas planas):
-```python
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, String, Integer
-
-Base = declarative_base()
-
-class UserReadProjection(Base):
-    __tablename__ = 'users_read_projection'
-    
-    # Modelo totalmente plano sin relaciones ForeignKey complejas
-    id = Column(String, primary_key=True)
-    full_name = Column(String)
-    email = Column(String)
-    total_purchases_cache = Column(Integer, default=0)
-```
-En ambos casos, es tu **EventBus** (o un consumidor como Procrastinate) el encargado de instanciar estos modelos manuales y persistirlos cada vez que se detecte un cambio en los modelos de escritura.
+HexCore **no** genera los modelos de lectura: el patrón pide que estén diseñados
+específicamente para lo que tu UI o API consulta, así que los defines vos. También tenés
+`PostgresEventBus(pool, serializer, channel_name)` con `LISTEN/NOTIFY` nativo si no querés
+Redis.
 
 ---
 
-### Integración con Task Queues (Smart Routing)
+## Task Queues (Smart Routing)
 
-HexCore v2 hace que la delegación de tareas a **Celery**, **Procrastinate** o **ARQ** sea increíblemente sencilla y mágica a través del patrón de **Smart Routing**.
-
-Ya no necesitas instanciar buses separados para código síncrono y asíncrono. HexCore enruta automáticamente tus comandos y eventos hacia las colas de background usando simples decoradores.
-
-#### 1. Decoradores de Background
-
-HexCore ofrece 3 decoradores esenciales en `hexcore.domain.cqrs.decorators` para cubrir todos los casos de uso:
-
-1. **`@background_command(queue="...")`**: Aplícalo sobre una clase `Command`. Todo el comando y su handler se ejecutarán asíncronamente en el Worker. Ideal para operaciones pesadas iniciadas por el usuario (ej. Generar un reporte PDF masivo).
-2. **`@background_handler(queue="...")`**: Aplícalo sobre una función que maneje un evento (`DomainEvent`). Permite que un solo evento dispare algunas acciones síncronas rápidas y otras asíncronas lentas (ej. Enviar emails).
-3. **`@background_task(queue="...")`**: Aplícalo sobre funciones o utilidades genéricas que no pertenecen al modelo estricto de CQRS (ej. Limpiar base de datos, tareas tipo CRON).
-
-**Ejemplos de uso:**
+No necesitás buses separados para código síncrono y asíncrono. HexCore enruta comandos y
+eventos hacia las colas con decoradores.
 
 ```python
-from hexcore.domain.cqrs.decorators import background_command, background_handler, background_task
-from hexcore.domain.cqrs.commands import Command
+import hexcore.cqrs as cqrs
 
-# 1. Comando de ejecución asíncrona obligatoria
-@background_command(queue="high_priority")
-class SendEmailCommand(Command):
+@cqrs.background_command(queue="high_priority")
+class SendEmailCommand(cqrs.Command):
     user_id: str
     template: str
 
-# 2. Handler de evento asíncrono
-@background_handler(queue="analytics")
-async def send_analytics_on_user_created(event: UserCreatedEvent):
-    # Lógica costosa...
-    pass
+@cqrs.background_handler(queue="analytics")
+async def on_user_created(event: UserCreatedEvent) -> None: ...
 
-# 3. Tarea genérica (Non-CQRS)
-@background_task(queue="maintenance")
-async def clean_old_records_task(days_retention: int):
-    # Limpieza de base de datos...
-    pass
+@cqrs.background_task(queue="maintenance")
+async def clean_old_records_task(days_retention: int) -> None: ...
 ```
 
-#### 2. Usar un Enqueuer (Adaptador)
+Los tres decoradores **rechazan al decorar** cualquier objeto definido dentro de otra función:
+su `__qualname__` lleva `<locals>` y el worker nunca podría importarlo. Fallar al importar es
+mejor que fallar en el primer job.
 
-No hace falta escribirlo: HexCore trae `ProcrastinateEnqueuer` y `CeleryEnqueuer` listos, y
-registran las tareas del consumidor con los nombres `hexcore.process_command`,
-`hexcore.process_handler` y `hexcore.process_task`.
+### El enqueuer
 
 ```python
 from hexcore.infrastructure.task_queues.procrastinate_adapter import ProcrastinateEnqueuer
@@ -504,117 +549,93 @@ from hexcore.infrastructure.task_queues.procrastinate_adapter import Procrastina
 enqueuer = ProcrastinateEnqueuer(procrastinate_app)
 ```
 
-Si necesitas otro broker, implementa `ITaskEnqueuer` (4 métodos). Dos advertencias:
+HexCore trae `ProcrastinateEnqueuer` y `CeleryEnqueuer`. Si necesitás otro broker, implementá
+`ITaskEnqueuer` (4 métodos), con dos advertencias:
 
-- **`enqueue_event` no es un `pass`.** Una cola de tareas no puede hacer fan-out a "todos
-  los suscriptores", así que los adaptadores oficiales lanzan `NotImplementedError` en vez
-  de perder el evento en silencio. Para ejecutar un suscriptor concreto en background usa
-  `@background_handler` (el EventBus llamará a `enqueue_handler`); para fan-out real usa
-  `RedisEventBus` o `PostgresEventBus`.
-- Si envuelves corutinas en un worker síncrono (Celery), no uses `asyncio.run()` por tarea:
-  cierra el event loop y deja el pool del `AsyncEngine` atado a un loop muerto. HexCore usa
-  un loop persistente por proceso, expuesto como `run_in_worker_loop(coro)`.
+- **`enqueue_event` no es un `pass`.** Una cola de tareas no puede hacer fan-out a "todos los
+  suscriptores", así que los adaptadores oficiales lanzan `NotImplementedError` en vez de
+  perder el evento en silencio. Para ejecutar un suscriptor concreto en background usá
+  `@background_handler`; para fan-out real, `RedisEventBus` o `PostgresEventBus`.
+- **No uses `asyncio.run()` por tarea** en un worker síncrono: cierra el event loop y deja el
+  pool del `AsyncEngine` atado a un loop muerto (`Event loop is closed`). El adaptador de
+  Celery usa un loop persistente por proceso, expuesto como `run_in_worker_loop(coro)`.
 
-#### 3. Configurar tus Buses con un Adaptador Oficial
+### Los buses con Smart Routing
 
-HexCore provee adaptadores *plug & play* para **Celery** y **Procrastinate**. Simplemente importa el enqueuer, pásale tu app y configúralo en los buses de memoria.
-
-Si además deseas persistencia o distribución de Eventos entre múltiples workers/servidores (Pub/Sub), puedes cambiar el `InMemoryEventBus` por `RedisEventBus`, `PostgresEventBus` o `RabbitMQEventBus`:
+La forma recomendada es la factory, que propaga enqueuer y serializer y falla al construir si
+faltan:
 
 ```python
-from hexcore.application.cqrs.in_memory_buses import InMemoryCommandBus
-from hexcore.infrastructure.task_queues.celery_adapter import CeleryEnqueuer
+factory = cqrs.CQRSFactory(cqrs.CQRSConfig(), registry, enqueuer=enqueuer)
+command_bus = factory.create_command_bus()
+event_bus = factory.create_event_bus()
+```
+
+Para eventos distribuidos entre réplicas, sustituí el bus in-memory:
+
+```python
 from hexcore.infrastructure.cqrs.redis_bus import RedisEventBus
-from celery import Celery
-import redis.asyncio as redis
 
-# 1. Adaptador de Task Queue (Para Comandos asíncronos y Event Handlers asíncronos)
-app = Celery("my_app", broker="redis://localhost:6379/0")
-enqueuer = CeleryEnqueuer(app)
-serializer = PydanticSerializer()
-
-command_bus = InMemoryCommandBus(registry=registry, enqueuer=enqueuer, serializer=serializer)
-
-# 2. Event Bus (Para enviar los Eventos por la red)
-redis_client = redis.from_url("redis://localhost:6379/0")
 event_bus = RedisEventBus(
     redis_client=redis_client,
-    serializer=serializer,
+    serializer=cqrs.PydanticSerializer(),
     stream_name="hexcore:events",
     group_name="api_workers",
-    enqueuer=enqueuer  # <-- Importante para inyectarle la habilidad de Smart Routing
+    enqueuer=enqueuer,   # necesario para que el bus pueda enrutar a background
 )
 ```
 
-> **Tip:** También dispones de `PostgresEventBus(pool, serializer, channel_name)` que usa `LISTEN/NOTIFY` nativo si quieres 0 dependencias externas aparte de tu BD de siempre.
-
-#### 4. Ejecutar tareas genéricas
-
-Para encolar la tarea genérica (`@background_task`), la llamas indirectamente pasándola por el enqueuer:
-
-```python
-# Así se encola una tarea genérica sin CQRS:
-await enqueuer.enqueue_task(
-    task_name=clean_old_records_task.__cqrs_task_name__, 
-    payload={"days_retention": 30},
-    queue=clean_old_records_task.__cqrs_queue__
-)
-```
-
-#### 5. Levantar el Worker (Consumidor Universal)
-
-En el entrypoint de tu worker, `register_hexcore_*_tasks` autoconfigura las rutas
-`hexcore.process_command`, `hexcore.process_handler` y `hexcore.process_task`:
+### El worker
 
 ```python
 import hexcore.cqrs as cqrs
-from hexcore.infrastructure.task_queues.celery_adapter import register_hexcore_celery_tasks
+from hexcore.infrastructure.task_queues.procrastinate_adapter import (
+    register_hexcore_procrastinate_tasks,
+)
 
-# Le pasas el MISMO bus que usa el proceso web: el consumer marca el mensaje como
-# "viene del worker", así que el bus lo ejecuta en vez de reencolarlo.
+# El MISMO bus que usa el proceso web: el consumer marca el mensaje como "viene del
+# worker", así que el bus lo ejecuta en vez de reencolarlo.
 consumer = cqrs.CQRSConsumer(command_bus, event_bus)
+register_hexcore_procrastinate_tasks(procrastinate_app, consumer)  # idempotente
 
-register_hexcore_celery_tasks(app, consumer)  # idempotente: llamarla dos veces no revienta
+await cqrs.run_procrastinate_worker(procrastinate_app, queues=["default"], concurrency=4)
 ```
 
-Un worker que sólo procesa comandos puede omitir el event bus: `cqrs.CQRSConsumer(command_bus)`.
+Un worker sólo-comandos puede omitir el event bus: `cqrs.CQRSConsumer(command_bus)`.
 
-Y el entrypoint completo del worker (con scheduler, muerte mutua y SIGTERM) es una llamada:
+`run_cqrs_worker` es la versión genérica, para cualquier broker:
 
 ```python
-await cqrs.run_procrastinate_worker(
-    procrastinate_app,
-    queues=["default", "reactive"],
-    scheduler=cqrs.DynamicScheduler(repo, enqueuer, lock_provider=lock),
-    on_startup=[lambda: cqrs.seed_cron_jobs(CRON_JOBS)],
+await cqrs.run_cqrs_worker(
+    cqrs.worker_loop("mi-broker", mi_consumidor.run, mi_consumidor.stop),
+    scheduler=scheduler,
+    on_startup=[init_todo],
+    on_shutdown=[cerrar_todo],
 )
 ```
 
-#### 6. Ejecutar un comando "aquí y ahora"
+Si **cualquiera** de los bucles muere, se cancela el resto y el proceso sale con `WorkerDied`
+para que el orquestador lo reinicie completo: correr con un bucle caído —encolar sin consumir,
+o al revés— es peor que caerse. `SIGTERM`/`SIGINT` se traducen a drenaje ordenado.
 
-No hay una API separada para esto, y es a propósito: el contrato es que **el bus decide
-por contexto**.
+### Ejecutar un comando "aquí y ahora"
+
+No hay API separada, y es a propósito: **el bus decide por contexto**.
 
 - Fuera de un worker, un `@background_command` se encola.
-- Dentro de un worker (es decir, cuando el mensaje viene del `CQRSConsumer`) el **mismo**
-  bus lo ejecuta localmente. Por eso puedes —y debes— compartir un único bus entre la app
-  web y el worker.
-- Si un handler despacha a propósito otro `@background_command`, ese sí se encola: el
-  contexto de worker se consume en el primer dispatch.
+- Dentro de un worker (el mensaje viene del `CQRSConsumer`) el **mismo** bus lo ejecuta
+  localmente. Por eso podés —y debés— compartir un único bus entre la web y el worker.
+- Si un handler despacha a propósito otro `@background_command`, ése sí se encola: el contexto
+  de worker se consume en el primer dispatch.
 
-Si necesitas comprobarlo desde tu código, `cqrs.is_worker_execution()` responde si el
-mensaje en curso viene de una cola.
+`cqrs.is_worker_execution()` responde si el mensaje en curso viene de una cola.
 
 ---
 
-## Tareas Periódicas Dinámicas (Cronjobs en Caliente)
+## Tareas periódicas dinámicas (cron en caliente)
 
-HexCore incluye un **`DynamicScheduler`** que te permite programar tareas (`@background_task`) para que se ejecuten periódicamente. La ventaja clave es que lee la configuración desde un repositorio (como tu Base de Datos), permitiendo activar, desactivar o cambiar los horarios **sin necesidad de reiniciar tus servidores**.
-
-### 1. Usa el repositorio SQL de serie (o implementa el tuyo)
-
-Si tu cron vive en SQL —el caso normal— no escribas nada: HexCore trae la tabla, el
-repositorio y el seed (extra `[sql]`).
+`DynamicScheduler` lee su configuración de un repositorio, así que podés activar, desactivar o
+cambiar horarios **sin reiniciar nada**.
 
 ```python
 import hexcore.cqrs as cqrs
@@ -627,128 +648,389 @@ CRON_JOBS = [
 await cqrs.create_cron_tables()        # o una migración de Alembic
 await cqrs.seed_cron_jobs(CRON_JOBS)   # idempotente, y NO pisa lo editado en BD
 
-repo = cqrs.SqlAlchemyCronJobRepository()
-```
-
-`cron_job()` deriva el `task_name` de `__cqrs_task_name__`: escribirlo a mano es cómo se
-acaba con un cron que encola una tarea ya renombrada, y el fallo aparece en el worker.
-
-Si tu configuración vive en otro sitio (Mongo, Redis, un YAML), implementa
-`ICronJobRepository`:
-
-```python
-from datetime import datetime
-
-import hexcore.cqrs as cqrs
-
-
-class MiCronRepository(cqrs.ICronJobRepository):
-    async def get_active_jobs(self) -> list[cqrs.CronJobDefinition]:
-        return [
-            cqrs.CronJobDefinition(
-                job_id="clean-db",
-                task_name="mi_app.tasks.clean_old_records_task",  # un @background_task
-                cron_expression="*/5 * * * *",
-                payload={"days_retention": 30},
-                queue="maintenance",
-            )
-        ]
-
-    async def update_last_run(self, job_id: str, run_time: datetime) -> None:
-        # Importa implementarlo: es lo que deduplica el encolado entre ticks.
-        ...
-```
-
-### 2. Levanta el Scheduler
-En un proceso en background de tu API o en un microservicio separado, arranca el Scheduler inyectándole tu Enqueuer favorito (Celery, Procrastinate):
-
-```python
-import hexcore.cqrs as cqrs
-
 scheduler = cqrs.DynamicScheduler(
-    repository=repo,
+    repository=cqrs.SqlAlchemyCronJobRepository(),
     enqueuer=enqueuer,
-    tick_interval_seconds=60,
+    lock_provider=lock_provider,
 )
-
-# Lo normal es dejar que el runner lo supervise junto al worker: si uno de los dos
-# muere, se cancela el otro y el proceso sale para que el orquestador lo reinicie.
-await cqrs.run_procrastinate_worker(procrastinate_app, scheduler=scheduler)
 ```
 
-El Scheduler evalúa las expresiones con `croniter` y delega la carga pesada al enqueuer. Tu
-Worker no necesita saber de horarios, sólo ejecuta las tareas cuando le llegan.
+Si tu cron vive en SQL no escribas nada: HexCore trae la tabla, el repositorio y el seed. Para
+otro origen (Mongo, Redis, un YAML), implementá `cqrs.ICronJobRepository`.
+
+`cron_job()` deriva el `task_name` de `__cqrs_task_name__`: escribirlo a mano es cómo se acaba
+con un cron que encola una tarea ya renombrada, y el fallo aparece en el worker.
 
 **Cómo decide si toca ejecutar.** No compara contra el minuto actual, sino que busca si hubo
-alguna ocurrencia entre la última ejecución (`last_run_at`) y ahora. Dos consecuencias que
-importan:
+alguna ocurrencia entre `last_run_at` y ahora:
 
 - Un minuto saltado por drift del tick **no** pierde la ejecución.
 - `update_last_run` deduplica de verdad, así que un `tick_interval_seconds < 60` no duplica
-  el encolado dentro del mismo proceso. Entre réplicas sí hace falta lock, y el scheduler
-  emite un `RuntimeWarning` si detecta tick sub-minuto sin `lock_provider`.
+  dentro del mismo proceso. Entre réplicas hace falta lock, y el scheduler emite un
+  `RuntimeWarning` si detecta tick sub-minuto sin `lock_provider`.
+- `catch_up_window_seconds` (1 hora) acota el catch-up: un scheduler caído una semana no
+  dispara ocurrencias antiguas.
 
-`catch_up_window_seconds` (1 hora por defecto) acota el catch-up: un scheduler que estuvo
-caído una semana no dispara ocurrencias antiguas.
+### Locks distribuidos
 
-### 3. Distributed Locks (Evitar ejecuciones dobles)
-
-Si corres tu aplicación en múltiples contenedores o réplicas (ej. Kubernetes), podrías tener múltiples instancias del `DynamicScheduler` ejecutándose al mismo tiempo. Para evitar que el mismo cronjob se encole dos veces en el mismo minuto, HexCore soporta **Locks Distribuidos**.
-
-Puedes inyectar un proveedor de locks (`ILockProvider`) usando Redis o PostgreSQL (si lo usas como tu DB). Al inyectarlo, el Scheduler bloqueará atómicamente la tarea a través de toda tu red.
-
-#### Usando Redis
 ```python
-from hexcore.infrastructure.cqrs.redis_lock import RedisLockProvider
-import redis.asyncio as redis
+import hexcore.cqrs as cqrs
 
-redis_client = redis.from_url("redis://localhost:6379/0")
-lock_provider = RedisLockProvider(redis_client)
+lock_provider = cqrs.RedisLockProvider(redis_client)
 
-scheduler = DynamicScheduler(
-    repository=repo, 
-    enqueuer=enqueuer, 
-    lock_provider=lock_provider
+# O sobre Postgres, si no querés levantar Redis:
+lock_provider = cqrs.PostgresLockProvider(asyncpg_pool)
+await lock_provider.setup()   # crea tabla e índice, y purga lo expirado
+```
+
+El provider de Postgres purga las filas expiradas solo (en `setup()` y cada 100
+adquisiciones), así que la tabla no crece sin límite.
+
+**Si el lock no responde**, hay dos respuestas posibles y las dos son malas de formas
+distintas, así que la decisión es tuya y explícita:
+
+```python
+cqrs.RedisLockProvider(client, on_error="skip")   # default: no correr; el cron se detiene
+cqrs.RedisLockProvider(client, on_error="raise")  # propagar, para que el supervisor lo vea
+```
+
+En los logs, "no pude decidir" es `critical`; "el lock estaba tomado por otra réplica" —el caso
+normal— es `debug`.
+
+---
+
+## Utilidades de test
+
+```python
+from hexcore.testing import FakeLockProvider, InMemoryTaskEnqueuer, build_test_buses, override_cqrs
+
+buses = build_test_buses()
+buses.registry.register_command_handler(SendEmailCommand, SendEmailHandler())
+
+await buses.command_bus.dispatch(SendEmailCommand(user_id="1", template="welcome"))
+assert buses.enqueuer.command_names == ["SendEmailCommand"]
+assert buses.enqueuer.commands[0].queue == "high_priority"
+```
+
+`build_test_buses()` monta los tres buses **con** enqueuer y serializer, que es el error más
+común al testear CQRS: montarlos sin ellos y que el primer `@background_command` lance
+`RuntimeError`.
+
+```python
+with override_cqrs(app, command_bus=buses.command_bus):
+    response = client.post("/tickets", json={...})
+```
+
+`override_cqrs` guarda el valor previo de cada override, así que se puede anidar y restaura
+aunque el bloque lance — `app.dependency_overrides` es un dict de instancia, y un override que
+no se limpia se filtra a todos los tests que reusen la app.
+
+`FakeLockProvider` tiene tres modos: concede siempre, niega siempre, y `shared=True`, que se
+comporta como un lock real en memoria para probar dos schedulers concurrentes.
+
+Fixtures de pytest, activables desde tu `conftest.py`:
+
+```python
+pytest_plugins = ["hexcore.testing.fixtures"]
+```
+
+Trae `anyio_backend`, `task_enqueuer`, `lock_provider`, `cqrs_buses`, `sqlite_engine`,
+`sqlite_session` y `uow`.
+
+---
+
+## Repositorios y entidades
+
+### Entidades y eventos
+
+```python
+from hexcore.domain.base import BaseEntity
+from hexcore.domain.events import EntityCreatedEvent
+
+class User(BaseEntity):
+    id: UUID
+    name: str
+
+class UserCreatedEvent(EntityCreatedEvent[User]):
+    pass
+```
+
+### Repositorios genéricos
+
+`SqlAlchemyRepository` y `BeanieRepository` traen los métodos CRUD (`get_by_id`, `list_all`,
+`query_all`, `query_cursor`, `save`, `delete`):
+
+```python
+from hexcore.infrastructure.repositories.implementations import SqlAlchemyRepository
+
+class UserRepository(SqlAlchemyRepository[UserEntity, UserModel]):
+    @property
+    def entity_cls(self): return UserEntity
+
+    @property
+    def not_found_exception(self): return UserNotFoundException
+```
+
+El UoW los inyecta solo, descubriéndolos desde `repository_discovery_paths`. La conversión
+modelo → entidad la hace `to_entity_from_model_or_document`, aplicando resolvers para atributos
+complejos.
+
+### Documentos Beanie
+
+```python
+from hexcore.infrastructure.repositories.orms.beanie.utils import init_beanie_documents
+
+await init_beanie_documents()
+```
+
+O declarativamente, con `hx.BeanieStep(documents=[...])` en el lifespan.
+
+---
+
+## Configuración
+
+Define un `config.py` en la raíz del proyecto:
+
+```python
+from hexcore.config import ServerConfig
+
+config = ServerConfig(
+    app_title="Red API",
+    app_version="5.0.0",
+    async_sql_database_url="postgresql+asyncpg://user:pass@localhost/red",
+    repository_discovery_paths={
+        "myapp.features.users.infrastructure.repositories",
+        "myapp.features.billing.infrastructure.repositories",
+    },
 )
 ```
 
-#### Usando PostgreSQL (asyncpg)
-Si usas Procrastinate o bases de datos SQL y no quieres levantar Redis:
+`LazyConfig` resuelve el módulo de configuración en este orden:
 
-```python
-from hexcore.infrastructure.cqrs.postgres_lock import PostgresLockProvider
+1. `HEXCORE_CONFIG_MODULE`
+2. `HEXCORE_CONFIG_MODULES` (lista separada por comas)
+3. `LazyConfig.set_config_modules(...)`
+4. `config` en la raíz del proyecto
 
-lock_provider = PostgresLockProvider(my_asyncpg_pool)
-await lock_provider.setup() # Crea la tabla y el índice, y purga lo expirado
+Desde v2, el discovery de repositorios es **explícito**: si `repository_discovery_paths` está
+vacío no se carga ningún módulo, y el UoW falla con un error diagnóstico en vez de adivinar.
 
-scheduler = DynamicScheduler(
-    repository=repo, 
-    enqueuer=enqueuer, 
-    lock_provider=lock_provider
-)
+HexCore no ejecuta I/O ni resuelve la configuración en import time, así que podés llamar a
+`LazyConfig.set_config_modules()` antes de que nada la lea.
+
+---
+
+## Templates de proyecto (CLI)
+
+```sh
+hexcore init mi_proyecto --template hexagonal
+hexcore init mi_proyecto --template vertical-slice
 ```
 
-> El provider purga las filas expiradas solo (en `setup()` y cada 100 adquisiciones), así
-> que la tabla de locks no crece sin límite. `purge_expired()` es pública si prefieres
-> purgar desde un job propio, y `purge_every=0` desactiva la purga automática.
+- `hexagonal` → `src/domain`, `src/application`, `src/infrastructure`.
+- `vertical-slice` → `src/features`, `src/shared/{domain,application,infrastructure}`.
 
-#### Qué pasa si el lock no responde
+Ambos generan `config.py` en la raíz con `repository_discovery_paths` de ejemplo y la
+estructura de migraciones con Alembic.
 
-Si Redis (o Postgres) se cae, `acquire_lock` no puede decidir, y las dos respuestas
-posibles son malas de formas distintas. La decisión es tuya y explícita:
+---
 
-```python
-RedisLockProvider(redis_client, on_error="skip")   # default: no correr. El cron se detiene.
-RedisLockProvider(redis_client, on_error="raise")  # propagar, para que el supervisor lo vea.
+## Versiones y soporte
+
+| Serie | Estado | Qué significa |
+| :-- | :-- | :-- |
+| **5.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. |
+| **4.x** | ⛔ **Deprecada** | Aplicación **parcial**: le faltan el fix del event loop de Celery, las fachadas y la documentación alineada. |
+| **3.x** | ⛔ **Deprecada** | Aplicación **parcial**: tiene las correcciones P0/P1 pero ninguna de las factories de FastAPI. |
+| **2.x** | ⛔ **Deprecada** | Contiene los bugs silenciosos corregidos en 5.x (ver abajo). |
+| **1.x** | ⛔ **Deprecada** | Sin soporte de ningún tipo. |
+
+**Todo lo anterior a 5.0 está deprecado. Migrá a 5.x.**
+
+3.0.0 y 4.0.0 existen sólo porque el trabajo se mergeó por fases y cada merge disparó un bump
+automático: **no son releases pensadas para usarse**, son cortes intermedios de la misma
+migración. 5.0.0 es la primera versión completa.
+
+### Por qué 2.x y anteriores no deberían estar en producción
+
+No es una cuestión de estilo: 2.x tiene defectos que no lanzan excepción y no aparecen en logs
+de error, así que un proyecto puede estar afectado sin saberlo.
+
+| Defecto en ≤ 2.x | Síntoma |
+| :-- | :-- |
+| El worker **reencolaba** los `@background_command` en vez de ejecutarlos | Bucle infinito silencioso: la cola crece sin límite y el handler no corre jamás |
+| FQN partido con `rsplit(".", 1)` | Un `Command` en una clase contenedora, o una task como `@staticmethod`, se encola bien y **falla en el worker**, donde el mensaje ya no se recupera |
+| `PostgresLockProvider` nunca purgaba | ~10.000 filas/día **para siempre** en la BD principal |
+| `expire_on_commit` sin pasar | `MissingGreenlet` / `DetachedInstanceError` al leer una entidad tras `commit()` |
+| `enqueue_event` era un `pass` | El evento se pierde sin traza |
+| `DynamicScheduler` comparaba con el minuto actual | Con `tick=60s` se salta minutos y el job no corre; con `tick<60s` se duplica |
+| Los lock providers devolvían `False` ante cualquier error | Una caída de Redis **apaga el cron entero**, con un log indistinguible del caso normal |
+| `asyncio.run()` por tarea en Celery | `Event loop is closed` con un `AsyncEngine` compartido |
+| `HandlerRegistry` decía ser thread-safe sin ningún lock | Doble instanciación del handler bajo concurrencia |
+
+La superficie de API de v1/v2 **sigue funcionando** en 5.x —los alias de retrocompatibilidad no
+se han borrado— pero está deprecada, emite `DeprecationWarning` y se eliminará en **6.0**.
+
+### API deprecada y su reemplazo
+
+| Deprecado (v1/v2) | Usá en su lugar |
+| :-- | :-- |
+| `ICommandBus`, `IQueryBus`, `IEventBus` | `AbstractCommandBus`, `AbstractQueryBus`, `AbstractEventBus` |
+| `ICommandHandler`, `IQueryHandler` | `AbstractCommandHandler`, `AbstractQueryHandler` |
+| `IMiddleware` | `AbstractMiddleware` |
+| `ISerializer` | `AbstractSerializer` |
+| `IEventDispatcher` | `EventBus` |
+| `EventBus.register()` / `.dispatch()` | `EventBus.subscribe()` / `.publish()` |
+| `ServerConfig.event_dispatcher` | `ServerConfig.event_bus` |
+| `SQLAlchemyCommonImplementationsRepo` | `SqlAlchemyRepository` |
+| `BeanieODMCommonImplementationsRepo` | `BeanieRepository` |
+| `NoSqlUnitOfWork` | `BeanieUnitOfWork` |
+| `reset_sqlalchemy_engine()` | `dispose_engine()` |
+| `MiddlewareConfig` | **Eliminado en 3.0.** Era código muerto: nunca se leía. |
+
+Para ver qué estás usando, corré tus tests con los warnings visibles:
+
+```sh
+python -m pytest -W "default::DeprecationWarning"
 ```
 
-En los logs, "no pude decidir" es `critical` y "el lock estaba tomado por otra réplica"
-—el caso normal— es `debug`.
+---
+
+## Guía de migración a 5.x
+
+La API de 2.x sigue funcionando. Lo que sí cambió de **comportamiento** —y por tanto puede
+requerir acción— es esto:
+
+### 1. `expire_on_commit=False` en el session factory de HexCore
+
+**Qué cambió.** `get_session_factory()` pasa a `expire_on_commit=False`.
+
+**Por qué.** Con el default de SQLAlchemy (`True`) los atributos expiran al comitear y el
+siguiente acceso dispara un lazy-load sobre una sesión cerrada (`MissingGreenlet` /
+`DetachedInstanceError`). La documentación de HexCore ya enseñaba `False`, así que doc e
+implementación no coincidían.
+
+**Acción.** Ninguna en el caso normal: es el comportamiento que casi todo el mundo quería. Si
+dependías de que las entidades se refrescaran tras el commit, construí tu propio
+`async_sessionmaker(engine, expire_on_commit=True)`.
+
+### 2. `get_sql_uow` ya no entra al UoW
+
+**Qué cambió.** La dependencia cede el UoW **sin** abrir la transacción.
+
+**Por qué.** Los ejemplos de use case hacen su propio `async with self.uow:`, que con la
+dependencia anterior anidaba contextos.
+
+**Acción.** Si tu endpoint operaba sobre un UoW ya abierto, cambiá a `get_sql_uow_open`.
+
+### 3. `TransactionMiddleware` fuera del default, y exige `uow_factory`
+
+**Qué cambió.** `CQRSConfig.command_bus` ya no lo incluye, y `TransactionMiddleware()` sin
+`uow_factory` lanza `ValueError`.
+
+**Por qué.** El default armaba la sesión con el session factory *interno* de HexCore en vez del
+engine de tu aplicación, y comiteaba tras el handler — así que un handler que ya comitea
+comiteaba dos veces.
+
+**Acción.** Si lo querés, declaralo a mano:
+
+```python
+cqrs.TransactionMiddleware(uow_factory=lambda: SqlAlchemyUnitOfWork(session=session_factory()))
+```
+
+Y recordá que es para handlers que **no** gestionan su propia transacción.
+
+### 4. `enqueue_event` lanza en vez de callar
+
+**Qué cambió.** `ProcrastinateEnqueuer.enqueue_event` y el de Celery lanzan
+`NotImplementedError`.
+
+**Por qué.** Eran un `pass`: el evento se perdía sin traza.
+
+**Acción.** Usá `@background_handler` para ejecutar un suscriptor concreto en background, o
+`RedisEventBus`/`PostgresEventBus` para fan-out real.
+
+### 5. Los decoradores rechazan objetos no resolubles
+
+**Qué cambió.** `@background_command`/`@background_handler`/`@background_task` lanzan
+`ValueError` si el objeto está definido dentro de otra función (`<locals>` en su
+`__qualname__`).
+
+**Por qué.** El worker nunca podría importarlo: antes el mensaje se encolaba bien y fallaba en
+el worker, donde ya no se puede recuperar.
+
+**Acción.** Mové esas definiciones al nivel de módulo.
+
+### 6. `CQRSFactory` exige el enqueuer si hay comandos de background
+
+**Qué cambió.** Si el registry tiene `@background_command` y la factory no recibió `enqueuer`,
+`create_command_bus()` falla al construir.
+
+**Por qué.** Antes construía un bus que lanzaba `RuntimeError` en el primer dispatch — con la
+petición del usuario ya en vuelo.
+
+**Acción.** `cqrs.CQRSFactory(config, registry, enqueuer=enqueuer)`.
+
+### 7. Cuándo corre un cron job
+
+**Qué cambió.** `DynamicScheduler` decide por catch-up (¿hubo alguna ocurrencia entre la última
+ejecución y ahora?) en vez de comparar con el minuto actual.
+
+**Por qué.** Con `tick=60s` el drift acumulado se saltaba un minuto entero y el job no corría;
+con `tick<60s` se duplicaba.
+
+**Acción.** Ninguna: arrancar a las 03:00:30 sigue disparando el job de las 03:00. Si tu
+repositorio no implementaba `update_last_run`, implementalo — es lo que deduplica.
+
+### 8. El `detail` del 422 de las queries es un objeto
+
+**Qué cambió.** `build_query_endpoint` devuelve `{"message": ..., "field": ..., "allowed": [...]}`
+en vez de un string.
+
+**Acción.** Ajustá el cliente si parseaba `detail` como texto.
+
+### 9. `MiddlewareConfig` eliminado
+
+Era código muerto: `_build_middlewares` instancia con `cls()` y nunca leía
+`enabled`/`order`/`options`. Quitá el import; no perdés comportamiento porque no tenía.
+
+---
+
+## Contribuir
+
+Gracias por tu interés. Para mantener la colaboración organizada:
+
+1. **Código de conducta** — revisá el [Código de Conducta](CODE_OF_CONDUCT.md) antes de
+   interactuar.
+2. **Ramas** — forkeá y creá una rama (`feat/nombre`, `fix/nombre`, `docs/nombre`).
+3. **Tests** — toda corrección entra con al menos un test que falle antes y pase después. El
+   suite se corre con los extras completos:
+
+   ```sh
+   uv sync --extra all --group dev
+   uv run python -m pytest -q
+   ```
+
+   El CI falla si algún test se **salta**: un skip significa que falta un extra y que
+   estaríamos reportando verde sin ejecutar la mitad del suite.
+4. **Typecheck** — `uv run pyright hexcore`.
+5. **Estilo** — [PEP8](https://pep8.org/). Comentá el *por qué*, no el *qué*.
+6. **Commits** — se usa [Commitizen](https://commitizen-tools.github.io/commitizen/):
+   `feat:`, `fix:`, `docs:`, `refactor:`, y `!` para breaking changes. El bump de versión y el
+   CHANGELOG son automáticos al mergear a `master`.
+7. **PRs** — describí el problema, la reproducción, la solución y **por qué esa opción**.
+   Relacioná los issues que aplique.
+
+### Skills del proyecto
+
+Hay un conjunto de skills para extender HexCore en VS Code y entornos compatibles:
+[Repositorio de Skills de HexCore](https://github.com/Indroic/hexcore-skill).
 
 ---
 
 ## Referencias
 
-- [CONTRIBUTING.md](./CONTRIBUTING.md): Pautas de colaboración.
-- [CHANGELOG.md](./CHANGELOG.md): Historial de cambios.
-- [DOCS.md](./DOCS.md): Documentación básica de clases, funciones y ejemplos.
+- [DOCS.md](./DOCS.md) — guía de arranque y documentación de clases y funciones.
+- [CHANGELOG.md](./CHANGELOG.md) — historial de cambios.
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — pautas de colaboración.
+- [SECURITY.md](./SECURITY.md) — política de seguridad.

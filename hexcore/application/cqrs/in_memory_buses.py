@@ -6,13 +6,13 @@ from __future__ import annotations
 import typing as t
 import logging
 
-from hexcore.domain.cqrs.buses import ICommandBus, IQueryBus, IEventBus
+from hexcore.domain.cqrs.buses import AbstractCommandBus, AbstractQueryBus, AbstractEventBus
 from hexcore.domain.cqrs.commands import Command
 from hexcore.domain.cqrs.context import is_worker_execution, local_execution
 from hexcore.domain.cqrs.queries import Query
 from hexcore.domain.events import DomainEvent
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
-from hexcore.domain.cqrs.serializer import ISerializer
+from hexcore.domain.cqrs.serializer import AbstractSerializer
 
 from .registry import HandlerRegistry
 from .pipeline import MiddlewarePipeline
@@ -20,7 +20,7 @@ from .pipeline import MiddlewarePipeline
 logger = logging.getLogger("hexcore.cqrs.buses")
 
 
-class InMemoryCommandBus(ICommandBus):
+class InMemoryCommandBus(AbstractCommandBus):
     """
     Bus de commands síncrono en memoria con Smart Routing.
     Resuelve el handler desde el registry, ejecuta el pipeline de middlewares
@@ -40,7 +40,7 @@ class InMemoryCommandBus(ICommandBus):
         registry: HandlerRegistry,
         pipeline: MiddlewarePipeline | None = None,
         enqueuer: ITaskEnqueuer | None = None,
-        serializer: ISerializer | None = None,
+        serializer: AbstractSerializer | None = None,
     ) -> None:
         self._registry = registry
         self._pipeline = pipeline or MiddlewarePipeline()
@@ -86,7 +86,7 @@ class InMemoryCommandBus(ICommandBus):
             return await self._pipeline.execute(command, final_handler)
 
 
-class InMemoryQueryBus(IQueryBus):
+class InMemoryQueryBus(AbstractQueryBus):
     """
     Bus de queries síncrono en memoria.
     Las queries NUNCA pasan por buses asíncronos
@@ -110,7 +110,7 @@ class InMemoryQueryBus(IQueryBus):
         return await self._pipeline.execute(query, final_handler)
 
 
-class InMemoryEventBus(IEventBus):
+class InMemoryEventBus(AbstractEventBus):
     """
     Bus de eventos en memoria con Smart Routing para Handlers Asíncronos.
     
@@ -123,7 +123,7 @@ class InMemoryEventBus(IEventBus):
         self,
         pipeline: MiddlewarePipeline | None = None,
         enqueuer: ITaskEnqueuer | None = None,
-        serializer: ISerializer | None = None,
+        serializer: AbstractSerializer | None = None,
     ) -> None:
         self._handlers: dict[
             type[DomainEvent],

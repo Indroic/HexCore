@@ -35,5 +35,12 @@ class AbstractSerializer(abc.ABC):
         raise NotImplementedError
 
 
-# Alias de retrocompatibilidad
-ISerializer = AbstractSerializer
+# ── Alias de retrocompatibilidad (deprecado desde 5.0) ────────────────────────
+from hexcore._deprecation import deprecated_aliases  # noqa: E402
+
+_DEPRECATED_ALIASES = {"ISerializer": "AbstractSerializer"}
+
+__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())
+
+if t.TYPE_CHECKING:
+    ISerializer = AbstractSerializer

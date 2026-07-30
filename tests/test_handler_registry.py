@@ -5,7 +5,7 @@ P1-5: el `HandlerRegistry` decía ser thread-safe y no lo era.
 (y con el free-threading de Python 3.14 son hilos reales) el handler se instanciaba
 dos veces y cada hilo se quedaba con la suya.
 
-También cubre la ambigüedad de `callable(entry) and not isinstance(entry, ICommandHandler)`
+También cubre la ambigüedad de `callable(entry) and not isinstance(entry, AbstractCommandHandler)`
 cuando un handler implementa `__call__`.
 """
 from __future__ import annotations

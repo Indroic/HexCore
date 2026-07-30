@@ -9,7 +9,7 @@ import json
 import logging
 import typing as t
 
-from hexcore.domain.cqrs.buses import IEventBus
+from hexcore.domain.cqrs.buses import AbstractEventBus
 from hexcore.domain.cqrs.context import is_worker_execution, local_execution
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
 from hexcore.domain.events import DomainEvent
@@ -22,9 +22,9 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class PostgresEventBus(IEventBus):
+class PostgresEventBus(AbstractEventBus):
     """
-    Implementación de IEventBus utilizando PostgreSQL LISTEN/NOTIFY.
+    Implementación de AbstractEventBus utilizando PostgreSQL LISTEN/NOTIFY.
     Nota: LISTEN/NOTIFY no persiste los eventos una vez entregados. 
     Ideal para eventos efímeros o arquitecturas más simples.
     """

@@ -86,8 +86,8 @@ async def open_uow_scope() -> t.AsyncIterator["IUnitOfWork"]:
 @asynccontextmanager
 async def nosql_uow_scope() -> t.AsyncIterator["IUnitOfWork"]:
     """Equivalente de `open_uow_scope` para el UoW de Beanie/MongoDB."""
-    from hexcore.infrastructure.uow import NoSqlUnitOfWork
+    from hexcore.infrastructure.uow import BeanieUnitOfWork
 
-    uow: "IUnitOfWork" = NoSqlUnitOfWork()
+    uow: "IUnitOfWork" = BeanieUnitOfWork()
     async with uow:
         yield uow

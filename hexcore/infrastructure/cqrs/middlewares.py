@@ -9,10 +9,10 @@ import logging
 import time
 import typing as t
 
-from hexcore.domain.cqrs.middleware import IMiddleware, NextHandler
+from hexcore.domain.cqrs.middleware import AbstractMiddleware, NextHandler
 
 
-class LoggingMiddleware(IMiddleware):
+class LoggingMiddleware(AbstractMiddleware):
     """
     Middleware de logging que registra dispatch, duración y errores.
     """
@@ -52,7 +52,7 @@ class LoggingMiddleware(IMiddleware):
             raise
 
 
-class RetryMiddleware(IMiddleware):
+class RetryMiddleware(AbstractMiddleware):
     """
     Middleware de reintentos con backoff exponencial, **in-process**.
     Solo reintenta excepciones en ``retryable_exceptions``.
@@ -125,7 +125,7 @@ class RetryMiddleware(IMiddleware):
         )
 
 
-class ValidationMiddleware(IMiddleware):
+class ValidationMiddleware(AbstractMiddleware):
     """
     Middleware que valida el mensaje usando Pydantic ``model_validate``
     antes de pasarlo al siguiente handler. Útil para re-validar
@@ -140,7 +140,7 @@ class ValidationMiddleware(IMiddleware):
         return await next_handler(message)
 
 
-class TransactionMiddleware(IMiddleware):
+class TransactionMiddleware(AbstractMiddleware):
     """
     Middleware que envuelve la ejecución del handler en un contexto transaccional
     usando el Unit of Work de Hexcore, y comitea al terminar.

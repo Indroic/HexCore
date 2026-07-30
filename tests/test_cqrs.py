@@ -13,10 +13,10 @@ import pytest
 # ── Domain ────────────────────────────────────────────────────────
 from hexcore.domain.cqrs.commands import Command
 from hexcore.domain.cqrs.queries import Query
-from hexcore.domain.cqrs.handlers import ICommandHandler, IQueryHandler
-from hexcore.domain.cqrs.buses import ICommandBus, IQueryBus, IEventBus
-from hexcore.domain.cqrs.middleware import IMiddleware, NextHandler
-from hexcore.domain.cqrs.serializer import ISerializer
+from hexcore.domain.cqrs.handlers import AbstractCommandHandler, AbstractQueryHandler
+from hexcore.domain.cqrs.buses import AbstractCommandBus, AbstractQueryBus, AbstractEventBus
+from hexcore.domain.cqrs.middleware import AbstractMiddleware, NextHandler
+from hexcore.domain.cqrs.serializer import AbstractSerializer
 from hexcore.domain.cqrs.exceptions import (
     HandlerNotFoundError,
     DuplicateHandlerError,
@@ -79,22 +79,22 @@ class UserCreatedEvent(DomainEvent):
     name: str
 
 
-class CreateUserHandler(ICommandHandler[CreateUserCommand, str]):
+class CreateUserHandler(AbstractCommandHandler[CreateUserCommand, str]):
     async def handle(self, command: CreateUserCommand) -> str:
         return f"created:{command.name}"
 
 
-class DeleteUserHandler(ICommandHandler[DeleteUserCommand, None]):
+class DeleteUserHandler(AbstractCommandHandler[DeleteUserCommand, None]):
     async def handle(self, command: DeleteUserCommand) -> None:
         pass
 
 
-class GetUserHandler(IQueryHandler[GetUserQuery, dict[str, str]]):
+class GetUserHandler(AbstractQueryHandler[GetUserQuery, dict[str, str]]):
     async def handle(self, query: GetUserQuery) -> dict[str, str]:
         return {"id": query.user_id, "name": "Alice"}
 
 
-class ListUsersHandler(IQueryHandler[ListUsersQuery, list[dict[str, str]]]):
+class ListUsersHandler(AbstractQueryHandler[ListUsersQuery, list[dict[str, str]]]):
     async def handle(self, query: ListUsersQuery) -> list[dict[str, str]]:
         return [{"id": "1", "name": "Alice"}]
 
@@ -227,7 +227,7 @@ class TestHandlerRegistry:
 # ═══════════════════════════════════════════════════════════════════
 
 
-class TrackingMiddleware(IMiddleware):
+class TrackingMiddleware(AbstractMiddleware):
     """Middleware que registra el orden de ejecución."""
 
     def __init__(self, name: str, log: list[str]) -> None:

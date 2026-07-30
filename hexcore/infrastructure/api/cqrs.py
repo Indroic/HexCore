@@ -24,7 +24,7 @@ from hexcore.domain.cqrs.buses import (
 if t.TYPE_CHECKING:
     from hexcore.application.cqrs.factory import CQRSFactory
     from hexcore.application.cqrs.registry import HandlerRegistry
-    from hexcore.domain.cqrs.serializer import ISerializer
+    from hexcore.domain.cqrs.serializer import AbstractSerializer
     from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
     from hexcore.infrastructure.workers.consumer import CQRSConsumer
 
@@ -63,7 +63,7 @@ class CQRSContainer:
         return self._factory._registry  # noqa: SLF001 - misma capa lógica
 
     @property
-    def serializer(self) -> "ISerializer":
+    def serializer(self) -> "AbstractSerializer":
         return self._factory.create_serializer()
 
     def command_bus(self) -> AbstractCommandBus:

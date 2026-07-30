@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import typing as t
 
-from hexcore.domain.cqrs.middleware import IMiddleware, NextHandler
+from hexcore.domain.cqrs.middleware import AbstractMiddleware, NextHandler
 
 
 class MiddlewarePipeline:
@@ -16,15 +16,15 @@ class MiddlewarePipeline:
     Pipeline: [MW1] → [MW2] → ... → [MWn] → [handler.handle]
     """
 
-    def __init__(self, middlewares: t.Sequence[IMiddleware] | None = None) -> None:
-        self._middlewares: list[IMiddleware] = list(middlewares or [])
+    def __init__(self, middlewares: t.Sequence[AbstractMiddleware] | None = None) -> None:
+        self._middlewares: list[AbstractMiddleware] = list(middlewares or [])
 
-    def add(self, middleware: IMiddleware) -> "MiddlewarePipeline":
+    def add(self, middleware: AbstractMiddleware) -> "MiddlewarePipeline":
         """Añade un middleware al pipeline. Retorna self para fluent API."""
         self._middlewares.append(middleware)
         return self
 
-    def add_many(self, middlewares: t.Iterable[IMiddleware]) -> "MiddlewarePipeline":
+    def add_many(self, middlewares: t.Iterable[AbstractMiddleware]) -> "MiddlewarePipeline":
         """Añade múltiples middlewares al pipeline."""
         self._middlewares.extend(middlewares)
         return self
@@ -49,7 +49,7 @@ class MiddlewarePipeline:
         return await chain(message)
 
     @staticmethod
-    def _wrap(middleware: IMiddleware, next_handler: NextHandler) -> NextHandler:
+    def _wrap(middleware: AbstractMiddleware, next_handler: NextHandler) -> NextHandler:
         """Envuelve un middleware y su next_handler en un callable."""
 
         async def wrapped(message: t.Any) -> t.Any:

@@ -6,12 +6,12 @@ from __future__ import annotations
 
 import typing as t
 
-from hexcore.domain.cqrs.serializer import ISerializer
+from hexcore.domain.cqrs.serializer import AbstractSerializer
 from hexcore.domain.cqrs.exceptions import DeserializationError
 from hexcore.domain.cqrs.resolution import build_fqn, resolve_dotted
 
 
-class PydanticSerializer(ISerializer):
+class PydanticSerializer(AbstractSerializer):
     """
     Serializa/deserializa mensajes Pydantic BaseModel.
     Almacena el fully-qualified type name para reconstrucción.

@@ -18,7 +18,7 @@ from hexcore.infrastructure.repositories.orms.sqlalchemy.session import (
     get_async_db_session,
     get_session_factory,
 )
-from hexcore.infrastructure.uow import SqlAlchemyUnitOfWork, NoSqlUnitOfWork
+from hexcore.infrastructure.uow import BeanieUnitOfWork, SqlAlchemyUnitOfWork
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
@@ -56,7 +56,7 @@ async def get_sql_uow_open(
 
 
 async def get_nosql_uow() -> AsyncGenerator[IUnitOfWork, None]:
-    uow: IUnitOfWork = NoSqlUnitOfWork()
+    uow: IUnitOfWork = BeanieUnitOfWork()
     async with uow:
         yield uow
 

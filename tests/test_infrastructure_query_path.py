@@ -11,8 +11,8 @@ from hexcore.domain.repositories import IBaseRepository
 from hexcore.domain.services import BaseDomainService
 from hexcore.domain.uow import IUnitOfWork
 from hexcore.infrastructure.repositories.implementations import (
-    BeanieODMCommonImplementationsRepo,
-    SQLAlchemyCommonImplementationsRepo,
+    BeanieRepository,
+    SqlAlchemyRepository,
 )
 
 
@@ -20,7 +20,7 @@ class _Entity(BaseEntity):
     name: str
 
 
-class _SqlRepo(SQLAlchemyCommonImplementationsRepo[_Entity, t.Any]):
+class _SqlRepo(SqlAlchemyRepository[_Entity, t.Any]):
     @property
     def entity_cls(self):
         return _Entity
@@ -34,7 +34,7 @@ class _SqlRepo(SQLAlchemyCommonImplementationsRepo[_Entity, t.Any]):
         return ValueError
 
 
-class _NoSqlRepo(BeanieODMCommonImplementationsRepo[_Entity, t.Any]):
+class _NoSqlRepo(BeanieRepository[_Entity, t.Any]):
     @property
     def entity_cls(self):
         return _Entity
