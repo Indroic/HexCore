@@ -218,3 +218,114 @@ def test_health_report_is_serializable():
     report = HealthReport(status="ok")
 
     assert report.model_dump()["status"] == "ok"
+
+
+# ── R5: adopción por partes en una app que ya publica su /health ───────────────
+
+
+def test_readiness_can_be_registered_without_touching_the_published_liveness():
+    """
+    El caso que dejó F16 sin adoptar: la app ya publica `/health` con su propia forma y
+    un cliente tipado generado desde el OpenAPI. Antes había que apagar la feature
+    entera, y con ella se perdía la readiness, que es la parte valiosa.
+    """
+    app = FastAPI()
+
+    @app.get("/health")
+    async def mi_health() -> dict[str, str]:
+        return {"estado": "vivo"}          # el contrato ya publicado, intacto
+
+    register_health_routes(app, liveness=False, probes=[Probe("sql", _boom)])
+
+    with TestClient(app) as client:
+        assert client.get("/health").json() == {"estado": "vivo"}
+        assert client.get("/health/ready").status_code == 503
+
+
+def test_liveness_can_be_registered_alone():
+    app = FastAPI()
+    register_health_routes(app, readiness=False, probes=[Probe("sql", _boom)])
+
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+        assert client.get("/health/ready").status_code == 404
+
+
+def test_disabling_both_routes_is_an_error_not_a_silent_noop():
+    app = FastAPI()
+
+    with pytest.raises(ValueError, match="no registra nada"):
+        register_health_routes(app, liveness=False, readiness=False)
+
+
+def test_readiness_path_can_be_set_independently():
+    app = FastAPI()
+    register_health_routes(
+        app, liveness=False, readiness_path="/_ready", probes=[Probe("sql", _ok)]
+    )
+
+    with TestClient(app) as client:
+        assert client.get("/_ready").status_code == 200
+        assert client.get("/health/ready").status_code == 404
+
+
+def test_response_factory_adapts_the_body_but_not_the_status():
+    """
+    La otra mitad de la adopción: conservar la forma del cuerpo sin renunciar a que un
+    503 siga siendo un 503, que es lo que lee el orquestador.
+    """
+    app = FastAPI()
+    register_health_routes(
+        app,
+        probes=[Probe("sql", _boom)],
+        response_factory=lambda report: {
+            "ok": report.status != "down",
+            "checks": [dep.name for dep in report.dependencies],
+        },
+    )
+
+    with TestClient(app) as client:
+        live = client.get("/health")
+        ready = client.get("/health/ready")
+
+    assert live.status_code == 200
+    assert live.json() == {"ok": True, "checks": []}
+
+    assert ready.status_code == 503
+    assert ready.json() == {"ok": False, "checks": ["sql"]}
+
+
+def test_response_factory_body_is_not_forced_into_the_health_report_schema():
+    """
+    Con `response_model=HealthReport`, FastAPI filtraría el cuerpo del factory a los
+    campos del informe y devolvería `{}`: adaptarlo sería inútil.
+    """
+    app = FastAPI()
+    register_health_routes(app, response_factory=lambda report: {"forma": "propia"})
+
+    with TestClient(app) as client:
+        assert client.get("/health").json() == {"forma": "propia"}
+
+
+def test_create_app_can_register_only_the_readiness():
+    from hexcore.infrastructure.api.app import AppFeatures, HealthRoutes, create_app
+
+    app = create_app(features=AppFeatures(health=HealthRoutes(liveness=False)))
+
+    @app.get("/health")
+    async def mi_health() -> dict[str, str]:
+        return {"estado": "vivo"}
+
+    with TestClient(app) as client:
+        assert client.get("/health").json() == {"estado": "vivo"}
+        assert client.get("/health/ready").status_code in (200, 503)
+
+
+def test_create_app_health_true_still_registers_both():
+    from hexcore.infrastructure.api.app import create_app
+
+    app = create_app()
+
+    paths = {route.path for route in app.routes if hasattr(route, "path")}
+
+    assert {"/health", "/health/ready"} <= paths

@@ -26,6 +26,7 @@ __all__ = [
     "DependencyReport",
     "HealthReport",
     "Probe",
+    "ResponseFactory",
     "check_health",
     "register_health_routes",
     "default_probes",
@@ -54,6 +55,11 @@ class HealthReport(BaseModel):
     def http_status(self) -> int:
         """503 si algo está caído; 200 en el resto de los casos."""
         return 503 if self.status == "down" else 200
+
+
+#: Adapta el cuerpo de las rutas de health a la forma que ya publica una app. Recibe el
+#: informe y devuelve lo que haya que serializar.
+ResponseFactory = t.Callable[[HealthReport], t.Any]
 
 
 class Probe(t.NamedTuple):
@@ -231,6 +237,10 @@ def register_health_routes(
     *,
     path: str = "/health",
     probes: t.Sequence[Probe] | None = None,
+    liveness: bool = True,
+    readiness: bool = True,
+    readiness_path: str | None = None,
+    response_factory: ResponseFactory | None = None,
 ) -> None:
     """
     Registra `GET {path}` (liveness) y `GET {path}/ready` (readiness).
@@ -238,18 +248,71 @@ def register_health_routes(
     - `{path}` responde 200 sin I/O. Apuntá aquí el liveness probe.
     - `{path}/ready` sondea las dependencias y responde **503** si algo crítico falla,
       con el detalle y la latencia por dependencia. Apuntá aquí el readiness probe.
-    """
-    @app.get(path, tags=["health"], summary="Liveness: el proceso responde")
-    async def health() -> HealthReport:
-        return await check_health(deep=False)
 
-    @app.get(
-        f"{path}/ready",
-        tags=["health"],
-        summary="Readiness: las dependencias responden",
-        responses={503: {"description": "Alguna dependencia crítica no responde"}},
-    )
-    async def health_ready(response: Response) -> HealthReport:
-        report = await check_health(deep=True, probes=probes)
-        response.status_code = report.http_status
-        return report
+    Las dos rutas se registran por separado a propósito. Una app que **ya publica**
+    `/health` con su propia forma —y con un cliente tipado generado desde su OpenAPI— no
+    puede aceptar la forma de `HealthReport` sin romper el contrato, pero sí quiere la
+    readiness, que es la parte que no se puede escribir a mano en cinco minutos::
+
+        register_health_routes(app, liveness=False)   # sólo /health/ready
+
+    Y si lo que hace falta es conservar la forma del cuerpo, `response_factory` la
+    adapta sin renunciar a las sondas::
+
+        register_health_routes(
+            app,
+            response_factory=lambda r: {"ok": r.status != "down", "checks": r.dependencies},
+        )
+
+    Args:
+        app: La app donde registrar.
+        path: Ruta del liveness. También la base del readiness, salvo que se dé
+            `readiness_path`.
+        probes: Sondas del readiness. Por defecto, las de `default_probes()`.
+        liveness: Registrar `GET {path}`. Poné `False` si ya publicás el tuyo.
+        readiness: Registrar el readiness.
+        readiness_path: Ruta del readiness. Por defecto ``f"{path}/ready"``.
+        response_factory: Si se da, se le pasa el `HealthReport` y lo que devuelva es el
+            cuerpo de la respuesta. El **status code** lo sigue decidiendo el informe
+            (503 si algo crítico está caído), salvo que devuelvas una `Response` propia,
+            en cuyo caso el status es cosa tuya.
+
+    Raises:
+        ValueError: Si se desactivan las dos rutas. Una llamada que no registra nada es
+            un error de configuración, y descubrirlo por silencio cuesta un incidente.
+    """
+    if not liveness and not readiness:
+        raise ValueError(
+            "register_health_routes(liveness=False, readiness=False) no registra nada. "
+            "Si no querés ninguna de las dos rutas, no llames a la función."
+        )
+
+    # Sin factory se declara `HealthReport` para que el OpenAPI documente la forma; con
+    # factory el cuerpo es lo que devuelva el usuario y no hay modelo que prometer.
+    response_model = None if response_factory is not None else HealthReport
+
+    def render(report: HealthReport) -> t.Any:
+        return report if response_factory is None else response_factory(report)
+
+    if liveness:
+        @app.get(
+            path,
+            tags=["health"],
+            summary="Liveness: el proceso responde",
+            response_model=response_model,
+        )
+        async def health() -> t.Any:
+            return render(await check_health(deep=False))
+
+    if readiness:
+        @app.get(
+            readiness_path or f"{path}/ready",
+            tags=["health"],
+            summary="Readiness: las dependencias responden",
+            response_model=response_model,
+            responses={503: {"description": "Alguna dependencia crítica no responde"}},
+        )
+        async def health_ready(response: Response) -> t.Any:
+            report = await check_health(deep=True, probes=probes)
+            response.status_code = report.http_status
+            return render(report)
