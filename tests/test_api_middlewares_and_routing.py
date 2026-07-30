@@ -282,6 +282,74 @@ def test_build_root_router_supports_empty_child_prefix():
         assert client.get("/root/items").json() == {"from": "direct"}
 
 
+def _self_prefixed_child(prefix: str, name: str) -> APIRouter:
+    """Un hijo que ya declara su propia ruta completa: no le queda sub-prefijo que poner."""
+    router = APIRouter(prefix=prefix)
+
+    @router.get("/items")
+    async def items() -> dict[str, str]:
+        return {"from": name}
+
+    return router
+
+
+def test_build_root_router_accepts_two_children_without_sub_prefix():
+    """
+    El caso que un `Mapping` **no puede expresar**: dos hijos que ya traen sus rutas
+    completas, o sea dos sub-prefijos vacíos. Un dict no admite dos claves `""`, así que
+    con la firma anterior este root router había que escribirse a mano.
+    """
+    root = build_root_router(
+        "/api/v1",
+        [
+            _self_prefixed_child("/usuarios", "usuarios"),
+            _self_prefixed_child("/tickets", "tickets"),
+        ],
+    )
+    app = FastAPI()
+    app.include_router(root)
+
+    with TestClient(app) as client:
+        assert client.get("/api/v1/usuarios/items").json() == {"from": "usuarios"}
+        assert client.get("/api/v1/tickets/items").json() == {"from": "tickets"}
+
+
+def test_build_root_router_sequence_mixes_bare_routers_and_pairs():
+    root = build_root_router(
+        "/api",
+        [_child("raiz"), ("/reports", _child("reports"))],
+    )
+    app = FastAPI()
+    app.include_router(root)
+
+    with TestClient(app) as client:
+        assert client.get("/api/items").json() == {"from": "raiz"}
+        assert client.get("/api/reports/items").json() == {"from": "reports"}
+
+
+def test_build_root_router_sequence_still_applies_dependencies_and_tags():
+    """Las dos formas de `children` tienen que ser equivalentes en todo lo demás."""
+    calls: list[str] = []
+
+    async def guard() -> None:
+        calls.append("checked")
+
+    root = build_root_router(
+        "/secure",
+        [("/a", _child("a"))],
+        dependencies=[Depends(guard)],
+        tags=["admin"],
+    )
+    app = FastAPI()
+    app.include_router(root)
+
+    with TestClient(app) as client:
+        assert client.get("/secure/a/items").status_code == 200
+
+    assert calls == ["checked"]
+    assert app.openapi()["paths"]["/secure/a/items"]["get"]["tags"] == ["admin"]
+
+
 def test_mount_routers_accepts_plain_routers_and_tuples():
     app = FastAPI()
     mount_routers(

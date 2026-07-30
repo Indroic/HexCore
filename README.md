@@ -340,6 +340,18 @@ admin = build_root_router(
 mount_routers(app, [admin, (public_router, {"prefix": "/v1"})])
 ```
 
+`children` acepta también una **secuencia**, y no es azúcar: un dict no puede tener dos claves
+`""`, así que un raíz con varios hijos que **ya traen su propio prefijo** —lo normal cuando cada
+feature declara sus rutas completas— no se puede expresar con un mapa.
+
+```python
+# usuarios_router y tickets_router ya son APIRouter(prefix="/usuarios") y (prefix="/tickets").
+api_v1 = build_root_router("/api/v1", [usuarios_router, tickets_router])
+
+# Se pueden mezclar: un router pelado equivale a ("", router).
+api_v1 = build_root_router("/api/v1", [usuarios_router, ("/reports", reports_router)])
+```
+
 ### Endpoints de listado y búsqueda
 
 ```python
