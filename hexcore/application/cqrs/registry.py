@@ -9,13 +9,13 @@ import typing as t
 
 from hexcore.domain.cqrs.commands import Command
 from hexcore.domain.cqrs.queries import Query
-from hexcore.domain.cqrs.handlers import ICommandHandler, IQueryHandler
+from hexcore.domain.cqrs.handlers import AbstractCommandHandler, AbstractQueryHandler
 from hexcore.domain.cqrs.exceptions import HandlerNotFoundError, DuplicateHandlerError
 
 
 # Tipos para factories de handlers (para DI/lazy instantiation)
-CommandHandlerFactory = t.Callable[[], ICommandHandler[t.Any, t.Any]]
-QueryHandlerFactory = t.Callable[[], IQueryHandler[t.Any, t.Any]]
+CommandHandlerFactory = t.Callable[[], AbstractCommandHandler[t.Any, t.Any]]
+QueryHandlerFactory = t.Callable[[], AbstractQueryHandler[t.Any, t.Any]]
 
 TFactory = t.TypeVar("TFactory")
 
@@ -24,7 +24,7 @@ class HandlerFactory(t.Generic[TFactory]):
     """
     Marcador explícito de "esto es un factory, no un handler".
 
-    `callable(entry) and not isinstance(entry, ICommandHandler)` es ambiguo: un handler
+    `callable(entry) and not isinstance(entry, AbstractCommandHandler)` es ambiguo: un handler
     que implemente `__call__` se confundiría con un factory, y un factory que herede de
     la interfaz se confundiría con un handler. Envolver el callable elimina la
     heurística.
@@ -75,10 +75,10 @@ class HandlerRegistry:
 
     def __init__(self, *, allow_override: bool = False) -> None:
         self._command_handlers: dict[
-            type[Command], ICommandHandler[t.Any, t.Any] | CommandHandlerFactory
+            type[Command], AbstractCommandHandler[t.Any, t.Any] | CommandHandlerFactory
         ] = {}
         self._query_handlers: dict[
-            type[Query[t.Any]], IQueryHandler[t.Any, t.Any] | QueryHandlerFactory
+            type[Query[t.Any]], AbstractQueryHandler[t.Any, t.Any] | QueryHandlerFactory
         ] = {}
         self._allow_override = allow_override
         # Reentrante: un factory puede resolver otro handler del mismo registry.
@@ -101,7 +101,7 @@ class HandlerRegistry:
     def register_command_handler(
         self,
         command_type: type[Command],
-        handler: ICommandHandler[t.Any, t.Any] | CommandHandlerFactory,
+        handler: AbstractCommandHandler[t.Any, t.Any] | CommandHandlerFactory,
     ) -> "HandlerRegistry":
         """Registra un handler (o factory) para un tipo de command. Retorna self para fluent API."""
         with self._lock:
@@ -112,25 +112,25 @@ class HandlerRegistry:
 
     def resolve_command_handler(
         self, command_type: type[Command]
-    ) -> ICommandHandler[t.Any, t.Any]:
+    ) -> AbstractCommandHandler[t.Any, t.Any]:
         """Resuelve el handler para el tipo de command dado."""
         with self._lock:
             entry = self._command_handlers.get(command_type)
             if entry is None:
                 raise HandlerNotFoundError(command_type)
-            if _is_factory(entry, ICommandHandler):
+            if _is_factory(entry, AbstractCommandHandler):
                 # Es un factory, invocar y cachear la instancia
                 handler = t.cast(CommandHandlerFactory, entry)()
                 self._command_handlers[command_type] = handler
                 return handler
-            return t.cast(ICommandHandler[t.Any, t.Any], entry)
+            return t.cast(AbstractCommandHandler[t.Any, t.Any], entry)
 
     # ── Query Handlers ────────────────────────────────────────────
 
     def register_query_handler(
         self,
         query_type: type[Query[t.Any]],
-        handler: IQueryHandler[t.Any, t.Any] | QueryHandlerFactory,
+        handler: AbstractQueryHandler[t.Any, t.Any] | QueryHandlerFactory,
     ) -> "HandlerRegistry":
         """Registra un handler (o factory) para un tipo de query. Retorna self para fluent API."""
         with self._lock:
@@ -141,17 +141,17 @@ class HandlerRegistry:
 
     def resolve_query_handler(
         self, query_type: type[Query[t.Any]]
-    ) -> IQueryHandler[t.Any, t.Any]:
+    ) -> AbstractQueryHandler[t.Any, t.Any]:
         """Resuelve el handler para el tipo de query dado."""
         with self._lock:
             entry = self._query_handlers.get(query_type)
             if entry is None:
                 raise HandlerNotFoundError(query_type)
-            if _is_factory(entry, IQueryHandler):
+            if _is_factory(entry, AbstractQueryHandler):
                 handler = t.cast(QueryHandlerFactory, entry)()
                 self._query_handlers[query_type] = handler
                 return handler
-            return t.cast(IQueryHandler[t.Any, t.Any], entry)
+            return t.cast(AbstractQueryHandler[t.Any, t.Any], entry)
 
     # ── Introspección ─────────────────────────────────────────────
 

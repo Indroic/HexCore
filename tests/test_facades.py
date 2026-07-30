@@ -65,6 +65,8 @@ def test_resolution_is_cached_in_module_globals(facade_name):
     assert getattr(facade, name) is first
 
 
+# El alias legacy se pide a propósito para comprobar que sigue funcionando.
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_cqrs_facade_exposes_only_the_canonical_names():
     """
     S4: un solo nombre por concepto en la superficie que enseña la documentación. Los

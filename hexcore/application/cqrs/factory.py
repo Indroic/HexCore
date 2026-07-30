@@ -7,9 +7,9 @@ from __future__ import annotations
 import importlib
 import typing as t
 
-from hexcore.domain.cqrs.buses import ICommandBus, IQueryBus, IEventBus
-from hexcore.domain.cqrs.middleware import IMiddleware
-from hexcore.domain.cqrs.serializer import ISerializer
+from hexcore.domain.cqrs.buses import AbstractCommandBus, AbstractQueryBus, AbstractEventBus
+from hexcore.domain.cqrs.middleware import AbstractMiddleware
+from hexcore.domain.cqrs.serializer import AbstractSerializer
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
 
 from .config import CQRSConfig, BusConfig
@@ -25,7 +25,7 @@ def _import_class(dotted_path: str) -> type:
     return getattr(module, class_name)
 
 
-def _build_middlewares(dotted_paths: list[str]) -> list[IMiddleware]:
+def _build_middlewares(dotted_paths: list[str]) -> list[AbstractMiddleware]:
     """
     Instancia middlewares a partir de sus dotted paths.
 
@@ -34,7 +34,7 @@ def _build_middlewares(dotted_paths: list[str]) -> list[IMiddleware]:
     atado al engine de la aplicación) hay que instanciarlos a mano y pasar el
     `MiddlewarePipeline` al bus.
     """
-    middlewares: list[IMiddleware] = []
+    middlewares: list[AbstractMiddleware] = []
     for path in dotted_paths:
         cls = _import_class(path)
         try:
@@ -92,9 +92,9 @@ class CQRSFactory:
         self._config = config
         self._registry = registry
         self._enqueuer = enqueuer
-        self._serializer: ISerializer | None = None
+        self._serializer: AbstractSerializer | None = None
 
-    def create_serializer(self) -> ISerializer:
+    def create_serializer(self) -> AbstractSerializer:
         """
         Crea el serializer configurado (PydanticSerializer por defecto).
 
@@ -106,14 +106,14 @@ class CQRSFactory:
 
         if self._config.serializer:
             cls = _import_class(self._config.serializer)
-            self._serializer = t.cast(ISerializer, cls())
+            self._serializer = t.cast(AbstractSerializer, cls())
         else:
             from hexcore.infrastructure.cqrs.pydantic_serializer import PydanticSerializer
 
             self._serializer = PydanticSerializer()
         return self._serializer
 
-    def create_command_bus(self, **extra_kwargs: t.Any) -> ICommandBus:
+    def create_command_bus(self, **extra_kwargs: t.Any) -> AbstractCommandBus:
         """
         Crea el CommandBus configurado.
         Si no hay backend explícito, retorna InMemoryCommandBus con el enqueuer y el
@@ -142,7 +142,7 @@ class CQRSFactory:
             **extra_kwargs,
         )
 
-    def create_query_bus(self) -> IQueryBus:
+    def create_query_bus(self) -> AbstractQueryBus:
         """
         Crea el QueryBus configurado.
         Nota: Las queries siempre son síncronas en CQRS puro.
@@ -163,7 +163,7 @@ class CQRSFactory:
             **bus_config.options,
         )
 
-    def create_event_bus(self, **extra_kwargs: t.Any) -> IEventBus:
+    def create_event_bus(self, **extra_kwargs: t.Any) -> AbstractEventBus:
         """
         Crea el EventBus configurado.
 

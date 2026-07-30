@@ -223,6 +223,8 @@ async def test_dispose_engine_is_safe_without_an_engine():
 
 
 @pytest.mark.anyio
+# El alias legacy se invoca a propósito; su deprecación se cubre en test_deprecations.py.
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
 async def test_reset_sqlalchemy_engine_is_still_available():
     init_engine(SQLITE_URL)
     await reset_sqlalchemy_engine()

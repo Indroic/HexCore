@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import typing as t
 
-from hexcore.domain.cqrs.buses import ICommandBus
+from hexcore.domain.cqrs.buses import AbstractCommandBus
 from hexcore.domain.cqrs.commands import Command
-from hexcore.domain.cqrs.serializer import ISerializer
+from hexcore.domain.cqrs.serializer import AbstractSerializer
 from hexcore.application.cqrs.pipeline import MiddlewarePipeline
 from hexcore.application.cqrs.registry import HandlerRegistry
 
@@ -28,7 +28,7 @@ def _ensure_procrastinate() -> None:
         ) from exc
 
 
-class ProcrastinateCommandBus(ICommandBus):
+class ProcrastinateCommandBus(AbstractCommandBus):
     """
     Bus de commands que encola la ejecución en Procrastinate (PostgreSQL task queue).
 
@@ -53,7 +53,7 @@ class ProcrastinateCommandBus(ICommandBus):
         self,
         app: t.Any,  # procrastinate.App (no tipado para evitar import-time dependency)
         registry: HandlerRegistry,
-        serializer: ISerializer,
+        serializer: AbstractSerializer,
         pipeline: MiddlewarePipeline | None = None,
         *,
         queue_name: str = "hexcore_commands",

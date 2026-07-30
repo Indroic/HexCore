@@ -135,13 +135,10 @@ try:
         async def delete(self, entity: T) -> None:
             await sql_logical_delete(self.session, entity, self.model_cls)
 
-    # Alias de retrocompatibilidad
-    SQLAlchemyCommonImplementationsRepo = SqlAlchemyRepository
 
 except ImportError:
     M = t.TypeVar("M") # type: ignore
     class SqlAlchemyRepository(t.Generic[T, M]): ... # type: ignore
-    SQLAlchemyCommonImplementationsRepo = SqlAlchemyRepository # type: ignore
 
 
 try:
@@ -213,10 +210,18 @@ try:
         async def delete(self, entity: T) -> None:
             return await nosql_logical_delete(entity.id, self.document_cls)
 
-    # Alias de retrocompatibilidad
-    BeanieODMCommonImplementationsRepo = BeanieRepository
 
 except ImportError:
     D = t.TypeVar("D") # type: ignore
     class BeanieRepository(t.Generic[T, D]): ... # type: ignore
-    BeanieODMCommonImplementationsRepo = BeanieRepository # type: ignore
+
+
+# ── Alias de retrocompatibilidad (deprecados desde 5.0, se eliminan en 6.0) ────
+from hexcore._deprecation import deprecated_aliases  # noqa: E402
+
+_DEPRECATED_ALIASES = {
+    "SQLAlchemyCommonImplementationsRepo": "SqlAlchemyRepository",
+    "BeanieODMCommonImplementationsRepo": "BeanieRepository",
+}
+
+__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())

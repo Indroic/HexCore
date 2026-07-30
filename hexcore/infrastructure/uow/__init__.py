@@ -185,8 +185,6 @@ class BeanieUnitOfWork(IUnitOfWork):
         self._entities.clear()
 
 
-# Alias por retrocompatibilidad
-NoSqlUnitOfWork = BeanieUnitOfWork
 
 
 # Scopes para código fuera de FastAPI (workers, cron, scripts, seeds).
@@ -207,3 +205,14 @@ __all__ = [
     "open_uow_scope",
     "nosql_uow_scope",
 ]
+
+
+# ── Alias de retrocompatibilidad (deprecado desde 5.0, se elimina en 6.0) ──────
+from hexcore._deprecation import deprecated_aliases  # noqa: E402
+
+_DEPRECATED_ALIASES = {"NoSqlUnitOfWork": "BeanieUnitOfWork"}
+
+__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())
+
+if t.TYPE_CHECKING:
+    NoSqlUnitOfWork = BeanieUnitOfWork

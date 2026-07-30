@@ -10,7 +10,7 @@ import logging
 import typing as t
 import uuid
 
-from hexcore.domain.cqrs.buses import IEventBus
+from hexcore.domain.cqrs.buses import AbstractEventBus
 from hexcore.domain.cqrs.context import is_worker_execution, local_execution
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
 from hexcore.domain.events import DomainEvent
@@ -23,9 +23,9 @@ if t.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class RedisEventBus(IEventBus):
+class RedisEventBus(AbstractEventBus):
     """
-    Implementación de IEventBus usando Redis Streams.
+    Implementación de AbstractEventBus usando Redis Streams.
     """
 
     def __init__(

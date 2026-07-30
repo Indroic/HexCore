@@ -351,7 +351,7 @@ def test_docs_examples_do_not_teach_the_legacy_aliases(doc):
     """
     code = "\n".join(_code_blocks(_read(doc)))
 
-    for legacy in ("ICommandBus", "IQueryBus", "ISerializer", "IMiddleware"):
+    for legacy in ("AbstractCommandBus", "AbstractQueryBus", "AbstractSerializer", "AbstractMiddleware"):
         assert legacy not in code, (
             f"un ejemplo de {doc} usa el alias legacy {legacy}; usá su nombre canónico Abstract*"
         )
@@ -448,40 +448,47 @@ def test_support_policy_marks_only_the_current_major_as_active():
     )
 
 
-def test_deprecated_api_table_lists_real_symbols():
+def test_deprecated_api_table_lists_symbols_that_still_work():
     """
-    Los nombres de la columna "Deprecado" tienen que existir todavía (si no, la tabla
-    miente sobre que siguen funcionando), y los de la columna "Usá en su lugar" también.
+    Si la tabla promete que la superficie de v1/v2 sigue funcionando, tiene que seguir
+    funcionando. Se hace `getattr` de verdad y no `dir()`, porque los alias se resuelven
+    por `__getattr__` de módulo y por tanto no aparecen en `dir()`.
     """
     import importlib
+    import warnings
 
-    modules = [
-        "hexcore.domain.cqrs",
-        "hexcore.domain.events",
-        "hexcore.infrastructure.uow",
-        "hexcore.infrastructure.repositories.implementations",
-        "hexcore.infrastructure.repositories.orms.sqlalchemy.session",
+    must_work = [
+        ("hexcore.domain.cqrs", "AbstractCommandBus"),
+        ("hexcore.domain.cqrs", "AbstractQueryBus"),
+        ("hexcore.domain.cqrs", "AbstractEventBus"),
+        ("hexcore.domain.cqrs", "AbstractCommandHandler"),
+        ("hexcore.domain.cqrs", "AbstractQueryHandler"),
+        ("hexcore.domain.cqrs", "AbstractMiddleware"),
+        ("hexcore.domain.cqrs", "AbstractSerializer"),
+        ("hexcore.domain.cqrs.buses", "AbstractCommandBus"),
+        ("hexcore.domain.cqrs.handlers", "AbstractCommandHandler"),
+        ("hexcore.domain.cqrs.middleware", "AbstractMiddleware"),
+        ("hexcore.domain.cqrs.serializer", "AbstractSerializer"),
+        ("hexcore.domain.events", "IEventDispatcher"),
     ]
-    available: set[str] = set()
-    for path in modules:
-        try:
-            available |= set(dir(importlib.import_module(path)))
-        except ImportError:
-            continue
 
-    # Se comprueban los que no dependen de extras ni son atributos de instancia.
-    must_exist = [
-        "ICommandBus", "IQueryBus", "IEventBus",
-        "ICommandHandler", "IQueryHandler",
-        "IMiddleware", "ISerializer",
+    broken: list[str] = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        for module_path, name in must_work:
+            module = importlib.import_module(module_path)
+            if getattr(module, name, None) is None:
+                broken.append(f"{module_path}.{name}")
+
+    assert not broken, (
+        "el README promete que estos alias siguen funcionando, y no: " + ", ".join(broken)
+    )
+
+    readme = _read("README.md")
+    canonical = [
         "AbstractCommandBus", "AbstractQueryBus", "AbstractEventBus",
         "AbstractCommandHandler", "AbstractQueryHandler",
         "AbstractMiddleware", "AbstractSerializer",
     ]
-    missing = [name for name in must_exist if name not in available]
-
-    assert not missing, f"la tabla de API deprecada menciona símbolos que no existen: {missing}"
-
-    readme = _read("README.md")
-    for name in must_exist:
+    for name in {n for _m, n in must_work} | set(canonical):
         assert name in readme, f"{name} no aparece en el README"

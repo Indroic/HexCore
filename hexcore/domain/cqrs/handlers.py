@@ -47,6 +47,16 @@ class AbstractQueryHandler(abc.ABC, t.Generic[TQuery, TResult]):
         raise NotImplementedError
 
 
-# Aliases de retrocompatibilidad
-ICommandHandler = AbstractCommandHandler
-IQueryHandler = AbstractQueryHandler
+# ── Alias de retrocompatibilidad (deprecados desde 5.0) ───────────────────────
+from hexcore._deprecation import deprecated_aliases  # noqa: E402
+
+_DEPRECATED_ALIASES = {
+    "ICommandHandler": "AbstractCommandHandler",
+    "IQueryHandler": "AbstractQueryHandler",
+}
+
+__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())
+
+if t.TYPE_CHECKING:
+    ICommandHandler = AbstractCommandHandler
+    IQueryHandler = AbstractQueryHandler

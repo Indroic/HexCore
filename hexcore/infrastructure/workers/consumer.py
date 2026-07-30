@@ -9,7 +9,7 @@ import typing as t
 from hexcore.domain.cqrs.buses import AbstractCommandBus, AbstractEventBus
 from hexcore.domain.cqrs.context import worker_execution
 from hexcore.domain.cqrs.resolution import resolve_dotted
-from hexcore.domain.cqrs.serializer import ISerializer
+from hexcore.domain.cqrs.serializer import AbstractSerializer
 from hexcore.domain.events import DomainEvent
 
 if t.TYPE_CHECKING:
@@ -50,7 +50,7 @@ class CQRSConsumer:
         self,
         command_bus: AbstractCommandBus,
         event_bus: AbstractEventBus | None = None,
-        serializer: ISerializer | None = None,
+        serializer: AbstractSerializer | None = None,
     ) -> None:
         """
         Args:

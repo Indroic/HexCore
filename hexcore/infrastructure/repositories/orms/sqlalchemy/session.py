@@ -199,10 +199,15 @@ async def get_async_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def reset_sqlalchemy_engine() -> None:
     """
-    Alias legacy de `dispose_engine()`.
+    Alias legacy de `dispose_engine()`. **Deprecado desde 5.0, se elimina en 6.0.**
 
-    Se conserva porque los workers (RabbitMQ, Celery) lo llaman para re-atar el pool al
-    event loop nuevo. Para el shutdown de una app, `dispose_engine()` dice mejor lo que
-    hace.
+    El nombre dice "reset" pero lo que hace es cerrar el pool y dejar el módulo
+    re-inicializable, que es lo que uno busca para el shutdown de un lifespan.
+    `dispose_engine()` lo dice mejor.
     """
+    from hexcore._deprecation import warn_deprecated
+
+    warn_deprecated(
+        "reset_sqlalchemy_engine()", "dispose_engine()", kind="función", stacklevel=2
+    )
     await dispose_engine()

@@ -23,7 +23,7 @@ if t.TYPE_CHECKING:
         AbstractEventBus,
         AbstractQueryBus,
     )
-    from hexcore.domain.cqrs.serializer import ISerializer
+    from hexcore.domain.cqrs.serializer import AbstractSerializer
 
     from .fakes import InMemoryTaskEnqueuer
 
@@ -38,7 +38,7 @@ class TestBuses(t.NamedTuple):
     query_bus: "InMemoryQueryBus"
     event_bus: "InMemoryEventBus"
     enqueuer: "InMemoryTaskEnqueuer"
-    serializer: "ISerializer"
+    serializer: "AbstractSerializer"
 
 
 def build_test_buses(
