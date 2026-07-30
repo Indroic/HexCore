@@ -99,6 +99,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "HealthReport": ("hexcore.infrastructure.api.health", "HealthReport"),
     "DependencyReport": ("hexcore.infrastructure.api.health", "DependencyReport"),
     "Probe": ("hexcore.infrastructure.api.health", "Probe"),
+    "ResponseFactory": ("hexcore.infrastructure.api.health", "ResponseFactory"),
 }
 
 __all__ = sorted(_EXPORTS)
