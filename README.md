@@ -110,7 +110,7 @@ pero están deprecados — ver [Versiones y soporte](#versiones-y-soporte).
 | Sesión o UoW fuera de un request | `sql.session_scope()`, `sql.uow_scope()` | `sql` |
 | Request-id correlacionado en los logs | `hx.RequestIDMiddleware`, `hx.install_request_id_logging()` | `api` |
 | Excepciones de dominio → HTTP | `hx.register_exception_handlers()` | `api` |
-| Health checks que sondean de verdad | `hx.register_health_routes()`, `hx.check_health()` | `api` |
+| Health checks que sondean de verdad | `hx.register_health_routes()`, `hx.check_health()`, `hx.HealthRoutes` | `api` |
 | Rate limiting | `hx.rate_limit()` | `api` |
 | SSE / WebSocket / límite de conexiones | `hx.sse_stream()`, `hx.ws_heartbeat()`, `hx.connection_slot()` | `api` |
 | Composición de routers | `hx.build_root_router()`, `hx.mount_routers()` | `api` |
@@ -261,6 +261,36 @@ register_health_routes(app, probes=[
     Probe("sql", check_database),
     Probe("cache", check_redis, timeout=1.0, critical=False),
 ])
+```
+
+#### Si tu app ya publica su propio `/health`
+
+Las dos rutas se registran por separado, así que una app **ya en producción** —con su forma de
+respuesta y un cliente tipado generado desde su OpenAPI— puede quedarse con la readiness, que es
+la parte que no se escribe a mano, sin tocar el contrato que ya publicó:
+
+```python
+register_health_routes(app, liveness=False)          # sólo /health/ready
+register_health_routes(app, liveness=False, readiness_path="/_ready")
+```
+
+Y si lo que hay que conservar es la **forma del cuerpo**, `response_factory` la adapta sin
+renunciar a las sondas. El status code lo sigue decidiendo el informe, que es lo que lee el
+orquestador:
+
+```python
+register_health_routes(
+    app,
+    response_factory=lambda r: {"ok": r.status != "down", "checks": r.dependencies},
+)
+```
+
+Lo mismo desde `create_app`, sin apagar la feature entera:
+
+```python
+from hexcore.fastapi import AppFeatures, HealthRoutes, create_app
+
+app = create_app(features=AppFeatures(health=HealthRoutes(liveness=False)))
 ```
 
 ### Rate limiting

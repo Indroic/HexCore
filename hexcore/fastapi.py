@@ -21,6 +21,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     # ── App y lifespan ────────────────────────────────────────────────────────
     "create_app": ("hexcore.infrastructure.api.app", "create_app"),
     "AppFeatures": ("hexcore.infrastructure.api.app", "AppFeatures"),
+    "HealthRoutes": ("hexcore.infrastructure.api.app", "HealthRoutes"),
     "build_lifespan": ("hexcore.infrastructure.api.lifespan", "build_lifespan"),
     "StartupStep": ("hexcore.infrastructure.api.lifespan", "StartupStep"),
     "CallableStep": ("hexcore.infrastructure.api.lifespan", "CallableStep"),
@@ -98,6 +99,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "HealthReport": ("hexcore.infrastructure.api.health", "HealthReport"),
     "DependencyReport": ("hexcore.infrastructure.api.health", "DependencyReport"),
     "Probe": ("hexcore.infrastructure.api.health", "Probe"),
+    "ResponseFactory": ("hexcore.infrastructure.api.health", "ResponseFactory"),
 }
 
 __all__ = sorted(_EXPORTS)

@@ -15,11 +15,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .exception_handlers import register_exception_handlers
-from .health import Probe, register_health_routes
+from .health import Probe, ResponseFactory, register_health_routes
 from .middlewares import RequestIDMiddleware, TimingMiddleware
 from .routing import MountableRouter, mount_routers
 
-__all__ = ["AppFeatures", "create_app"]
+__all__ = ["AppFeatures", "HealthRoutes", "create_app"]
+
+
+class HealthRoutes(BaseModel):
+    """
+    Qué rutas de health cablea `create_app()`, y con qué forma.
+
+    Existe para que una app **ya publicada** pueda adoptar la readiness sin renunciar a
+    su `/health` ni al cliente tipado generado desde su OpenAPI. Los argumentos son los
+    de `register_health_routes`, agrupados para no engordar la firma de `create_app`.
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    path: str = "/health"
+    liveness: bool = True
+    readiness: bool = True
+    readiness_path: str | None = None
+    response_factory: ResponseFactory | None = None
 
 
 class AppFeatures(BaseModel):
@@ -41,8 +59,16 @@ class AppFeatures(BaseModel):
     exception_handlers: bool = True
     """Mapeo de excepciones de dominio a HTTP (F5)."""
 
-    health: bool = True
-    """Rutas `/health` y `/health/ready` (F16)."""
+    health: bool | HealthRoutes = True
+    """
+    Rutas `/health` y `/health/ready` (F16).
+
+    Acepta también un `HealthRoutes` para adoptarlas **por partes**: una app que ya
+    publica su propio `/health` puede quedarse con la readiness, que es la que no se
+    escribe a mano, sin apagar la feature entera::
+
+        AppFeatures(health=HealthRoutes(liveness=False))
+    """
 
 
 def create_app(
@@ -65,7 +91,8 @@ def create_app(
         features: Qué cablear. Ver `AppFeatures`.
         routers: Routers a montar. Acepta `APIRouter` o `(APIRouter, kwargs)` (F13).
         health_probes: Sondas para `/health/ready`. Por defecto, las deducidas de la
-            configuración (F16).
+            configuración (F16). Qué rutas se registran y con qué forma se controla con
+            `AppFeatures(health=HealthRoutes(...))`.
         exception_mapping: Excepciones extra a mapear, fusionadas con el default (F5).
         **fastapi_kwargs: Se pasan tal cual a `FastAPI` (`title`, `version`,
             `docs_url`, `openapi_tags`…). Lo que pases gana sobre los defaults derivados
@@ -99,7 +126,20 @@ def create_app(
         register_exception_handlers(app, mapping=exception_mapping)
 
     if resolved_features.health:
-        register_health_routes(app, probes=health_probes)
+        health_routes = (
+            resolved_features.health
+            if isinstance(resolved_features.health, HealthRoutes)
+            else HealthRoutes()
+        )
+        register_health_routes(
+            app,
+            probes=health_probes,
+            path=health_routes.path,
+            liveness=health_routes.liveness,
+            readiness=health_routes.readiness,
+            readiness_path=health_routes.readiness_path,
+            response_factory=health_routes.response_factory,
+        )
 
     if routers:
         mount_routers(app, list(routers))
