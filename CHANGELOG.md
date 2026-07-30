@@ -1,3 +1,9 @@
+## 6.0.1 (2026-07-30)
+
+### Fix
+
+- declara 6.x como serie activa en la política de soporte
+
 ## 6.0.0 (2026-07-30)
 
 ### Feat
