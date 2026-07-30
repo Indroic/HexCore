@@ -3,7 +3,7 @@ Mecanismo de deprecación de la superficie de API anterior a 5.0.
 
 Conviven dos nombres para varios conceptos (`AbstractCommandBus`/`ICommandBus`,
 `AbstractSerializer`/`ISerializer`, …) por retrocompatibilidad con 1.x/2.x. Los canónicos
-son los `Abstract*`; los alias siguen funcionando, pero avisan y se eliminarán en 6.0.
+son los `Abstract*`; los alias siguen funcionando, pero avisan y se eliminarán en 7.0.
 
 Un alias declarado como `ICommandBus = AbstractCommandBus` **no puede avisar**: es una
 asignación, y leerlo no ejecuta nada. Por eso el aviso se implementa con `__getattr__` de
@@ -34,7 +34,14 @@ __all__ = [
 
 #: Versión en la que se eliminan los alias. Se menciona en cada aviso para que el usuario
 #: sepa cuánto margen tiene.
-REMOVED_IN = "6.0"
+#:
+#: **Tiene que ser estrictamente mayor que la versión publicada**, o el aviso se contradice
+#: a sí mismo: anunciar "se elimina en 6.0" corriendo en 6.0.0, con los alias delante, le
+#: enseña al usuario que estos avisos no hay que leerlos. Ya pasó, porque en este repo dos
+#: majors salieron de commits `feat!:` involuntarios. Lo vigila
+#: `test_removed_in_is_ahead_of_the_published_version`: si un bump vuelve a alcanzar a este
+#: valor, el fallo salta en CI y no en el aviso que lee el usuario.
+REMOVED_IN = "7.0"
 
 
 def warn_deprecated(

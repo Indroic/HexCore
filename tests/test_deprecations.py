@@ -2,7 +2,7 @@
 Deprecación de la superficie de API anterior a 5.0.
 
 Los alias de v1/v2 siguen funcionando —no se han borrado— pero avisan y se eliminarán en
-6.0. Este módulo fija las tres propiedades que hacen que la deprecación sirva de algo:
+7.0. Este módulo fija las tres propiedades que hacen que la deprecación sirva de algo:
 
 1. El alias **sigue funcionando** y devuelve el objeto canónico.
 2. Pedirlo emite un `DeprecationWarning` que apunta **al código del usuario**, no a las
@@ -13,16 +13,75 @@ Los alias de v1/v2 siguen funcionando —no se han borrado— pero avisan y se e
 from __future__ import annotations
 
 import importlib
+import tomllib
 import warnings
+from pathlib import Path
 
 import pytest
 
 from hexcore._deprecation import REMOVED_IN
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
 
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+def _published_version() -> str:
+    """
+    La versión que declara el repo.
+
+    Se lee de `pyproject.toml` y no de `importlib.metadata.version("hexcore")`: los
+    metadatos del dist instalado se quedan en la versión del último `pip install`, así
+    que en un checkout de desarrollo mienten. El que tiene que ir por delante del bump
+    es el aviso, y el bump vive aquí.
+    """
+    return tomllib.loads(
+        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]["version"]
+
+
+def _release(version: str, width: int = 3) -> tuple[int, ...]:
+    """
+    `"7.0"` → `(7, 0, 0)`. Sólo el tramo numérico, rellenado a `width` componentes.
+
+    El relleno es lo que hace la comparación honesta: sin él `("7","0") > ("6","0","0")`
+    compara tuplas de distinta longitud y `"6.0"` vs `"6.0.0"` daría "menor" en vez de
+    "igual", que es justo el caso contradictorio que hay que detectar.
+    """
+    parts: list[int] = []
+    for chunk in version.split("."):
+        digits = ""
+        for char in chunk:
+            if not char.isdigit():
+                break
+            digits += char
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple((parts + [0] * width)[:width])
+
+
+def test_removed_in_is_ahead_of_the_published_version():
+    """
+    El aviso promete una eliminación **futura**, así que `REMOVED_IN` tiene que ser
+    estrictamente mayor que la versión publicada.
+
+    Sin esta comprobación, un `feat!:` involuntario deja el aviso diciendo "se eliminará
+    en 6.0" mientras corre en 6.0.0 con los alias todavía presentes: el usuario no sabe
+    cuánto margen tiene y aprende que estos avisos son basura. En este repo ya hubo dos
+    majors accidentales, así que no es hipotético.
+    """
+    published = _release(_published_version())
+    removal = _release(REMOVED_IN)
+
+    assert removal > published, (
+        f"REMOVED_IN es {REMOVED_IN!r} pero el paquete ya publica "
+        f"{_published_version()!r}: el aviso anuncia una eliminación que, según él "
+        f"mismo, ya debería haber ocurrido. Subí REMOVED_IN al próximo major."
+    )
 
 
 # (módulo, alias deprecado, nombre canónico)
