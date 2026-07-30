@@ -286,8 +286,11 @@ rate_limit(10, 60, on_backend_error="deny")
 ### Request-id correlacionado
 
 ```python
+import logging
+
 from hexcore.fastapi import get_request_id, install_request_id_logging
 
+logging.basicConfig(level=logging.INFO)          # primero: configurá el logging
 install_request_id_logging(fmt="%(asctime)s [%(request_id)s] %(message)s")
 ```
 
@@ -295,6 +298,10 @@ install_request_id_logging(fmt="%(asctime)s [%(request_id)s] %(message)s")
 la traza) y lo publica en un `ContextVar` y en `request.state`. `install_request_id_logging()`
 lo inyecta en **cada línea de log**, que es la mitad del valor: sin eso, tener el header no
 correlaciona nada.
+
+> **El orden importa.** `install_request_id_logging()` instrumenta los handlers que **ya
+> existen**. En un proceso donde nadie configuró el logging todavía no hay ninguno, así que la
+> llamada no tiene nada que hacer — y avisa con un `RuntimeWarning` en vez de quedarse callada.
 
 ### Streaming: SSE, WebSocket y límite de conexiones
 
