@@ -300,38 +300,46 @@ def test_readme_command_only_consumer_example_runs():
 DOC_FILES = ["README.md", "DOCS.md"]
 
 
-@pytest.mark.parametrize("doc", DOC_FILES)
-def test_docs_do_not_mention_the_wrong_registry_method(doc):
-    """`register_command(` no existe; el método es `register_command_handler`."""
-    content = _read(doc)
-
-    assert not re.search(r"register_command\(", content), (
-        f"{doc} menciona register_command(, que no existe"
-    )
-    assert not re.search(r"register_query\(", content), (
-        f"{doc} menciona register_query(, que no existe"
-    )
-
-
-@pytest.mark.parametrize("doc", DOC_FILES)
-def test_docs_do_not_mention_the_wrong_task_names(doc):
-    """Las tareas del consumidor se llaman `hexcore.process_*`."""
-    content = _read(doc)
-
-    for wrong in ("process_cqrs_command", "process_cqrs_handler", "process_cqrs_task"):
-        assert wrong not in content, f"{doc} menciona {wrong}, que no existe"
-
-
-@pytest.mark.parametrize("doc", DOC_FILES)
-def test_docs_do_not_mention_deleted_api(doc):
-    content = _read(doc)
-
-    assert "MiddlewareConfig" not in content, f"{doc} menciona MiddlewareConfig, borrado"
-
-
 def _code_blocks(content: str) -> list[str]:
     """Los bloques de código de un markdown. La prosa puede *mencionar* lo que quiera."""
     return re.findall(r"```[a-zA-Z]*\n(.*?)```", content, re.DOTALL)
+
+
+# Todos los guardas de abajo miran **sólo los bloques de código**. La prosa puede —y debe—
+# nombrar la API vieja: la tabla de deprecación y la guía de migración existen precisamente
+# para decirte qué dejar de usar. Lo que no debe pasar es que un *ejemplo*, que es lo que la
+# gente copia y pega, enseñe algo que no existe o que está deprecado.
+
+
+@pytest.mark.parametrize("doc", DOC_FILES)
+def test_docs_examples_do_not_use_the_wrong_registry_method(doc):
+    """`register_command(` no existe; el método es `register_command_handler`."""
+    code = "\n".join(_code_blocks(_read(doc)))
+
+    assert not re.search(r"register_command\(", code), (
+        f"un ejemplo de {doc} usa register_command(, que no existe"
+    )
+    assert not re.search(r"register_query\(", code), (
+        f"un ejemplo de {doc} usa register_query(, que no existe"
+    )
+
+
+@pytest.mark.parametrize("doc", DOC_FILES)
+def test_docs_examples_do_not_use_the_wrong_task_names(doc):
+    """Las tareas del consumidor se llaman `hexcore.process_*`."""
+    code = "\n".join(_code_blocks(_read(doc)))
+
+    for wrong in ("process_cqrs_command", "process_cqrs_handler", "process_cqrs_task"):
+        assert wrong not in code, f"un ejemplo de {doc} usa {wrong}, que no existe"
+
+
+@pytest.mark.parametrize("doc", DOC_FILES)
+def test_docs_examples_do_not_use_deleted_api(doc):
+    code = "\n".join(_code_blocks(_read(doc)))
+
+    assert "MiddlewareConfig" not in code, (
+        f"un ejemplo de {doc} usa MiddlewareConfig, que se eliminó en 3.0"
+    )
 
 
 @pytest.mark.parametrize("doc", DOC_FILES)
@@ -396,3 +404,84 @@ def test_docs_facade_attributes_exist():
     assert not missing, "la documentación usa atributos que la fachada no exporta: " + ", ".join(
         sorted(set(missing))
     )
+
+
+# ── La política de soporte tiene que reflejar la versión real ───────────────────
+
+
+def test_support_policy_covers_every_released_major():
+    """
+    Cada major publicado tiene que aparecer en la tabla de soporte del README. Si se
+    releasea un 6.x y nadie actualiza la tabla, el usuario no sabe qué está soportado.
+    """
+    import tomllib
+
+    version = tomllib.loads(
+        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]["version"]
+    current_major = int(version.split(".")[0])
+
+    readme = _read("README.md")
+    policy = readme.split("## Versiones y soporte", 1)[1].split("## ", 1)[0]
+
+    for major in range(1, current_major + 1):
+        assert f"**{major}.x**" in policy, (
+            f"la tabla de soporte del README no menciona la serie {major}.x "
+            f"(versión actual: {version})"
+        )
+
+
+def test_support_policy_marks_only_the_current_major_as_active():
+    import tomllib
+
+    version = tomllib.loads(
+        (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]["version"]
+    current_major = version.split(".")[0]
+
+    policy = _read("README.md").split("## Versiones y soporte", 1)[1].split("## ", 1)[0]
+    active_rows = [line for line in policy.splitlines() if "**Activa**" in line]
+
+    assert len(active_rows) == 1, "debe haber exactamente una serie activa"
+    assert f"**{current_major}.x**" in active_rows[0], (
+        f"la serie activa del README no es la {current_major}.x"
+    )
+
+
+def test_deprecated_api_table_lists_real_symbols():
+    """
+    Los nombres de la columna "Deprecado" tienen que existir todavía (si no, la tabla
+    miente sobre que siguen funcionando), y los de la columna "Usá en su lugar" también.
+    """
+    import importlib
+
+    modules = [
+        "hexcore.domain.cqrs",
+        "hexcore.domain.events",
+        "hexcore.infrastructure.uow",
+        "hexcore.infrastructure.repositories.implementations",
+        "hexcore.infrastructure.repositories.orms.sqlalchemy.session",
+    ]
+    available: set[str] = set()
+    for path in modules:
+        try:
+            available |= set(dir(importlib.import_module(path)))
+        except ImportError:
+            continue
+
+    # Se comprueban los que no dependen de extras ni son atributos de instancia.
+    must_exist = [
+        "ICommandBus", "IQueryBus", "IEventBus",
+        "ICommandHandler", "IQueryHandler",
+        "IMiddleware", "ISerializer",
+        "AbstractCommandBus", "AbstractQueryBus", "AbstractEventBus",
+        "AbstractCommandHandler", "AbstractQueryHandler",
+        "AbstractMiddleware", "AbstractSerializer",
+    ]
+    missing = [name for name in must_exist if name not in available]
+
+    assert not missing, f"la tabla de API deprecada menciona símbolos que no existen: {missing}"
+
+    readme = _read("README.md")
+    for name in must_exist:
+        assert name in readme, f"{name} no aparece en el README"
