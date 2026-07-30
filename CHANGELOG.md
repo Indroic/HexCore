@@ -1,3 +1,15 @@
+## 6.1.0 (2026-07-30)
+
+### Feat
+
+- CronJobDefinition lleva description, y el seed la persiste
+- build_root_router acepta una secuencia de hijos, no sólo un mapa
+
+### Fix
+
+- declara 6.x como serie activa en la política de soporte
+- declara 6.x como serie activa en la política de soporte
+
 ## 6.0.2 (2026-07-30)
 
 ### Fix
