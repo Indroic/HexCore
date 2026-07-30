@@ -1,3 +1,16 @@
+## 6.2.0 (2026-07-30)
+
+### Feat
+
+- exporta ResponseFactory desde la fachada hexcore.fastapi
+- las rutas de health se adoptan por partes
+
+### Fix
+
+- declara 6.x como serie activa en la política de soporte
+- declara 6.x como serie activa en la política de soporte
+- install_request_id_logging avisa en vez de ser un no-op silencioso
+
 ## 6.1.0 (2026-07-30)
 
 ### Feat
