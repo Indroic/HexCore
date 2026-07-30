@@ -1,3 +1,10 @@
+## 6.0.2 (2026-07-30)
+
+### Fix
+
+- declara 6.x como serie activa en la política de soporte
+- mueve REMOVED_IN a 7.0 y lo blinda con un test
+
 ## 6.0.1 (2026-07-30)
 
 ### Fix
