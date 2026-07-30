@@ -4,6 +4,7 @@ F11 (middlewares de serie) y F13 (composición de routers).
 from __future__ import annotations
 
 import logging
+import warnings
 
 import pytest
 
@@ -207,6 +208,59 @@ def test_install_request_id_logging_can_set_the_format():
         assert handler.formatter.format(record) == "[-] hola"
     finally:
         logger.removeHandler(handler)
+
+
+# ── R4: sin handlers, la llamada no puede quedarse callada ─────────────────────
+
+
+def test_install_request_id_logging_warns_when_there_is_nothing_to_instrument():
+    """
+    El README presenta la llamada como si bastara. En un proceso limpio —nadie llamó a
+    `basicConfig`— no hay handlers, la llamada es un no-op y el síntoma es "no veo el
+    request-id en los logs", sin ninguna pista de la causa.
+    """
+    logger = logging.getLogger("hexcore.test.sin_handlers")
+    logger.handlers.clear()
+
+    root = logging.getLogger()
+    saved = root.handlers[:]
+    root.handlers.clear()
+    try:
+        with pytest.warns(RuntimeWarning, match="no tiene handlers"):
+            install_request_id_logging(logger)
+    finally:
+        root.handlers[:] = saved
+
+
+def test_install_request_id_logging_does_not_warn_when_it_has_work_to_do():
+    logger = logging.getLogger("hexcore.test.con_handlers")
+    handler = logging.StreamHandler()
+    logger.addHandler(handler)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            install_request_id_logging(logger)
+    finally:
+        logger.removeHandler(handler)
+
+
+def test_install_request_id_logging_falls_back_to_the_root_handlers():
+    """Instrumentar el root cuando el logger pedido no tiene handlers propios no es el
+    caso vacío: hay handlers, y son los que van a formatear la línea."""
+    logger = logging.getLogger("hexcore.test.hereda_root")
+    logger.handlers.clear()
+
+    root = logging.getLogger()
+    handler = logging.StreamHandler()
+    root.addHandler(handler)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            install_request_id_logging(logger)
+
+        assert any(isinstance(f, RequestIDLogFilter) for f in handler.filters)
+    finally:
+        root.removeHandler(handler)
 
 
 # ── F13: build_root_router / mount_routers ─────────────────────────────────────

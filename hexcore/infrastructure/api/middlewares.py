@@ -12,6 +12,7 @@ import logging
 import time
 import typing as t
 import uuid
+import warnings
 from contextvars import ContextVar
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -123,11 +124,25 @@ def install_request_id_logging(
     """
     Instala el filtro de request-id en los handlers de un logger.
 
+    **Configurá el logging primero.** Esta función instrumenta los handlers que
+    **ya existen**; si no hay ninguno, no hay nada que instrumentar y no hace nada::
+
+        logging.basicConfig(level=logging.INFO)          # primero
+        install_request_id_logging(fmt="%(asctime)s [%(request_id)s] %(message)s")
+
+    Al revés no falla, pero deja el logging sin configurar y el request-id sin
+    aparecer. Por eso el caso "sin handlers" emite un `RuntimeWarning` en vez de
+    devolver en silencio: el síntoma sería "no veo el request-id en los logs", que no
+    apunta a ninguna causa.
+
     Args:
         logger: El logger a instrumentar. Por defecto, el root logger.
         fmt: Si se da, se aplica como formato a los handlers del logger. Usá
             ``%(request_id)s`` en él. Si es None, no se toca el formato: el filtro
             deja el atributo disponible para el formato que ya tengas.
+
+    Warns:
+        RuntimeWarning: Si el logger de destino no tiene ningún handler.
     """
     target = logger or logging.getLogger()
     log_filter = RequestIDLogFilter()
@@ -135,6 +150,19 @@ def install_request_id_logging(
     # El filtro va en los handlers, no en el logger: un filtro de logger no se aplica
     # a los registros que suben por propagación desde loggers hijos.
     handlers = target.handlers or logging.getLogger().handlers
+    if not handlers:
+        # Un no-op silencioso en una utilidad de *observabilidad* es especialmente malo:
+        # el usuario descubre que no funcionó cuando necesita correlacionar un incidente.
+        warnings.warn(
+            f"install_request_id_logging: el logger {target.name!r} no tiene handlers, "
+            "así que no hay nada que instrumentar y esta llamada no hizo nada. "
+            "Configurá el logging primero (p. ej. logging.basicConfig(...)) y llamá "
+            "después.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return
+
     for handler in handlers:
         if not any(isinstance(f, RequestIDLogFilter) for f in handler.filters):
             handler.addFilter(log_filter)
