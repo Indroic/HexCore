@@ -11,6 +11,9 @@ import pytest
 pytest.importorskip("sqlalchemy")
 pytest.importorskip("aiosqlite")
 
+from sqlalchemy import Boolean, DateTime, String  # noqa: E402
+from sqlalchemy.orm import Mapped, mapped_column  # noqa: E402
+
 from hexcore.domain.cqrs.cron import CronJobDefinition, ICronJobRepository  # noqa: E402
 from hexcore.domain.cqrs.decorators import background_task  # noqa: E402
 from hexcore.infrastructure.cqrs.cron_sql import (  # noqa: E402
@@ -312,6 +315,109 @@ async def test_cron_job_definitions_are_seedable():
     job = (await repo.get_active_jobs())[0]
     assert job.task_name == f"{__name__}.scheduled_cleanup"
     assert job.queue == "maintenance"
+
+
+# ── R3: `description`, la columna que el operador lee antes de apagar un cron ──
+
+
+@background_task(queue="billing")
+async def emitir_facturas() -> None:  # pragma: no cover
+    """Emite las facturas del mes y las envía por email.
+
+    El resto del docstring no debería viajar a la columna.
+    """
+    ...
+
+
+@pytest.mark.anyio
+async def test_seed_persists_the_description():
+    """
+    Sin esto, una app que quiere descripciones no puede usar `seed_cron_jobs()` y se
+    queda con su propio seed: F7 adoptado a medias por una columna.
+    """
+    repo = await _prepare()
+    await seed_cron_jobs(
+        [_definition("close_books", description="Cierra la caja del día.")]
+    )
+
+    job = (await repo.get_active_jobs())[0]
+
+    assert job.description == "Cierra la caja del día."
+
+
+@pytest.mark.anyio
+async def test_description_defaults_to_none_and_round_trips():
+    repo = await _prepare()
+    await seed_cron_jobs([_definition("sin_descripcion")])
+
+    job = (await repo.get_active_jobs())[0]
+
+    assert job.description is None
+
+
+def test_description_is_the_last_field_of_the_definition():
+    """
+    Intercalarla cambiaría el significado de los argumentos posicionales de quien ya
+    construye `CronJobDefinition` a mano, y ese rompimiento sería silencioso: los tipos
+    de `last_run_at` y `description` no colisionan en runtime.
+    """
+    import dataclasses
+
+    fields = [f.name for f in dataclasses.fields(CronJobDefinition)]
+
+    assert fields[-1] == "description"
+
+
+def test_cron_job_takes_the_description_from_the_docstring():
+    """La descripción que el operador necesita casi siempre ya está escrita ahí."""
+    definition = cron_job(emitir_facturas, "0 6 1 * *")
+
+    assert definition.description == "Emite las facturas del mes y las envía por email."
+
+
+def test_cron_job_explicit_description_wins_over_the_docstring():
+    definition = cron_job(
+        emitir_facturas, "0 6 1 * *", description="Facturación mensual."
+    )
+
+    assert definition.description == "Facturación mensual."
+
+
+def test_cron_job_without_docstring_leaves_the_description_empty():
+    definition = cron_job(scheduled_cleanup, "0 4 * * *")
+
+    assert definition.description is None
+
+
+@pytest.mark.anyio
+async def test_seed_tolerates_a_model_without_the_description_column():
+    """
+    Un modelo propio anterior a R3 no tiene la columna. El seed tiene que sembrar lo que
+    la tabla admita en vez de tirar el arranque con `Unconsumed column names`.
+    """
+    from sqlalchemy.pool import StaticPool
+
+    class LegacyCronJob(Base):
+        __tablename__ = "legacy_cron_jobs"
+
+        job_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+        task_name: Mapped[str] = mapped_column(String(255), nullable=False)
+        cron_expression: Mapped[str] = mapped_column(String(128), nullable=False)
+        queue: Mapped[str] = mapped_column(String(64), nullable=False, default="default")
+        is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+        last_run_at: Mapped[datetime | None] = mapped_column(
+            DateTime(timezone=True), nullable=True, default=None
+        )
+
+    init_engine(SQLITE_URL, poolclass=StaticPool)
+    await create_cron_tables(model=LegacyCronJob)
+
+    inserted = await seed_cron_jobs(
+        [_definition("legacy", description="se pierde, pero no rompe")],
+        model=LegacyCronJob,
+    )
+
+    assert inserted == 1
 
 
 # ── Integración con el scheduler ───────────────────────────────────────────────

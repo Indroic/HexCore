@@ -20,9 +20,18 @@ class CronJobDefinition:
     payload: dict[str, t.Any] = field(default_factory=dict)
     queue: str = "default"
     is_active: bool = True
-    
+
     # Para control de estado si se usa sin locks distribuidos
     last_run_at: datetime | None = None
+
+    # Qué hace el job, en prosa. No lo usa el scheduler: existe para el humano que ve la
+    # tabla en un panel de administración y tiene que decidir si desactivar un cron. Sin
+    # esto sólo se ve `task_name` y una expresión cron, que no dicen si apagarlo es
+    # inofensivo o deja de facturar.
+    #
+    # Va al final del dataclass a propósito: intercalarlo cambiaría el significado de los
+    # argumentos posicionales de quien ya construye definiciones a mano.
+    description: str | None = None
 
 
 class ICronJobRepository(abc.ABC):

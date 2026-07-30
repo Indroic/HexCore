@@ -69,6 +69,11 @@ class CronJobModelMixin:
     last_run_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    # Nullable: las tablas que ya existen no tienen la columna, y una migración que la
+    # añadiera NOT NULL exigiría inventarle una descripción a cada job ya sembrado.
+    description: Mapped[str | None] = mapped_column(
+        String(512), nullable=True, default=None
+    )
 
     @declared_attr
     def payload(cls) -> Mapped[dict[str, t.Any]]:  # noqa: N805
@@ -85,6 +90,7 @@ class CronJobModelMixin:
             queue=self.queue,
             is_active=self.is_active,
             last_run_at=self.last_run_at,
+            description=self.description,
         )
 
 
@@ -196,22 +202,28 @@ async def seed_cron_jobs(
             return 0
 
         statement = _insert_ignore(session, model)
+        # Un modelo propio anterior a la columna `description` no la tiene, y un INSERT de
+        # Core con una clave que no es columna revienta con `Unconsumed column names`. Se
+        # siembra lo que la tabla admita en vez de tirar el arranque entero.
+        columns = set(model.__table__.c.keys())
         inserted = 0
         # Fila a fila para que `rowcount` sea fiable en todos los dialectos: con
         # executemany varios drivers devuelven -1 y el contador mentiría. Son un puñado
         # de filas y esto corre una vez al arrancar.
         for job in missing:
+            values = {
+                "job_id": job.job_id,
+                "task_name": job.task_name,
+                "cron_expression": job.cron_expression,
+                "payload": job.payload,
+                "queue": job.queue,
+                "is_active": job.is_active,
+                "last_run_at": _as_utc(job.last_run_at) if job.last_run_at else None,
+                "description": job.description,
+            }
             result = await session.execute(
                 statement,
-                {
-                    "job_id": job.job_id,
-                    "task_name": job.task_name,
-                    "cron_expression": job.cron_expression,
-                    "payload": job.payload,
-                    "queue": job.queue,
-                    "is_active": job.is_active,
-                    "last_run_at": _as_utc(job.last_run_at) if job.last_run_at else None,
-                },
+                {key: value for key, value in values.items() if key in columns},
             )
             if result.rowcount != 0:
                 inserted += 1
@@ -271,6 +283,14 @@ async def create_cron_tables(
             sa.Column("queue", sa.String(64), nullable=False),
             sa.Column("is_active", sa.Boolean(), nullable=False),
             sa.Column("last_run_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("description", sa.String(512), nullable=True),
+        )
+
+    Si la tabla es anterior a la columna `description`, la migración de actualización es::
+
+        op.add_column(
+            "hexcore_cron_jobs",
+            sa.Column("description", sa.String(512), nullable=True),
         )
     """
     from hexcore.infrastructure.repositories.orms.sqlalchemy.session import get_engine
@@ -290,6 +310,7 @@ def cron_job(
     payload: dict[str, t.Any] | None = None,
     queue: str | None = None,
     is_active: bool = True,
+    description: str | None = None,
 ) -> CronJobDefinition:
     """
     Construye un `CronJobDefinition` a partir de una función decorada con
@@ -299,11 +320,16 @@ def cron_job(
     escribir el nombre a mano es cómo se acaba con un cron que encola una tarea que ya
     se renombró, y el fallo aparece en el worker, no aquí.
 
+    `description` no la lee el scheduler: viaja a la tabla para que el panel que muestra
+    los crons pueda decir **qué hace** cada uno antes de que alguien lo desactive. Si no
+    se pasa, se usa la primera línea del docstring de la tarea, que suele ser justo eso.
+
     Uso::
 
         seed = [
             cron_job(cerrar_caja, "0 3 * * *"),
             cron_job(purgar_logs, "0 4 * * 0", payload={"days": 30}),
+            cron_job(facturar, "0 6 1 * *", description="Emite las facturas del mes."),
         ]
 
     Raises:
@@ -325,7 +351,27 @@ def cron_job(
         payload=payload or {},
         queue=queue or getattr(task, "__cqrs_queue__", "default"),
         is_active=is_active,
+        description=description or _first_docstring_line(task),
     )
+
+
+def _first_docstring_line(task: t.Callable[..., t.Any]) -> str | None:
+    """
+    La primera línea del docstring de la tarea, o `None`.
+
+    Que el default salga del docstring y no quede vacío es lo que hace que la columna
+    sirva sin trabajo extra: la descripción que el operador necesita casi siempre ya está
+    escrita justo encima de la función.
+    """
+    doc = getattr(task, "__doc__", None)
+    if not doc:
+        return None
+
+    for line in doc.strip().splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped
+    return None
 
 
 def _default_session_scope() -> t.AsyncContextManager[AsyncSession]:
