@@ -839,17 +839,22 @@ estructura de migraciones con Alembic.
 
 | Serie | Estado | Qué significa |
 | :-- | :-- | :-- |
-| **5.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. |
+| **6.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. |
+| **5.x** | ⛔ **Deprecada** | Misma superficie de API que 6.x. Migrar es actualizar la versión. |
 | **4.x** | ⛔ **Deprecada** | Aplicación **parcial**: le faltan el fix del event loop de Celery, las fachadas y la documentación alineada. |
 | **3.x** | ⛔ **Deprecada** | Aplicación **parcial**: tiene las correcciones P0/P1 pero ninguna de las factories de FastAPI. |
 | **2.x** | ⛔ **Deprecada** | Contiene los bugs silenciosos corregidos en 5.x (ver abajo). |
 | **1.x** | ⛔ **Deprecada** | Sin soporte de ningún tipo. |
 
-**Todo lo anterior a 5.0 está deprecado. Migrá a 5.x.**
+**Todo lo anterior a 5.0 está deprecado. Migrá a 6.x.**
 
 3.0.0 y 4.0.0 existen sólo porque el trabajo se mergeó por fases y cada merge disparó un bump
 automático: **no son releases pensadas para usarse**, son cortes intermedios de la misma
 migración. 5.0.0 es la primera versión completa.
+
+6.0.0 es el mismo caso: la disparó un PR de documentación con un commit `feat!:`. No hay
+**ninguna** ruptura de API entre 5.x y 6.x — los alias anteriores a 5.0 siguen importables y
+siguen avisando.
 
 ### Por qué 2.x y anteriores no deberían estar en producción
 
