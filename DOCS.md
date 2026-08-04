@@ -357,5 +357,3 @@ Esto configura la conexión con MongoDB y registra todos los modelos Beanie impl
 - [CHANGELOG.md](./CHANGELOG.md): Historial de cambios.
 
 ---
-
-¿Quieres agregar ejemplos completos de definición de entidad, documento, evento y pruebas para tu dominio?
