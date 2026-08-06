@@ -120,15 +120,22 @@ class ServerConfig(BaseModel):
         1. Si no pasaste `allow_origins`, se completa: en `debug` queda `["*"]` (comodidad
            de desarrollo, que era la intención original), y fuera de `debug` queda
            `["http://localhost:<port>"]`. Un valor explícito —incluso `[]`— se respeta.
-        2. `"*"` con `allow_credentials=True` fuera de `debug` **no arranca**. No es un
-           warning: es la configuración que permite que cualquier origen lea respuestas
-           autenticadas, y en producción no hay ningún caso legítimo. En `debug` se avisa
-           y se sigue —pero sólo si lo pediste vos: avisar sobre nuestro propio default
-           de desarrollo sería ruido en cada `ServerConfig()`, y el ruido entrena a
-           ignorar los warnings.
+        2. **`"*"` con `allow_credentials=True` nunca es válido, y el invariante vale
+           siempre, no sólo fuera de `debug`.** Es que `debug` viene en `True` por
+           defecto, así que condicionarlo al entorno dejaba la combinación peligrosa
+           como configuración *de fábrica*: `create_app()` sin tocar nada reflejaba el
+           Origin del atacante. Según cómo lo pediste:
 
-        Recordá que si vas a servir sesiones por cookie `HttpOnly`, `"*"` no sirve ni en
-        desarrollo: poné los orígenes de tu frontend a mano.
+           - Si **no** declaraste `allow_credentials`, se baja a `False` y se avisa. Sin
+             `Access-Control-Allow-Credentials: true` el navegador no expone la respuesta
+             a una petición con cookies, así que el reflejo queda inofensivo.
+           - Si declaraste las dos cosas, **no arranca**: pediste explícitamente algo que
+             la especificación de CORS no permite, y adivinar cuál de las dos querías
+             sería peor que fallar.
+
+        O sea: si necesitás cookies, declarás tus orígenes. Es la única combinación que
+        sirve para sesiones `HttpOnly`, y ahora el default te empuja hacia ella en vez de
+        dejarte un agujero abierto.
         """
         # Se lee ANTES de asignar: en pydantic v2, asignar un campo lo agrega a
         # `model_fields_set`, así que consultarlo después de derivar el default daría
@@ -140,30 +147,36 @@ class ServerConfig(BaseModel):
                 ["*"] if self.debug else [f"http://localhost:{self.port}"]
             )
 
-        if "*" in self.allow_origins and self.allow_credentials:
-            if not self.debug:
-                raise ValueError(
-                    "allow_origins=['*'] junto con allow_credentials=True permite que "
-                    "cualquier origen lea respuestas autenticadas: el navegador no puede "
-                    "mandar '*' con credenciales, así que Starlette refleja el Origin de "
-                    "quien pregunte. Con debug=False no arranca.\n\n"
-                    "Elegí una de las dos:\n\n"
-                    "    config.allow_origins = ['https://tu-front.com']\n"
-                    "    # o, si de verdad querés una API pública sin cookies:\n"
-                    "    config.allow_credentials = False\n"
-                )
-            if not lo_pidio_el_usuario:
-                return self
+        if "*" not in self.allow_origins or not self.allow_credentials:
+            return self
 
-            import warnings
+        credenciales_explicitas = "allow_credentials" in self.model_fields_set
 
-            warnings.warn(
-                "allow_origins=['*'] con allow_credentials=True: Starlette va a reflejar "
-                "el Origin de cualquiera que mande una cookie. Pasa porque debug=True; "
-                "con debug=False esto no arranca. Antes de servir sesiones por cookie, "
-                "declará los orígenes de tu frontend a mano.",
-                stacklevel=2,
+        if credenciales_explicitas and lo_pidio_el_usuario:
+            raise ValueError(
+                "allow_origins=['*'] junto con allow_credentials=True permite que "
+                "cualquier origen lea respuestas autenticadas: el navegador no puede "
+                "mandar '*' con credenciales, así que Starlette refleja el Origin de "
+                "quien pregunte y agrega Access-Control-Allow-Credentials.\n\n"
+                "Pediste las dos cosas explícitamente, así que no se adivina. Elegí:\n\n"
+                "    config.allow_origins = ['https://tu-front.com']\n"
+                "    # o, si de verdad querés una API pública sin cookies:\n"
+                "    config.allow_credentials = False\n"
             )
+
+        # Una de las dos vino por default, así que se baja `allow_credentials` en vez de
+        # negarse a arrancar. Es lo que hace que la configuración de fábrica sea segura.
+        import warnings
+
+        self.allow_credentials = False
+        warnings.warn(
+            "allow_origins incluye '*', así que allow_credentials se baja a False: "
+            "'*' con credenciales haría que Starlette reflejara el Origin de cualquiera "
+            "que mande una cookie, y el navegador no permite esa combinación de todos "
+            "modos. Si necesitás cookies de sesión, declará tus orígenes:\n\n"
+            "    config.allow_origins = ['http://localhost:3000']\n",
+            stacklevel=2,
+        )
 
         return self
 
