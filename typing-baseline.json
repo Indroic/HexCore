@@ -1,12 +1,10 @@
 {
-  "error_total": 216,
+  "error_total": 213,
   "per_file": {
     "hexcore/application/dtos/cursor.py": 3,
     "hexcore/config.py": 2,
-    "hexcore/cqrs.py": 1,
     "hexcore/domain/cqrs/cron.py": 1,
     "hexcore/domain/cqrs/resolution.py": 1,
-    "hexcore/fastapi.py": 1,
     "hexcore/infrastructure/api/cqrs.py": 4,
     "hexcore/infrastructure/api/health.py": 8,
     "hexcore/infrastructure/api/lifespan.py": 1,
@@ -27,7 +25,6 @@
     "hexcore/infrastructure/task_queues/procrastinate_adapter.py": 34,
     "hexcore/infrastructure/uow/__init__.py": 4,
     "hexcore/infrastructure/workers/rabbitmq_worker.py": 5,
-    "hexcore/sql.py": 1,
     "hexcore/testing/fakes.py": 1,
     "hexcore/testing/helpers.py": 1,
     "hexcore/types.py": 1

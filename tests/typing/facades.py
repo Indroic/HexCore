@@ -80,3 +80,43 @@ def las_firmas_se_chequean_de_verdad() -> None:
 
     reveal_type(init_engine)  # noqa: F821
     reveal_type(PoolSettings(pre_ping=False))  # noqa: F821
+
+
+# ── hexcore.darwin ────────────────────────────────────────────────────────────
+from hexcore.darwin import (  # noqa: E402
+    AuthContext,
+    Impersonation,
+    Principal,
+    RoleRegistry,
+    UnauthenticatedError,
+    require_auth,
+)
+
+
+def la_fachada_de_darwin_no_tipa_any() -> None:
+    assert_type(Principal, type[Principal])
+    assert_type(Impersonation, type[Impersonation])
+    assert_type(RoleRegistry, type[RoleRegistry])
+    assert_type(UnauthenticatedError, type[UnauthenticatedError])
+
+
+def el_authcontext_es_generico_y_se_ve_en_el_ide() -> None:
+    """
+    El parámetro genérico es lo que hace que la personalización sea visible.
+
+    Sin él, `require_auth().user` tiparía `Any` y la promesa de "tu handler recibe el usuario
+    extendido" no sería verificable por el checker.
+    """
+    class MiUsuario:
+        plan: str
+
+    ctx: AuthContext[MiUsuario] = AuthContext(
+        actor=Principal(user_id=__import__("uuid").uuid4()),
+        subject=Principal(user_id=__import__("uuid").uuid4()),
+        transport="cookie",
+    )
+    reveal_type(ctx.user)  # noqa: F821  -> MiUsuario | None
+
+    generico = require_auth()
+    reveal_type(generico.actor)  # noqa: F821  -> Principal | SystemPrincipal
+    reveal_type(generico.is_impersonating)  # noqa: F821  -> bool

@@ -96,6 +96,19 @@ class ServerConfig(BaseModel):
     # Tipo: Optional[hexcore.application.cqrs.config.CQRSConfig]
     cqrs: t.Any = None
 
+    # Darwin, el módulo de identidad (opcional — None = deshabilitado).
+    # Tipo: Optional[hexcore.darwin.application.config.IdentityConfig]
+    #
+    # Se tipa `t.Any` por el mismo motivo que `cqrs`: anotarlo de verdad obligaría a
+    # importar el módulo acá, y `hexcore.config` lo importa medio framework — incluida la
+    # CLI, que `hexcore/__init__.py` carga eagerly.
+    #
+    # La clave de firma **no va acá**. Todo campo de `ServerConfig` tiene default, y un
+    # secreto de firma con default es lo peor que puede shippear una librería de auth: la
+    # mitad de los despliegues quedaría firmando con el mismo valor de ejemplo. Vive en
+    # `IdentityConfig` como `SecretStr` sin default, leída de `HEXCORE_DARWIN_SECRET_KEY`.
+    darwin: t.Any = None
+
     @model_validator(mode="before")
     @classmethod
     def map_deprecated_fields(cls, data: t.Any) -> t.Any:

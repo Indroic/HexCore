@@ -41,12 +41,36 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #: copia que hay que mantener, así que se justifica sólo donde la superficie es una
 #: expresión de runtime que ningún checker puede evaluar. Todo lo demás se arregla inline,
 #: en el fuente.
-FACHADAS = ("cqrs", "sql", "fastapi")
+#:
+#: `darwin` es un **paquete**, así que su fachada vive en `hexcore/darwin/__init__.py`: un
+#: módulo y un paquete con el mismo nombre no pueden coexistir (el paquete gana y el módulo
+#: queda muerto), así que el `__init__` es la fachada. `_rutas()` resuelve las dos formas.
+FACHADAS = ("cqrs", "sql", "fastapi", "darwin")
+
+
+def _rutas(modulo: str) -> tuple[Path, Path]:
+    """
+    Devuelve `(fuente, stub)` para una fachada, sea módulo o paquete.
+
+    Raises:
+        SystemExit: si no existe ni `hexcore/<modulo>.py` ni `hexcore/<modulo>/__init__.py`.
+    """
+    como_modulo = REPO_ROOT / "hexcore" / f"{modulo}.py"
+    if como_modulo.is_file():
+        return como_modulo, como_modulo.with_suffix(".pyi")
+
+    como_paquete = REPO_ROOT / "hexcore" / modulo / "__init__.py"
+    if como_paquete.is_file():
+        return como_paquete, como_paquete.with_suffix(".pyi")
+
+    raise SystemExit(
+        f"::error::no existe ni hexcore/{modulo}.py ni hexcore/{modulo}/__init__.py."
+    )
 
 CABECERA = '''\
 # ⚠️  ARCHIVO GENERADO — NO EDITAR A MANO.
 #
-# Generado por `scripts/gen_stubs.py` desde el `_EXPORTS` de `hexcore/{modulo}.py`.
+# Generado por `scripts/gen_stubs.py` desde el `_EXPORTS` de `{fuente}`.
 # Si editás esto a mano, el job `stubs-drift` de CI te lo va a revertir.
 #
 # Para regenerar:
@@ -104,8 +128,13 @@ def _leer_exports(ruta: Path) -> dict[str, tuple[str, str]]:
     raise SystemExit(f"::error::{ruta} no declara `_EXPORTS`.")
 
 
-def _generar(modulo: str, exports: dict[str, tuple[str, str]]) -> str:
-    lineas = [CABECERA.format(modulo=modulo, total=len(exports)), ""]
+def _generar(
+    modulo: str, exports: dict[str, tuple[str, str]], ruta_fuente: str
+) -> str:
+    lineas = [
+        CABECERA.format(modulo=modulo, total=len(exports), fuente=ruta_fuente),
+        "",
+    ]
 
     # Agrupado por módulo de origen y ordenado, para que la salida sea determinista: dos
     # corridas sobre el mismo `_EXPORTS` tienen que dar byte por byte lo mismo, o el job de
@@ -146,10 +175,11 @@ def main() -> int:
     desincronizados: list[str] = []
 
     for modulo in FACHADAS:
-        fuente = REPO_ROOT / "hexcore" / f"{modulo}.py"
-        stub = REPO_ROOT / "hexcore" / f"{modulo}.pyi"
+        fuente, stub = _rutas(modulo)
 
-        esperado = _generar(modulo, _leer_exports(fuente))
+        esperado = _generar(
+            modulo, _leer_exports(fuente), fuente.relative_to(REPO_ROOT).as_posix()
+        )
 
         if args.write:
             stub.write_text(esperado, encoding="utf-8")
@@ -165,7 +195,7 @@ def main() -> int:
         ruta = stub.relative_to(REPO_ROOT).as_posix()
         print(
             f"::error::{ruta} está desincronizado con el `_EXPORTS` de "
-            f"hexcore/{modulo}.py."
+            f"{fuente.relative_to(REPO_ROOT).as_posix()}."
         )
         diff = difflib.unified_diff(
             actual.splitlines(),

@@ -16,6 +16,22 @@ import pytest
     ("sqlalchemy", "hexcore.domain.cqrs.resolution"),
     ("fastapi", "hexcore.domain.cqrs"),
     ("fastapi", "hexcore.application.cqrs"),
+    # ── Darwin: el dominio de identidad es stdlib + pydantic y nada más ────────
+    # La fachada resuelve perezosamente, así que importarla no puede arrastrar ningún
+    # extra. Y el contexto lo importan el middleware de CQRS y los command handlers, o sea
+    # que tiene que funcionar en un proceso sin `[sql]`, sin `[api]` y sin `[darwin]`.
+    ("sqlalchemy", "hexcore.darwin"),
+    ("fastapi", "hexcore.darwin"),
+    ("joserfc", "hexcore.darwin"),
+    ("argon2", "hexcore.darwin"),
+    ("sqlalchemy", "hexcore.darwin.domain.context"),
+    ("fastapi", "hexcore.darwin.domain.context"),
+    ("sqlalchemy", "hexcore.darwin.domain.exceptions"),
+    ("sqlalchemy", "hexcore.darwin.domain.value_objects"),
+    ("sqlalchemy", "hexcore.darwin.domain.permissions"),
+    ("sqlalchemy", "hexcore.darwin.domain.ports"),
+    ("sqlalchemy", "hexcore.darwin.domain.entities"),
+    ("sqlalchemy", "hexcore.darwin.domain.events"),
 ])
 def test_optional_dependencies_do_not_crash_imports(module_to_hide, module_to_import):
     """
