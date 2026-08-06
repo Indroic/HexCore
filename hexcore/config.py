@@ -42,9 +42,22 @@ class ServerConfig(BaseModel):
     redis_cache_duration: int = 300  # seconds
 
     # Security
-    allow_origins: list[str] = [
-        "*" if debug else "http://localhost:{port}".format(port=port)
-    ]
+    #
+    # `allow_origins` NO se puede derivar en el cuerpo de la clase. La versión anterior
+    # era ``["*" if debug else "http://localhost:{port}"]``, y ese `debug` es el del
+    # cuerpo de clase (siempre `True`), así que el condicional era código muerto y el
+    # valor era **siempre** `["*"]` — incluso con `ServerConfig(debug=False)`.
+    #
+    # Combinado con `allow_credentials=True`, eso es un agujero real y no teórico:
+    # Starlette no puede mandar `*` junto con credenciales, así que cuando hay cookie
+    # **refleja el Origin del atacante** (`CORSMiddleware`, rama
+    # `if self.allow_all_origins and has_cookie`) y agrega
+    # `Access-Control-Allow-Credentials: true`. Cualquier origen puede entonces leer
+    # respuestas autenticadas con la cookie de sesión de la víctima, sin necesidad de XSS.
+    #
+    # Se deriva en un validador `mode="after"`, que sí ve el `debug` y el `port` de **la
+    # instancia**. Si lo pasás explícito, no se toca.
+    allow_origins: list[str] = Field(default_factory=list)
     allow_credentials: bool = True
     allow_methods: list[str] = ["*"]
     allow_headers: list[str] = ["*"]
@@ -95,6 +108,64 @@ class ServerConfig(BaseModel):
             )
             data["event_bus"] = data.pop("event_dispatcher")
         return data
+
+    # ── CORS ──────────────────────────────────────────────────────────────────
+    @model_validator(mode="after")
+    def _resolve_cors_origins(self) -> "ServerConfig":
+        """
+        Deriva `allow_origins` del `debug`/`port` reales y rechaza la combinación insegura.
+
+        Dos cosas, en este orden:
+
+        1. Si no pasaste `allow_origins`, se completa: en `debug` queda `["*"]` (comodidad
+           de desarrollo, que era la intención original), y fuera de `debug` queda
+           `["http://localhost:<port>"]`. Un valor explícito —incluso `[]`— se respeta.
+        2. `"*"` con `allow_credentials=True` fuera de `debug` **no arranca**. No es un
+           warning: es la configuración que permite que cualquier origen lea respuestas
+           autenticadas, y en producción no hay ningún caso legítimo. En `debug` se avisa
+           y se sigue —pero sólo si lo pediste vos: avisar sobre nuestro propio default
+           de desarrollo sería ruido en cada `ServerConfig()`, y el ruido entrena a
+           ignorar los warnings.
+
+        Recordá que si vas a servir sesiones por cookie `HttpOnly`, `"*"` no sirve ni en
+        desarrollo: poné los orígenes de tu frontend a mano.
+        """
+        # Se lee ANTES de asignar: en pydantic v2, asignar un campo lo agrega a
+        # `model_fields_set`, así que consultarlo después de derivar el default daría
+        # "lo pidió el usuario" para un valor que puso el framework.
+        lo_pidio_el_usuario = "allow_origins" in self.model_fields_set
+
+        if not lo_pidio_el_usuario and not self.allow_origins:
+            self.allow_origins = (
+                ["*"] if self.debug else [f"http://localhost:{self.port}"]
+            )
+
+        if "*" in self.allow_origins and self.allow_credentials:
+            if not self.debug:
+                raise ValueError(
+                    "allow_origins=['*'] junto con allow_credentials=True permite que "
+                    "cualquier origen lea respuestas autenticadas: el navegador no puede "
+                    "mandar '*' con credenciales, así que Starlette refleja el Origin de "
+                    "quien pregunte. Con debug=False no arranca.\n\n"
+                    "Elegí una de las dos:\n\n"
+                    "    config.allow_origins = ['https://tu-front.com']\n"
+                    "    # o, si de verdad querés una API pública sin cookies:\n"
+                    "    config.allow_credentials = False\n"
+                )
+            if not lo_pidio_el_usuario:
+                return self
+
+            import warnings
+
+            warnings.warn(
+                "allow_origins=['*'] con allow_credentials=True: Starlette va a reflejar "
+                "el Origin de cualquiera que mande una cookie. Pasa porque debug=True; "
+                "con debug=False esto no arranca. Antes de servir sesiones por cookie, "
+                "declará los orígenes de tu frontend a mano.",
+                stacklevel=2,
+            )
+
+        return self
 
 
 class LazyConfig:
