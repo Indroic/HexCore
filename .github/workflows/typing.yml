@@ -32,6 +32,28 @@ permissions:
   contents: read
 
 jobs:
+  # ── Stubs sincronizados con su _EXPORTS ─────────────────────────────────────
+  stubs-drift:
+    name: "Stubs sincronizados con _EXPORTS"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # `gen_stubs.py` trabaja sobre el AST de las tres fachadas: no importa hexcore ni
+      # necesita un solo extra. Es el job más rápido del workflow, así que va primero.
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Regenerar y comparar
+        run: uv run python scripts/gen_stubs.py --check
+
   typecheck:
     name: "Pyright strict sobre hexcore/"
     runs-on: ubuntu-latest
@@ -91,6 +113,12 @@ jobs:
       - name: Ratchet de errores
         run: uv run python scripts/typing_ratchet.py errors --report pyright.json
 
+      - name: Tests de tipo (tests/typing/)
+        # Deseleccionados por `addopts`, así que acá se piden explícitamente. Corren Pyright
+        # sobre `tests/typing/`, donde los `assert_type` fijan que las fachadas NO tipen
+        # `Any` — el estado anterior a los `.pyi` generados.
+        run: uv run pytest -m typing -q
+
       - name: Subir el JSON de Pyright
         if: always()
         uses: actions/upload-artifact@v4
@@ -107,6 +135,7 @@ jobs:
     # llegan acá por `needs`.
     if: always()
     needs:
+      - stubs-drift
       - typecheck
     runs-on: ubuntu-latest
     steps:

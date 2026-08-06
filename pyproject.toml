@@ -116,7 +116,12 @@ reportUnnecessaryTypeIgnoreComment = "none"
 markers = [
     "anyio: mark test as an anyio test",
     "packaging: verifica la wheel construida (lento: construye de verdad)",
+    "typing: invoca pyright (lento: ~10s por corrida)",
 ]
-# Los tests de `packaging` construyen la wheel, así que no corren en la corrida normal.
-# Se piden explícito: `pytest -m packaging`. El workflow los corre en su propio job.
-addopts = "-m 'not packaging'"
+# `packaging` construye la wheel y `typing` invoca pyright, así que ninguno corre en la
+# corrida normal. Se piden explícito: `pytest -m packaging`, `pytest -m typing`. El workflow
+# los corre en sus propios jobs.
+addopts = "-m 'not packaging and not typing'"
+# `tests/typing/` no se colecta: esos archivos no se ejecutan, los chequea pyright vía
+# `tests/test_typing_gate.py`.
+norecursedirs = ["tests/typing"]
