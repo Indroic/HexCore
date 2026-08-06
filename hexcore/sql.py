@@ -50,6 +50,10 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "nosql_uow_scope": ("hexcore.infrastructure.uow.scopes", "nosql_uow_scope"),
     # ── Modelos y UoW ─────────────────────────────────────────────────────────
     "Base": ("hexcore.infrastructure.repositories.orms.sqlalchemy", "Base"),
+    "NAMING_CONVENTION": (
+        "hexcore.infrastructure.repositories.orms.sqlalchemy",
+        "NAMING_CONVENTION",
+    ),
     "BaseModel": ("hexcore.infrastructure.repositories.orms.sqlalchemy", "BaseModel"),
     "SqlAlchemyUnitOfWork": ("hexcore.infrastructure.uow", "SqlAlchemyUnitOfWork"),
     "SqlAlchemyRepository": (
