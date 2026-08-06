@@ -340,9 +340,18 @@ def _setup_alembic(base_path: Path, models_import: str, migrations_root: str) ->
             f"""from alembic import context
 from hexcore.config import LazyConfig
 from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
-from hexcore.infrastructure.repositories.orms.sqlalchemy.utils import import_all_models
+from hexcore.infrastructure.repositories.orms.sqlalchemy.utils import (
+    ensure_framework_models_loaded,
+    import_all_models,
+)
 {models_import}
 
+# Los modelos que declara HexCore (hexcore_cron_jobs, y las tablas de identidad cuando
+# uses el modulo). Sin esta linea quedan afuera de Base.metadata y `--autogenerate` les
+# emite un op.drop_table.
+ensure_framework_models_loaded()
+
+# Y los tuyos. Recursivo: tambien recorre subpaquetes de models/.
 import_all_models(models)
             """,
         )

@@ -60,6 +60,15 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "hexcore.infrastructure.repositories.base",
         "BaseSQLAlchemyRepository",
     ),
+    # ── Migraciones (para el env.py de Alembic) ───────────────────────────────
+    "import_all_models": (
+        "hexcore.infrastructure.repositories.orms.sqlalchemy.utils",
+        "import_all_models",
+    ),
+    "ensure_framework_models_loaded": (
+        "hexcore.infrastructure.repositories.orms.sqlalchemy.utils",
+        "ensure_framework_models_loaded",
+    ),
     # ── Consultas ─────────────────────────────────────────────────────────────
     "QueryRequestDTO": ("hexcore.application.dtos.query", "QueryRequestDTO"),
     "QueryResponseDTO": ("hexcore.application.dtos.query", "QueryResponseDTO"),
