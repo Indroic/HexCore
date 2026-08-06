@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .exception_handlers import register_exception_handlers
+from .exception_handlers import HeadersFactory, register_exception_handlers
 from .health import Probe, ResponseFactory, register_health_routes
 from .middlewares import RequestIDMiddleware, TimingMiddleware
 from .routing import MountableRouter, mount_routers
@@ -78,6 +78,7 @@ def create_app(
     routers: t.Sequence[MountableRouter] | None = None,
     health_probes: t.Sequence[Probe] | None = None,
     exception_mapping: dict[type[Exception], int] | None = None,
+    exception_headers: HeadersFactory | None = None,
     **fastapi_kwargs: t.Any,
 ) -> FastAPI:
     """
@@ -94,6 +95,9 @@ def create_app(
             configuración (F16). Qué rutas se registran y con qué forma se controla con
             `AppFeatures(health=HealthRoutes(...))`.
         exception_mapping: Excepciones extra a mapear, fusionadas con el default (F5).
+        exception_headers: Headers extra por excepción. Necesario para los status que
+            los exigen por especificación: un 401 tiene que llevar `WWW-Authenticate`
+            (RFC 6750 §3).
         **fastapi_kwargs: Se pasan tal cual a `FastAPI` (`title`, `version`,
             `docs_url`, `openapi_tags`…). Lo que pases gana sobre los defaults derivados
             de la configuración.
@@ -123,7 +127,9 @@ def create_app(
         app.add_middleware(RequestIDMiddleware)
 
     if resolved_features.exception_handlers:
-        register_exception_handlers(app, mapping=exception_mapping)
+        register_exception_handlers(
+            app, mapping=exception_mapping, headers_for=exception_headers
+        )
 
     if resolved_features.health:
         health_routes = (

@@ -10,6 +10,7 @@ from .cqrs import (
 )
 from .exception_handlers import (
     DEFAULT_EXCEPTION_STATUS_MAP,
+    HeadersFactory,
     register_exception_handlers,
 )
 from .health import (
@@ -48,6 +49,7 @@ __all__ = [
     "mount_routers",
     # Handlers de excepción (F5)
     "DEFAULT_EXCEPTION_STATUS_MAP",
+    "HeadersFactory",
     "register_exception_handlers",
     # Providers CQRS (F6)
     "CQRSContainer",
