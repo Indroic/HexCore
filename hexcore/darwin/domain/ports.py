@@ -143,7 +143,7 @@ class AbstractSessionRepository(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def add(self, session: "IdentitySession") -> "IdentitySession":
+    async def add(self, identity_session: "IdentitySession") -> "IdentitySession":
         raise NotImplementedError
 
     @abc.abstractmethod

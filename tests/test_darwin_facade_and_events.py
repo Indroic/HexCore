@@ -14,6 +14,7 @@ diseño del módulo:
 from __future__ import annotations
 
 import importlib
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -33,6 +34,33 @@ from hexcore.darwin import (
 )
 
 AHORA = datetime(2026, 8, 6, 12, 0, tzinfo=UTC)
+
+
+@contextmanager
+def _fachada_recien_importada():
+    """
+    Saca `hexcore.darwin*` de `sys.modules` y **lo restaura al salir**.
+
+    Restaurar no es cortesía: `hexcore.darwin.infrastructure.models` registra sus tablas en
+    `Base.metadata` al importarse. Si se lo borra de `sys.modules` y otro test lo reimporta,
+    los cuerpos de clase se vuelven a ejecutar contra un metadata que ya tiene `darwin_user`,
+    y SQLAlchemy lanza ``Table 'darwin_user' is already defined for this MetaData instance``
+    — en el test de otro, y sólo cuando la suite corre entera.
+    """
+    import sys
+
+    guardados = {
+        nombre: modulo
+        for nombre, modulo in sys.modules.items()
+        if nombre == "hexcore.darwin" or nombre.startswith("hexcore.darwin.")
+    }
+    for nombre in guardados:
+        del sys.modules[nombre]
+    try:
+        yield
+    finally:
+        sys.modules.update(guardados)
+
 
 
 # ── Fachada ───────────────────────────────────────────────────────────────────
@@ -61,16 +89,12 @@ def test_la_fachada_cachea_lo_resuelto():
     **en su namespace existente** sin limpiarlo, así que los nombres ya cacheados por otro
     test seguirían ahí y el test mediría cualquier cosa.
     """
-    import sys
+    with _fachada_recien_importada():
+        modulo = importlib.import_module("hexcore.darwin")
 
-    for nombre in [m for m in sys.modules if m.startswith("hexcore.darwin")]:
-        del sys.modules[nombre]
-
-    modulo = importlib.import_module("hexcore.darwin")
-
-    assert "Principal" not in modulo.__dict__
-    modulo.Principal
-    assert "Principal" in modulo.__dict__
+        assert "Principal" not in modulo.__dict__
+        modulo.Principal
+        assert "Principal" in modulo.__dict__
 
 
 def test_importar_la_fachada_no_arrastra_los_submodulos():
@@ -82,13 +106,11 @@ def test_importar_la_fachada_no_arrastra_los_submodulos():
     """
     import sys
 
-    for nombre in [m for m in sys.modules if m.startswith("hexcore.darwin")]:
-        del sys.modules[nombre]
+    with _fachada_recien_importada():
+        importlib.import_module("hexcore.darwin")
 
-    import hexcore.darwin  # noqa: F401
-
-    cargados = {m for m in sys.modules if m.startswith("hexcore.darwin.domain")}
-    assert cargados == set(), f"la fachada cargó submódulos de prepo: {cargados}"
+        cargados = {m for m in sys.modules if m.startswith("hexcore.darwin.domain")}
+        assert cargados == set(), f"la fachada cargó submódulos de prepo: {cargados}"
 
 
 # ── Mapa de excepciones ───────────────────────────────────────────────────────

@@ -37,6 +37,10 @@
 | **Extra de pip** | `[darwin]` | `[keystone]` | `[sigil]` |
 | **Costo** | Ninguno conocido. Sin colisión en PyPI ni en el ecosistema Python. | **OpenStack Keystone es un servicio de identidad.** Toda búsqueda, todo resultado de Stack Overflow y todo autocompletado de LLM va a ser sobre OpenStack. Fatal para la discoverability. | El menos autodescriptivo: quien escanea la lista de paquetes no aprende que `sigil` es auth. |
 
+> **Estado de implementación.** Fases 0, 1, 2 y 3 completas. Siguen: crypto (4), aplicación
+> y contenedor (5), propagación del actor (6), borde HTTP (7), plugins (8-9), kit de testing
+> (10).
+
 **Elegido: `Darwin`.** Es el único de los tres que es simultáneamente (a) inequívoco sobre
 qué hace, (b) libre de colisiones, y (c) lo bastante corto para que `ServerConfig.darwin`,
 `darwin_user`, `DarwinPlugin` y `hexcore.darwin` se lean naturalmente en todas las capas.
@@ -953,7 +957,7 @@ hallazgos y el [CHANGELOG](../CHANGELOG.md).
 Modifica `orms/sqlalchemy/__init__.py`. Test: los nombres generados son estables y no
 dependen del backend.
 
-### Fase 2 — Dominio puro
+### Fase 2 — Dominio puro ✅ **IMPLEMENTADA**
 
 Sólo stdlib + pydantic. Sin SQL, sin crypto, sin HTTP.
 
@@ -970,7 +974,7 @@ Tests: **el invariante de impersonación en los dos sentidos** (subject≠actor 
 → **extiende `tests/test_optional_dependencies.py`**: `("sqlalchemy", "hexcore.darwin")`,
 `("fastapi", "hexcore.darwin")`, `("joserfc", "hexcore.darwin")`, `("argon2", "hexcore.darwin")`.
 
-### Fase 3 — Persistencia
+### Fase 3 — Persistencia ✅ **IMPLEMENTADA**
 
 Las 6 tablas, con **las dos reglas verificadas por test** (§2.1) y el test de no-colisión.
 

@@ -163,6 +163,77 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     ),
     "AccountLinkedEvent": ("hexcore.darwin.domain.events", "AccountLinkedEvent"),
     "AccountUnlinkedEvent": ("hexcore.darwin.domain.events", "AccountUnlinkedEvent"),
+    # ── Persistencia (requiere el extra [darwin]) ─────────────────────────────
+    "UserMixin": ("hexcore.darwin.infrastructure.models_mixins", "UserMixin"),
+    "SessionMixin": ("hexcore.darwin.infrastructure.models_mixins", "SessionMixin"),
+    "AccountMixin": ("hexcore.darwin.infrastructure.models_mixins", "AccountMixin"),
+    "VerificationMixin": (
+        "hexcore.darwin.infrastructure.models_mixins",
+        "VerificationMixin",
+    ),
+    "AuditLogMixin": ("hexcore.darwin.infrastructure.models_mixins", "AuditLogMixin"),
+    "JwksMixin": ("hexcore.darwin.infrastructure.models_mixins", "JwksMixin"),
+    "TimestampMixin": ("hexcore.darwin.infrastructure.models_mixins", "TimestampMixin"),
+    "DEFAULT_USER_TABLE": (
+        "hexcore.darwin.infrastructure.models_mixins",
+        "DEFAULT_USER_TABLE",
+    ),
+    "DEFAULT_SESSION_TABLE": (
+        "hexcore.darwin.infrastructure.models_mixins",
+        "DEFAULT_SESSION_TABLE",
+    ),
+    "DEFAULT_ACCOUNT_TABLE": (
+        "hexcore.darwin.infrastructure.models_mixins",
+        "DEFAULT_ACCOUNT_TABLE",
+    ),
+    "DEFAULT_VERIFICATION_TABLE": (
+        "hexcore.darwin.infrastructure.models_mixins",
+        "DEFAULT_VERIFICATION_TABLE",
+    ),
+    "UserModel": ("hexcore.darwin.infrastructure.models", "UserModel"),
+    "SessionModel": ("hexcore.darwin.infrastructure.models", "SessionModel"),
+    "AccountModel": ("hexcore.darwin.infrastructure.models", "AccountModel"),
+    "VerificationModel": ("hexcore.darwin.infrastructure.models", "VerificationModel"),
+    "AuditLogModel": ("hexcore.darwin.infrastructure.models", "AuditLogModel"),
+    "JwksModel": ("hexcore.darwin.infrastructure.models", "JwksModel"),
+    "IDENTITY_MODELS": ("hexcore.darwin.infrastructure.models", "IDENTITY_MODELS"),
+    "create_identity_tables": (
+        "hexcore.darwin.infrastructure.schema",
+        "create_identity_tables",
+    ),
+    "drop_identity_tables": (
+        "hexcore.darwin.infrastructure.schema",
+        "drop_identity_tables",
+    ),
+    "identity_tables": ("hexcore.darwin.infrastructure.schema", "identity_tables"),
+    "validate_user_model": (
+        "hexcore.darwin.infrastructure.schema",
+        "validate_user_model",
+    ),
+    "ensure_identity_schema_loaded": (
+        "hexcore.darwin.infrastructure.schema",
+        "ensure_identity_schema_loaded",
+    ),
+    "SqlAlchemyUserRepository": (
+        "hexcore.darwin.infrastructure.repositories",
+        "SqlAlchemyUserRepository",
+    ),
+    "SqlAlchemySessionRepository": (
+        "hexcore.darwin.infrastructure.repositories",
+        "SqlAlchemySessionRepository",
+    ),
+    "SqlAlchemyAccountRepository": (
+        "hexcore.darwin.infrastructure.repositories",
+        "SqlAlchemyAccountRepository",
+    ),
+    "SqlAlchemyVerificationRepository": (
+        "hexcore.darwin.infrastructure.repositories",
+        "SqlAlchemyVerificationRepository",
+    ),
+    "SqlAlchemyAuditSink": (
+        "hexcore.darwin.infrastructure.repositories",
+        "SqlAlchemyAuditSink",
+    ),
 }
 
 # `sorted(...)` no es una expresión que Pyright pueda evaluar, así que avisa que la

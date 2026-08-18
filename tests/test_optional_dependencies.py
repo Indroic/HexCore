@@ -32,6 +32,10 @@ import pytest
     ("sqlalchemy", "hexcore.darwin.domain.ports"),
     ("sqlalchemy", "hexcore.darwin.domain.entities"),
     ("sqlalchemy", "hexcore.darwin.domain.events"),
+    # La fachada expone la capa de persistencia, pero resuelve perezosamente: nombrarla
+    # no puede arrastrar sqlalchemy hasta que pidas un modelo.
+    ("joserfc", "hexcore.darwin.domain.entities"),
+    ("argon2", "hexcore.darwin.domain.ports"),
 ])
 def test_optional_dependencies_do_not_crash_imports(module_to_hide, module_to_import):
     """

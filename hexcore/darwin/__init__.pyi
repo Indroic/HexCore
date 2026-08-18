@@ -9,7 +9,7 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 66 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 94 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
@@ -79,6 +79,34 @@ from hexcore.darwin.domain.value_objects import Email as Email
 from hexcore.darwin.domain.value_objects import TokenPair as TokenPair
 from hexcore.darwin.domain.value_objects import TokenType as TokenType
 from hexcore.darwin.domain.value_objects import VerificationPurpose as VerificationPurpose
+from hexcore.darwin.infrastructure.models import AccountModel as AccountModel
+from hexcore.darwin.infrastructure.models import AuditLogModel as AuditLogModel
+from hexcore.darwin.infrastructure.models import IDENTITY_MODELS as IDENTITY_MODELS
+from hexcore.darwin.infrastructure.models import JwksModel as JwksModel
+from hexcore.darwin.infrastructure.models import SessionModel as SessionModel
+from hexcore.darwin.infrastructure.models import UserModel as UserModel
+from hexcore.darwin.infrastructure.models import VerificationModel as VerificationModel
+from hexcore.darwin.infrastructure.models_mixins import AccountMixin as AccountMixin
+from hexcore.darwin.infrastructure.models_mixins import AuditLogMixin as AuditLogMixin
+from hexcore.darwin.infrastructure.models_mixins import DEFAULT_ACCOUNT_TABLE as DEFAULT_ACCOUNT_TABLE
+from hexcore.darwin.infrastructure.models_mixins import DEFAULT_SESSION_TABLE as DEFAULT_SESSION_TABLE
+from hexcore.darwin.infrastructure.models_mixins import DEFAULT_USER_TABLE as DEFAULT_USER_TABLE
+from hexcore.darwin.infrastructure.models_mixins import DEFAULT_VERIFICATION_TABLE as DEFAULT_VERIFICATION_TABLE
+from hexcore.darwin.infrastructure.models_mixins import JwksMixin as JwksMixin
+from hexcore.darwin.infrastructure.models_mixins import SessionMixin as SessionMixin
+from hexcore.darwin.infrastructure.models_mixins import TimestampMixin as TimestampMixin
+from hexcore.darwin.infrastructure.models_mixins import UserMixin as UserMixin
+from hexcore.darwin.infrastructure.models_mixins import VerificationMixin as VerificationMixin
+from hexcore.darwin.infrastructure.repositories import SqlAlchemyAccountRepository as SqlAlchemyAccountRepository
+from hexcore.darwin.infrastructure.repositories import SqlAlchemyAuditSink as SqlAlchemyAuditSink
+from hexcore.darwin.infrastructure.repositories import SqlAlchemySessionRepository as SqlAlchemySessionRepository
+from hexcore.darwin.infrastructure.repositories import SqlAlchemyUserRepository as SqlAlchemyUserRepository
+from hexcore.darwin.infrastructure.repositories import SqlAlchemyVerificationRepository as SqlAlchemyVerificationRepository
+from hexcore.darwin.infrastructure.schema import create_identity_tables as create_identity_tables
+from hexcore.darwin.infrastructure.schema import drop_identity_tables as drop_identity_tables
+from hexcore.darwin.infrastructure.schema import ensure_identity_schema_loaded as ensure_identity_schema_loaded
+from hexcore.darwin.infrastructure.schema import identity_tables as identity_tables
+from hexcore.darwin.infrastructure.schema import validate_user_model as validate_user_model
 
 __all__ = [
     "AUTH_CONTEXT",
@@ -94,17 +122,26 @@ __all__ = [
     "Account",
     "AccountLinkedEvent",
     "AccountLockedError",
+    "AccountMixin",
+    "AccountModel",
     "AccountUnlinkedEvent",
     "AllSessionsRevokedEvent",
+    "AuditLogMixin",
+    "AuditLogModel",
     "AuthContext",
     "AuthenticationError",
     "AuthorizationError",
     "CREDENTIAL_PROVIDER",
     "CsrfValidationError",
+    "DEFAULT_ACCOUNT_TABLE",
+    "DEFAULT_SESSION_TABLE",
+    "DEFAULT_USER_TABLE",
+    "DEFAULT_VERIFICATION_TABLE",
     "Email",
     "EmailAlreadyRegisteredError",
     "EmailNotVerifiedError",
     "IDENTITY_EXCEPTION_STATUS_MAP",
+    "IDENTITY_MODELS",
     "IdentityError",
     "IdentitySession",
     "Impersonation",
@@ -113,16 +150,26 @@ __all__ = [
     "ImpersonationStartedEvent",
     "InsufficientScopeError",
     "InvalidCredentialsError",
+    "JwksMixin",
+    "JwksModel",
     "Permission",
     "PermissionCycleError",
     "Principal",
     "Role",
     "RoleRegistry",
     "SessionCreatedEvent",
+    "SessionMixin",
+    "SessionModel",
     "SessionRefreshedEvent",
     "SessionReuseDetectedEvent",
     "SessionRevokedEvent",
+    "SqlAlchemyAccountRepository",
+    "SqlAlchemyAuditSink",
+    "SqlAlchemySessionRepository",
+    "SqlAlchemyUserRepository",
+    "SqlAlchemyVerificationRepository",
     "SystemPrincipal",
+    "TimestampMixin",
     "TokenAudienceMismatchError",
     "TokenError",
     "TokenExpiredError",
@@ -134,17 +181,26 @@ __all__ = [
     "UnauthenticatedError",
     "User",
     "UserEmailVerifiedEvent",
+    "UserMixin",
+    "UserModel",
     "UserPasswordChangedEvent",
     "UserRegisteredEvent",
     "UserSignInFailedEvent",
     "UserSignedInEvent",
     "Verification",
+    "VerificationMixin",
+    "VerificationModel",
     "VerificationPurpose",
     "WorkerContextIntegrityError",
     "auth_scope",
+    "create_identity_tables",
     "current_auth",
     "default_registry",
+    "drop_identity_tables",
+    "ensure_identity_schema_loaded",
+    "identity_tables",
     "require_auth",
     "reset_default_registry",
     "system_context",
+    "validate_user_model",
 ]
