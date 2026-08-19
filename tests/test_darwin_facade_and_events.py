@@ -394,3 +394,122 @@ def _sesion(**overrides) -> IdentitySession:
     )
     base.update(overrides)
     return IdentitySession(**base)
+
+
+# ── Marca de API provisional ──────────────────────────────────────────────────
+#
+# Ojo con la identidad de la clase: `_fachada_recien_importada()` saca de `sys.modules` todo
+# `hexcore.darwin.*`, incluido `_provisional`, así que el módulo reimportado define una clase
+# `DarwinProvisionalWarning` **distinta** del objeto que tenga importado el test. Por eso se la
+# toma siempre de `modulo.DarwinProvisionalWarning` y no del import de arriba: comparar contra
+# la vieja no matchea, y el síntoma es un "DID NOT WARN" con el warning listado justo debajo.
+#
+# El reimport también deja `_ya_avisado = False` de arranque, así que no hace falta resetear.
+
+
+def test_la_fachada_avisa_que_darwin_es_provisional():
+    """
+    Darwin ya viaja en la wheel y `hexcore.darwin` importa, así que es API pública — con las
+    fases 5-7 todavía por delante. El aviso es lo que evita que alguien construya sobre
+    `AuthContext` o el emisor de tokens creyendo que las formas están cerradas.
+    """
+    with _fachada_recien_importada():
+        modulo = importlib.import_module("hexcore.darwin")
+
+        with pytest.warns(modulo.DarwinProvisionalWarning, match="PROVISIONAL"):
+            modulo.AuthContext
+
+
+def test_el_aviso_se_emite_una_sola_vez():
+    """
+    Una vez por proceso, no por acceso: la fachada se consulta en cada handler, y un warning
+    por atributo sería ruido que entrena a filtrar la categoría entera — con lo cual el aviso
+    deja de cumplir su función.
+    """
+    import warnings
+
+    with _fachada_recien_importada():
+        modulo = importlib.import_module("hexcore.darwin")
+
+        with warnings.catch_warnings(record=True) as capturados:
+            warnings.simplefilter("always")
+            modulo.AuthContext
+            modulo.Principal
+            modulo.RoleRegistry
+            modulo.require_auth
+
+        provisionales = [
+            w
+            for w in capturados
+            if issubclass(w.category, modulo.DarwinProvisionalWarning)
+        ]
+
+    assert len(provisionales) == 1
+
+
+def test_el_aviso_es_futurewarning_y_no_deprecationwarning():
+    """
+    `FutureWarning` significa "esto va a cambiar" y Python lo muestra por defecto.
+    `DeprecationWarning` significa lo contrario —"esto se va"— y encima está oculto por
+    defecto, así que nadie lo vería.
+    """
+    from hexcore.darwin import DarwinProvisionalWarning
+
+    assert issubclass(DarwinProvisionalWarning, FutureWarning)
+    assert not issubclass(DarwinProvisionalWarning, DeprecationWarning)
+
+
+def test_el_aviso_se_puede_silenciar_sin_apagar_los_demas():
+    """
+    Tiene que ser filtrable de forma quirúrgica: quien decide usar Darwin provisional no
+    debería tener que apagar todos los `FutureWarning` de su proceso.
+    """
+    import warnings
+
+    with _fachada_recien_importada():
+        modulo = importlib.import_module("hexcore.darwin")
+        provisional = modulo.DarwinProvisionalWarning
+
+        with warnings.catch_warnings(record=True) as capturados:
+            warnings.simplefilter("always")
+            warnings.filterwarnings("ignore", category=provisional)
+            modulo.AuthContext
+            warnings.warn("otro aviso cualquiera", FutureWarning)
+
+        categorias = [w.category for w in capturados]
+
+    assert provisional not in categorias
+    assert FutureWarning in categorias
+
+
+def test_pedir_la_clase_del_warning_no_dispara_el_warning():
+    """
+    Filtrarlo requiere importar la clase. Si ese import avisara, sería imposible silenciarlo
+    sin disparar exactamente lo que se quiere silenciar.
+    """
+    import warnings
+
+    with _fachada_recien_importada():
+        modulo = importlib.import_module("hexcore.darwin")
+
+        with warnings.catch_warnings(record=True) as capturados:
+            warnings.simplefilter("always")
+            modulo.DarwinProvisionalWarning
+
+    assert capturados == []
+
+
+def test_la_fase_declarada_coincide_con_lo_implementado():
+    """
+    El número del aviso tiene que ser cierto. Si alguien cierra la Fase 5 y no lo mueve, el
+    aviso miente en la dirección peligrosa: promete menos madurez de la que hay y la gente lo
+    ignora.
+    """
+    from hexcore.darwin import _provisional
+
+    assert _provisional.CURRENT_PHASE < _provisional.STABLE_PHASE
+    # La capa de crypto (4) existe; la de aplicación (5) todavía no.
+    import importlib.util
+
+    assert importlib.util.find_spec("hexcore.darwin.infrastructure.tokens") is not None
+    assert importlib.util.find_spec("hexcore.darwin.application") is None

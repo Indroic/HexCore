@@ -29,6 +29,11 @@ from __future__ import annotations
 import importlib
 import typing as t
 
+from hexcore.darwin._provisional import (
+    DarwinProvisionalWarning as DarwinProvisionalWarning,
+    warn_provisional as _warn_provisional,
+)
+
 _EXPORTS: dict[str, tuple[str, str]] = {
     # ── Contexto: quién ejecuta vs a quién afecta ──────────────────────────────
     "AuthContext": ("hexcore.darwin.domain.context", "AuthContext"),
@@ -282,6 +287,11 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "hexcore.darwin.infrastructure.revocation",
         "CacheErrorPolicy",
     ),
+    # ── Marca de API provisional ───────────────────────────────────────────────
+    "DarwinProvisionalWarning": (
+        "hexcore.darwin._provisional",
+        "DarwinProvisionalWarning",
+    ),
 }
 
 # `sorted(...)` no es una expresión que Pyright pueda evaluar, así que avisa que la
@@ -299,6 +309,12 @@ def __getattr__(name: str) -> t.Any:
         raise AttributeError(
             f"module 'hexcore.darwin' has no attribute {name!r}"
         ) from None
+
+    # No se avisa por la propia clase del warning: filtrarlo requiere importarla, y avisar
+    # ahí haría imposible silenciarlo sin disparar lo que se quiere silenciar. (En la práctica
+    # ni llega acá: se importa eager arriba, así que está en globals.)
+    if name != "DarwinProvisionalWarning":
+        _warn_provisional()
 
     value = getattr(importlib.import_module(module_path), attribute)
     # Se cachea en los globals: el segundo acceso no vuelve a pasar por acá.

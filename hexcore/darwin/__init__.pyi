@@ -9,10 +9,11 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 117 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 118 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
+from hexcore.darwin._provisional import DarwinProvisionalWarning as DarwinProvisionalWarning
 from hexcore.darwin.domain.context import AUTH_CONTEXT as AUTH_CONTEXT
 from hexcore.darwin.domain.context import AuthContext as AuthContext
 from hexcore.darwin.domain.context import Impersonation as Impersonation
@@ -164,6 +165,7 @@ __all__ = [
     "DEFAULT_SESSION_TABLE",
     "DEFAULT_USER_TABLE",
     "DEFAULT_VERIFICATION_TABLE",
+    "DarwinProvisionalWarning",
     "Email",
     "EmailAlreadyRegisteredError",
     "EmailNotVerifiedError",
