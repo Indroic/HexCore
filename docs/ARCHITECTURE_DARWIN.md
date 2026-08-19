@@ -37,9 +37,12 @@
 | **Extra de pip** | `[darwin]` | `[keystone]` | `[sigil]` |
 | **Costo** | Ninguno conocido. Sin colisión en PyPI ni en el ecosistema Python. | **OpenStack Keystone es un servicio de identidad.** Toda búsqueda, todo resultado de Stack Overflow y todo autocompletado de LLM va a ser sobre OpenStack. Fatal para la discoverability. | El menos autodescriptivo: quien escanea la lista de paquetes no aprende que `sigil` es auth. |
 
-> **Estado de implementación.** Fases 0, 1, 2, 3 y 4 completas. Siguen: aplicación y
-> contenedor (5), propagación del actor (6), borde HTTP (7), plugins (8-9), kit de testing
-> (10).
+> **Estado de implementación.** Fases 0-5 completas. Siguen: propagación del actor por la
+> cola (6), borde HTTP (7), plugins (8-9), kit de testing (10).
+>
+> Darwin está marcado como **API provisional** (`DarwinProvisionalWarning`) hasta que el
+> borde HTTP cierre las formas: la Fase 6 agrega una clave al payload del serializer y la 7
+> define cómo se resuelve el contexto en un request.
 
 **Elegido: `Darwin`.** Es el único de los tres que es simultáneamente (a) inequívoco sobre
 qué hace, (b) libre de colisiones, y (c) lo bastante corto para que `ServerConfig.darwin`,
@@ -1000,7 +1003,7 @@ en `retired`); **la regresión de `MemoryCache` como test ejecutable** (revocar,
 el TTL del backend); **timing** (el path de login hashea un dummy fijo cuando no hay fila, y
 se cuentan las llamadas a `hmac.compare_digest`).
 
-### Fase 5 — Aplicación + contenedor
+### Fase 5 — Aplicación + contenedor ✅ **IMPLEMENTADA**
 
 `configure_identity(...) -> IdentityContainer`, `get_identity_container()`,
 `reset_identity()`, `provide_*`. Comandos, queries, handlers.

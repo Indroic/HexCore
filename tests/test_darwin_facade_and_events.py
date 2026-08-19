@@ -508,8 +508,8 @@ def test_la_fase_declarada_coincide_con_lo_implementado():
     from hexcore.darwin import _provisional
 
     assert _provisional.CURRENT_PHASE < _provisional.STABLE_PHASE
-    # La capa de crypto (4) existe; la de aplicación (5) todavía no.
+    # La capa de aplicación (5) existe; el borde HTTP (7) todavía no.
     import importlib.util
 
-    assert importlib.util.find_spec("hexcore.darwin.infrastructure.tokens") is not None
-    assert importlib.util.find_spec("hexcore.darwin.application") is None
+    assert importlib.util.find_spec("hexcore.darwin.application.container") is not None
+    assert importlib.util.find_spec("hexcore.darwin.infrastructure.transports") is None

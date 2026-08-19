@@ -9,11 +9,39 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 118 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 146 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
 from hexcore.darwin._provisional import DarwinProvisionalWarning as DarwinProvisionalWarning
+from hexcore.darwin.application.commands import AuthenticateToken as AuthenticateToken
+from hexcore.darwin.application.commands import ChangePassword as ChangePassword
+from hexcore.darwin.application.commands import IssueVerificationCode as IssueVerificationCode
+from hexcore.darwin.application.commands import ListActiveSessions as ListActiveSessions
+from hexcore.darwin.application.commands import RefreshResult as RefreshResult
+from hexcore.darwin.application.commands import RefreshSession as RefreshSession
+from hexcore.darwin.application.commands import SignIn as SignIn
+from hexcore.darwin.application.commands import SignInResult as SignInResult
+from hexcore.darwin.application.commands import SignOut as SignOut
+from hexcore.darwin.application.commands import SignOutEverywhere as SignOutEverywhere
+from hexcore.darwin.application.commands import SignUp as SignUp
+from hexcore.darwin.application.commands import SignUpResult as SignUpResult
+from hexcore.darwin.application.commands import VerifyEmail as VerifyEmail
+from hexcore.darwin.application.commands import register_identity_handlers as register_identity_handlers
+from hexcore.darwin.application.config import CookieConfig as CookieConfig
+from hexcore.darwin.application.config import IdentityConfig as IdentityConfig
+from hexcore.darwin.application.config import PasswordPolicy as PasswordPolicy
+from hexcore.darwin.application.config import SECRET_KEY_ENV as SECRET_KEY_ENV
+from hexcore.darwin.application.config import TokenConfig as TokenConfig
+from hexcore.darwin.application.container import IdentityContainer as IdentityContainer
+from hexcore.darwin.application.container import configure_identity as configure_identity
+from hexcore.darwin.application.container import get_identity_container as get_identity_container
+from hexcore.darwin.application.container import provide_identity as provide_identity
+from hexcore.darwin.application.container import provide_identity_config as provide_identity_config
+from hexcore.darwin.application.container import provide_session_service as provide_session_service
+from hexcore.darwin.application.container import reset_identity as reset_identity
+from hexcore.darwin.application.services import IdentityService as IdentityService
+from hexcore.darwin.application.services import SessionService as SessionService
 from hexcore.darwin.domain.context import AUTH_CONTEXT as AUTH_CONTEXT
 from hexcore.darwin.domain.context import AuthContext as AuthContext
 from hexcore.darwin.domain.context import Impersonation as Impersonation
@@ -155,11 +183,14 @@ __all__ = [
     "AuditLogMixin",
     "AuditLogModel",
     "AuthContext",
+    "AuthenticateToken",
     "AuthenticationError",
     "AuthorizationError",
     "CREDENTIAL_PROVIDER",
     "CacheErrorPolicy",
     "CacheRevocationList",
+    "ChangePassword",
+    "CookieConfig",
     "CsrfValidationError",
     "DEFAULT_ACCOUNT_TABLE",
     "DEFAULT_SESSION_TABLE",
@@ -173,7 +204,10 @@ __all__ = [
     "GenerationGuard",
     "IDENTITY_EXCEPTION_STATUS_MAP",
     "IDENTITY_MODELS",
+    "IdentityConfig",
+    "IdentityContainer",
     "IdentityError",
+    "IdentityService",
     "IdentitySession",
     "Impersonation",
     "ImpersonationEndedEvent",
@@ -181,24 +215,37 @@ __all__ = [
     "ImpersonationStartedEvent",
     "InsufficientScopeError",
     "InvalidCredentialsError",
+    "IssueVerificationCode",
     "JoserfcTokenIssuer",
     "JoserfcTokenVerifier",
     "JwksMixin",
     "JwksModel",
     "KeyStatus",
+    "ListActiveSessions",
     "NoActiveKeyError",
+    "PasswordPolicy",
     "Permission",
     "PermissionCycleError",
     "Principal",
+    "RefreshResult",
+    "RefreshSession",
     "RetiredKeyError",
     "Role",
     "RoleRegistry",
+    "SECRET_KEY_ENV",
     "SessionCreatedEvent",
     "SessionMixin",
     "SessionModel",
     "SessionRefreshedEvent",
     "SessionReuseDetectedEvent",
     "SessionRevokedEvent",
+    "SessionService",
+    "SignIn",
+    "SignInResult",
+    "SignOut",
+    "SignOutEverywhere",
+    "SignUp",
+    "SignUpResult",
     "SigningKey",
     "SqlAlchemyAccountRepository",
     "SqlAlchemyAuditSink",
@@ -210,6 +257,7 @@ __all__ = [
     "SystemPrincipal",
     "TimestampMixin",
     "TokenAudienceMismatchError",
+    "TokenConfig",
     "TokenError",
     "TokenExpiredError",
     "TokenMalformedError",
@@ -232,10 +280,12 @@ __all__ = [
     "VerificationMixin",
     "VerificationModel",
     "VerificationPurpose",
+    "VerifyEmail",
     "WorkerContextIntegrityError",
     "audience_for",
     "auth_scope",
     "compare_hashes",
+    "configure_identity",
     "create_identity_tables",
     "current_auth",
     "default_registry",
@@ -244,11 +294,17 @@ __all__ = [
     "generate_numeric_code",
     "generate_signing_key",
     "generate_token",
+    "get_identity_container",
     "hash_token",
     "identity_tables",
     "jwks_document",
+    "provide_identity",
+    "provide_identity_config",
+    "provide_session_service",
+    "register_identity_handlers",
     "require_auth",
     "reset_default_registry",
+    "reset_identity",
     "system_context",
     "validate_user_model",
 ]

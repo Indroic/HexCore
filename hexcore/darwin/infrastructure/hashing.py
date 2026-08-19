@@ -34,14 +34,6 @@ __all__ = [
     "generate_numeric_code",
 ]
 
-#: Contraseña señuelo con la que se hashea cuando el usuario **no existe**.
-#:
-#: Es lo que evita el oráculo de enumeración por tiempo: sin esto, un login contra un mail
-#: inexistente responde en microsegundos (no hay hash que verificar) y uno contra un mail real
-#: tarda ~50 ms. Medir la diferencia es trivial y revela qué mails están registrados.
-_SENUELO = "$señuelo$para$igualar$el$tiempo$de$respuesta$"
-
-
 class Argon2PasswordHasher(AbstractPasswordHasher):
     """
     `AbstractPasswordHasher` con Argon2id, más verificación de hashes bcrypt legados.
@@ -113,24 +105,6 @@ class Argon2PasswordHasher(AbstractPasswordHasher):
             return bool(self._hasher.check_needs_rehash(hashed))
         except (ValueError, TypeError):
             return True
-
-    def hash_dummy(self) -> None:
-        """
-        Hashea una contraseña señuelo, para igualar el tiempo cuando el usuario no existe.
-
-        **El flujo de sign-in tiene que llamar a esto en la rama "no encontré la fila".** Sin
-        eso, responder "credenciales inválidas" tarda microsegundos para un mail inexistente
-        y decenas de milisegundos para uno real, y esa diferencia es un oráculo de
-        enumeración de usuarios que no requiere adivinar ni una contraseña.
-
-        Uso::
-
-            cuenta = await cuentas.get_credential(usuario.id) if usuario else None
-            if cuenta is None or cuenta.password is None:
-                hasher.hash_dummy()          # ← igualá el tiempo antes de fallar
-                raise InvalidCredentialsError()
-        """
-        self._hasher.hash(_SENUELO)
 
     @staticmethod
     def _verificar_bcrypt(password: str, hashed: str) -> bool:

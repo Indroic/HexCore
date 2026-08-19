@@ -292,6 +292,66 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "hexcore.darwin._provisional",
         "DarwinProvisionalWarning",
     ),
+    # ── Capa de aplicación ────────────────────────────────────────────────────
+    "IdentityConfig": ("hexcore.darwin.application.config", "IdentityConfig"),
+    "TokenConfig": ("hexcore.darwin.application.config", "TokenConfig"),
+    "CookieConfig": ("hexcore.darwin.application.config", "CookieConfig"),
+    "PasswordPolicy": ("hexcore.darwin.application.config", "PasswordPolicy"),
+    "SECRET_KEY_ENV": ("hexcore.darwin.application.config", "SECRET_KEY_ENV"),
+    "IdentityContainer": (
+        "hexcore.darwin.application.container",
+        "IdentityContainer",
+    ),
+    "configure_identity": (
+        "hexcore.darwin.application.container",
+        "configure_identity",
+    ),
+    "get_identity_container": (
+        "hexcore.darwin.application.container",
+        "get_identity_container",
+    ),
+    "reset_identity": ("hexcore.darwin.application.container", "reset_identity"),
+    "provide_identity": ("hexcore.darwin.application.container", "provide_identity"),
+    "provide_session_service": (
+        "hexcore.darwin.application.container",
+        "provide_session_service",
+    ),
+    "provide_identity_config": (
+        "hexcore.darwin.application.container",
+        "provide_identity_config",
+    ),
+    "IdentityService": ("hexcore.darwin.application.services", "IdentityService"),
+    "SessionService": ("hexcore.darwin.application.services", "SessionService"),
+    # ── Comandos, queries y handlers ──────────────────────────────────────────
+    "SignUp": ("hexcore.darwin.application.commands", "SignUp"),
+    "VerifyEmail": ("hexcore.darwin.application.commands", "VerifyEmail"),
+    "SignIn": ("hexcore.darwin.application.commands", "SignIn"),
+    "RefreshSession": ("hexcore.darwin.application.commands", "RefreshSession"),
+    "SignOut": ("hexcore.darwin.application.commands", "SignOut"),
+    "SignOutEverywhere": (
+        "hexcore.darwin.application.commands",
+        "SignOutEverywhere",
+    ),
+    "ChangePassword": ("hexcore.darwin.application.commands", "ChangePassword"),
+    "IssueVerificationCode": (
+        "hexcore.darwin.application.commands",
+        "IssueVerificationCode",
+    ),
+    "AuthenticateToken": (
+        "hexcore.darwin.application.commands",
+        "AuthenticateToken",
+    ),
+    "ListActiveSessions": (
+        "hexcore.darwin.application.commands",
+        "ListActiveSessions",
+    ),
+    "SignUpResult": ("hexcore.darwin.application.commands", "SignUpResult"),
+    "SignInResult": ("hexcore.darwin.application.commands", "SignInResult"),
+    "RefreshResult": ("hexcore.darwin.application.commands", "RefreshResult"),
+    "register_identity_handlers": (
+        "hexcore.darwin.application.commands",
+        "register_identity_handlers",
+    ),
 }
 
 # `sorted(...)` no es una expresión que Pyright pueda evaluar, así que avisa que la

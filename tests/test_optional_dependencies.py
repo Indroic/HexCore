@@ -44,6 +44,18 @@ import pytest
     ("joserfc", "hexcore.darwin.infrastructure.revocation"),
     ("argon2", "hexcore.darwin.infrastructure.revocation"),
     ("sqlalchemy", "hexcore.darwin.infrastructure.revocation"),
+    # La configuración la importa `hexcore.config`, que importa medio framework: tiene que
+    # ser stdlib + pydantic y nada más.
+    ("sqlalchemy", "hexcore.darwin.application.config"),
+    ("fastapi", "hexcore.darwin.application.config"),
+    ("joserfc", "hexcore.darwin.application.config"),
+    ("argon2", "hexcore.darwin.application.config"),
+    # El contenedor resuelve sus adaptadores perezosamente, así que importarlo no puede
+    # arrastrar ninguno de los extras que esos adaptadores necesitan.
+    ("sqlalchemy", "hexcore.darwin.application.container"),
+    ("joserfc", "hexcore.darwin.application.container"),
+    ("argon2", "hexcore.darwin.application.container"),
+    ("fastapi", "hexcore.darwin.application.container"),
 ])
 def test_optional_dependencies_do_not_crash_imports(module_to_hide, module_to_import):
     """

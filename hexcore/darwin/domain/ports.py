@@ -32,6 +32,10 @@ if t.TYPE_CHECKING:
         Verification,
     )
 
+#: Contraseña señuelo de `AbstractPasswordHasher.hash_dummy`. El valor no importa —nunca se
+#: compara con nada— sólo que hashearla cueste lo mismo que una real.
+_SENUELO = "$senuelo$para$igualar$el$tiempo$de$respuesta$"
+
 __all__ = [
     "AbstractClock",
     "AbstractPasswordHasher",
@@ -91,6 +95,22 @@ class AbstractPasswordHasher(abc.ABC):
     def needs_rehash(self, hashed: str) -> bool:
         """Si el hash es de un algoritmo o coste viejo y conviene regenerarlo al próximo login."""
         raise NotImplementedError
+
+    def hash_dummy(self) -> None:
+        """
+        Hashea una contraseña señuelo, para igualar el tiempo cuando el usuario **no existe**.
+
+        Está en el puerto y no sólo en el adaptador porque es un **requisito de contrato**: el
+        flujo de sign-in lo llama en la rama "no encontré la fila", y sin él responder
+        "credenciales inválidas" tarda microsegundos para un mail inexistente y decenas de
+        milisegundos para uno real. Esa diferencia enumera usuarios registrados sin adivinar ni
+        una contraseña.
+
+        Es **concreto** y no abstracto: el default correcto es hashear una constante, así que
+        obligar a cada implementador a reescribirlo sólo agrega la oportunidad de olvidarlo — y
+        olvidarlo no rompe ningún test funcional, sólo abre el oráculo.
+        """
+        self.hash(_SENUELO)
 
 
 class AbstractUserRepository(abc.ABC):
