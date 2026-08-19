@@ -234,6 +234,54 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "hexcore.darwin.infrastructure.repositories",
         "SqlAlchemyAuditSink",
     ),
+    # ── Crypto (requiere el extra [darwin]) ───────────────────────────────────
+    "SystemClock": ("hexcore.darwin.infrastructure.clock", "SystemClock"),
+    "FixedClock": ("hexcore.darwin.infrastructure.clock", "FixedClock"),
+    "Argon2PasswordHasher": (
+        "hexcore.darwin.infrastructure.hashing",
+        "Argon2PasswordHasher",
+    ),
+    "hash_token": ("hexcore.darwin.infrastructure.hashing", "hash_token"),
+    "compare_hashes": ("hexcore.darwin.infrastructure.hashing", "compare_hashes"),
+    "generate_token": ("hexcore.darwin.infrastructure.hashing", "generate_token"),
+    "generate_numeric_code": (
+        "hexcore.darwin.infrastructure.hashing",
+        "generate_numeric_code",
+    ),
+    "SigningKey": ("hexcore.darwin.infrastructure.keys", "SigningKey"),
+    "KeyStatus": ("hexcore.darwin.infrastructure.keys", "KeyStatus"),
+    "AbstractKeyStore": ("hexcore.darwin.infrastructure.keys", "AbstractKeyStore"),
+    "StaticKeyStore": ("hexcore.darwin.infrastructure.keys", "StaticKeyStore"),
+    "generate_signing_key": (
+        "hexcore.darwin.infrastructure.keys",
+        "generate_signing_key",
+    ),
+    "jwks_document": ("hexcore.darwin.infrastructure.keys", "jwks_document"),
+    "UnknownKeyError": ("hexcore.darwin.infrastructure.keys", "UnknownKeyError"),
+    "RetiredKeyError": ("hexcore.darwin.infrastructure.keys", "RetiredKeyError"),
+    "NoActiveKeyError": ("hexcore.darwin.infrastructure.keys", "NoActiveKeyError"),
+    "TokenTtl": ("hexcore.darwin.infrastructure.tokens", "TokenTtl"),
+    "JoserfcTokenIssuer": (
+        "hexcore.darwin.infrastructure.tokens",
+        "JoserfcTokenIssuer",
+    ),
+    "JoserfcTokenVerifier": (
+        "hexcore.darwin.infrastructure.tokens",
+        "JoserfcTokenVerifier",
+    ),
+    "audience_for": ("hexcore.darwin.infrastructure.tokens", "audience_for"),
+    "CacheRevocationList": (
+        "hexcore.darwin.infrastructure.revocation",
+        "CacheRevocationList",
+    ),
+    "GenerationGuard": (
+        "hexcore.darwin.infrastructure.revocation",
+        "GenerationGuard",
+    ),
+    "CacheErrorPolicy": (
+        "hexcore.darwin.infrastructure.revocation",
+        "CacheErrorPolicy",
+    ),
 }
 
 # `sorted(...)` no es una expresión que Pyright pueda evaluar, así que avisa que la

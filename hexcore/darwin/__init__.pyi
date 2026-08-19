@@ -9,7 +9,7 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 94 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 117 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
@@ -79,6 +79,22 @@ from hexcore.darwin.domain.value_objects import Email as Email
 from hexcore.darwin.domain.value_objects import TokenPair as TokenPair
 from hexcore.darwin.domain.value_objects import TokenType as TokenType
 from hexcore.darwin.domain.value_objects import VerificationPurpose as VerificationPurpose
+from hexcore.darwin.infrastructure.clock import FixedClock as FixedClock
+from hexcore.darwin.infrastructure.clock import SystemClock as SystemClock
+from hexcore.darwin.infrastructure.hashing import Argon2PasswordHasher as Argon2PasswordHasher
+from hexcore.darwin.infrastructure.hashing import compare_hashes as compare_hashes
+from hexcore.darwin.infrastructure.hashing import generate_numeric_code as generate_numeric_code
+from hexcore.darwin.infrastructure.hashing import generate_token as generate_token
+from hexcore.darwin.infrastructure.hashing import hash_token as hash_token
+from hexcore.darwin.infrastructure.keys import AbstractKeyStore as AbstractKeyStore
+from hexcore.darwin.infrastructure.keys import KeyStatus as KeyStatus
+from hexcore.darwin.infrastructure.keys import NoActiveKeyError as NoActiveKeyError
+from hexcore.darwin.infrastructure.keys import RetiredKeyError as RetiredKeyError
+from hexcore.darwin.infrastructure.keys import SigningKey as SigningKey
+from hexcore.darwin.infrastructure.keys import StaticKeyStore as StaticKeyStore
+from hexcore.darwin.infrastructure.keys import UnknownKeyError as UnknownKeyError
+from hexcore.darwin.infrastructure.keys import generate_signing_key as generate_signing_key
+from hexcore.darwin.infrastructure.keys import jwks_document as jwks_document
 from hexcore.darwin.infrastructure.models import AccountModel as AccountModel
 from hexcore.darwin.infrastructure.models import AuditLogModel as AuditLogModel
 from hexcore.darwin.infrastructure.models import IDENTITY_MODELS as IDENTITY_MODELS
@@ -102,17 +118,25 @@ from hexcore.darwin.infrastructure.repositories import SqlAlchemyAuditSink as Sq
 from hexcore.darwin.infrastructure.repositories import SqlAlchemySessionRepository as SqlAlchemySessionRepository
 from hexcore.darwin.infrastructure.repositories import SqlAlchemyUserRepository as SqlAlchemyUserRepository
 from hexcore.darwin.infrastructure.repositories import SqlAlchemyVerificationRepository as SqlAlchemyVerificationRepository
+from hexcore.darwin.infrastructure.revocation import CacheErrorPolicy as CacheErrorPolicy
+from hexcore.darwin.infrastructure.revocation import CacheRevocationList as CacheRevocationList
+from hexcore.darwin.infrastructure.revocation import GenerationGuard as GenerationGuard
 from hexcore.darwin.infrastructure.schema import create_identity_tables as create_identity_tables
 from hexcore.darwin.infrastructure.schema import drop_identity_tables as drop_identity_tables
 from hexcore.darwin.infrastructure.schema import ensure_identity_schema_loaded as ensure_identity_schema_loaded
 from hexcore.darwin.infrastructure.schema import identity_tables as identity_tables
 from hexcore.darwin.infrastructure.schema import validate_user_model as validate_user_model
+from hexcore.darwin.infrastructure.tokens import JoserfcTokenIssuer as JoserfcTokenIssuer
+from hexcore.darwin.infrastructure.tokens import JoserfcTokenVerifier as JoserfcTokenVerifier
+from hexcore.darwin.infrastructure.tokens import TokenTtl as TokenTtl
+from hexcore.darwin.infrastructure.tokens import audience_for as audience_for
 
 __all__ = [
     "AUTH_CONTEXT",
     "AbstractAccountRepository",
     "AbstractAuditSink",
     "AbstractClock",
+    "AbstractKeyStore",
     "AbstractPasswordHasher",
     "AbstractRevocationList",
     "AbstractSessionRepository",
@@ -126,12 +150,15 @@ __all__ = [
     "AccountModel",
     "AccountUnlinkedEvent",
     "AllSessionsRevokedEvent",
+    "Argon2PasswordHasher",
     "AuditLogMixin",
     "AuditLogModel",
     "AuthContext",
     "AuthenticationError",
     "AuthorizationError",
     "CREDENTIAL_PROVIDER",
+    "CacheErrorPolicy",
+    "CacheRevocationList",
     "CsrfValidationError",
     "DEFAULT_ACCOUNT_TABLE",
     "DEFAULT_SESSION_TABLE",
@@ -140,6 +167,8 @@ __all__ = [
     "Email",
     "EmailAlreadyRegisteredError",
     "EmailNotVerifiedError",
+    "FixedClock",
+    "GenerationGuard",
     "IDENTITY_EXCEPTION_STATUS_MAP",
     "IDENTITY_MODELS",
     "IdentityError",
@@ -150,11 +179,16 @@ __all__ = [
     "ImpersonationStartedEvent",
     "InsufficientScopeError",
     "InvalidCredentialsError",
+    "JoserfcTokenIssuer",
+    "JoserfcTokenVerifier",
     "JwksMixin",
     "JwksModel",
+    "KeyStatus",
+    "NoActiveKeyError",
     "Permission",
     "PermissionCycleError",
     "Principal",
+    "RetiredKeyError",
     "Role",
     "RoleRegistry",
     "SessionCreatedEvent",
@@ -163,11 +197,14 @@ __all__ = [
     "SessionRefreshedEvent",
     "SessionReuseDetectedEvent",
     "SessionRevokedEvent",
+    "SigningKey",
     "SqlAlchemyAccountRepository",
     "SqlAlchemyAuditSink",
     "SqlAlchemySessionRepository",
     "SqlAlchemyUserRepository",
     "SqlAlchemyVerificationRepository",
+    "StaticKeyStore",
+    "SystemClock",
     "SystemPrincipal",
     "TimestampMixin",
     "TokenAudienceMismatchError",
@@ -176,9 +213,11 @@ __all__ = [
     "TokenMalformedError",
     "TokenPair",
     "TokenRevokedError",
+    "TokenTtl",
     "TokenType",
     "Transport",
     "UnauthenticatedError",
+    "UnknownKeyError",
     "User",
     "UserEmailVerifiedEvent",
     "UserMixin",
@@ -192,13 +231,20 @@ __all__ = [
     "VerificationModel",
     "VerificationPurpose",
     "WorkerContextIntegrityError",
+    "audience_for",
     "auth_scope",
+    "compare_hashes",
     "create_identity_tables",
     "current_auth",
     "default_registry",
     "drop_identity_tables",
     "ensure_identity_schema_loaded",
+    "generate_numeric_code",
+    "generate_signing_key",
+    "generate_token",
+    "hash_token",
     "identity_tables",
+    "jwks_document",
     "require_auth",
     "reset_default_registry",
     "system_context",

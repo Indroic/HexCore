@@ -37,8 +37,8 @@
 | **Extra de pip** | `[darwin]` | `[keystone]` | `[sigil]` |
 | **Costo** | Ninguno conocido. Sin colisión en PyPI ni en el ecosistema Python. | **OpenStack Keystone es un servicio de identidad.** Toda búsqueda, todo resultado de Stack Overflow y todo autocompletado de LLM va a ser sobre OpenStack. Fatal para la discoverability. | El menos autodescriptivo: quien escanea la lista de paquetes no aprende que `sigil` es auth. |
 
-> **Estado de implementación.** Fases 0, 1, 2 y 3 completas. Siguen: crypto (4), aplicación
-> y contenedor (5), propagación del actor (6), borde HTTP (7), plugins (8-9), kit de testing
+> **Estado de implementación.** Fases 0, 1, 2, 3 y 4 completas. Siguen: aplicación y
+> contenedor (5), propagación del actor (6), borde HTTP (7), plugins (8-9), kit de testing
 > (10).
 
 **Elegido: `Darwin`.** Es el único de los tres que es simultáneamente (a) inequívoco sobre
@@ -792,8 +792,11 @@ class AccessTokenClaims(BaseModel):
 
 ### 6.2 Algoritmo y claves
 
-- **`EdDSA` (Ed25519)** por defecto. Firmas cortas, verificación rápida, sin parámetros que
+- **`Ed25519`** por defecto. Firmas cortas, verificación rápida, sin parámetros que
   configurar mal (a diferencia de RSA, donde el largo de clave es una decisión).
+  Se usa el identificador de curva y **no** el `EdDSA` genérico: RFC 9864 lo deprecó, y
+  `joserfc` emite un `SecurityWarning` si se usa. Nacer con un `alg` deprecado es deuda
+  caro de migrar, porque los tokens ya emitidos lo llevan en la cabecera.
 - **La verificación pinea la lista de algoritmos**, nunca lee el `alg` del token. `none` se
   rechaza siempre. Nunca se honra `jku`, `x5u` ni un `jwk` embebido.
 - Claves simétricas y asimétricas en almacenes **disjuntos**: es lo que evita la confusión
@@ -983,12 +986,12 @@ exactamente 6 tablas; renombrado vía mixin con retargeteo de FK; `create_identi
 idempotente; round-trip de tz-awareness; email duplicado → `IntegrityError` mapeado a
 `EmailAlreadyRegisteredError`.
 
-### Fase 4 — Crypto (**el núcleo de seguridad de la suite**)
+### Fase 4 — Crypto ✅ **IMPLEMENTADA** (**el núcleo de seguridad de la suite**)
 
 `hashing`, `keys`, `tokens`, `revocation`.
 
 Tests adversariales: **confusión de `alg`** (`none`; HS256 firmado con la clave pública
-Ed25519 como secreto HMAC; `RS256` con allowlist `["EdDSA"]`); **confusión de `typ`**
+Ed25519 como secreto HMAC; `RS256` con allowlist `["Ed25519"]`); **confusión de `typ`**
 (`rt+jwt` donde se exige `at+jwt`); `kid` desconocido/retirado/ausente + caché negativa
 contada bajo flood; `aud`/`iss` que no coinciden; `nbf` futuro y `exp` pasado con y sin el
 skew configurado; **rotación** (token de la clave anterior verifica en `verify_only`, falla

@@ -36,6 +36,14 @@ import pytest
     # no puede arrastrar sqlalchemy hasta que pidas un modelo.
     ("joserfc", "hexcore.darwin.domain.entities"),
     ("argon2", "hexcore.darwin.domain.ports"),
+    # El reloj y la revocación son de infraestructura pero no tocan crypto ni sqlalchemy:
+    # los importa el middleware de CQRS y tienen que funcionar en un proceso pelado.
+    ("joserfc", "hexcore.darwin.infrastructure.clock"),
+    ("argon2", "hexcore.darwin.infrastructure.clock"),
+    ("sqlalchemy", "hexcore.darwin.infrastructure.clock"),
+    ("joserfc", "hexcore.darwin.infrastructure.revocation"),
+    ("argon2", "hexcore.darwin.infrastructure.revocation"),
+    ("sqlalchemy", "hexcore.darwin.infrastructure.revocation"),
 ])
 def test_optional_dependencies_do_not_crash_imports(module_to_hide, module_to_import):
     """
