@@ -33,14 +33,3 @@ class AbstractSerializer(abc.ABC):
             DeserializationError: Si no se puede reconstruir el mensaje.
         """
         raise NotImplementedError
-
-
-# ── Alias de retrocompatibilidad (deprecado desde 5.0) ────────────────────────
-from hexcore._deprecation import deprecated_aliases  # noqa: E402
-
-_DEPRECATED_ALIASES = {"ISerializer": "AbstractSerializer"}
-
-__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())
-
-if t.TYPE_CHECKING:
-    ISerializer = AbstractSerializer

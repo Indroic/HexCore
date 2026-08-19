@@ -38,7 +38,6 @@ __all__ = [
     "get_session_factory",
     "get_async_db_session",
     "normalize_async_dsn",
-    "reset_sqlalchemy_engine",
 ]
 
 
@@ -195,19 +194,3 @@ async def get_async_db_session() -> AsyncGenerator[AsyncSession, None]:
     factory = get_session_factory()
     async with factory() as db:
         yield db
-
-
-async def reset_sqlalchemy_engine() -> None:
-    """
-    Alias legacy de `dispose_engine()`. **Deprecado desde 5.0, se elimina en 6.0.**
-
-    El nombre dice "reset" pero lo que hace es cerrar el pool y dejar el módulo
-    re-inicializable, que es lo que uno busca para el shutdown de un lifespan.
-    `dispose_engine()` lo dice mejor.
-    """
-    from hexcore._deprecation import warn_deprecated
-
-    warn_deprecated(
-        "reset_sqlalchemy_engine()", "dispose_engine()", kind="función", stacklevel=2
-    )
-    await dispose_engine()

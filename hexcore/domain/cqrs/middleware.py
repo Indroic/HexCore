@@ -45,14 +45,3 @@ class AbstractMiddleware(abc.ABC):
             El resultado de la ejecución (puede ser None para commands/events).
         """
         raise NotImplementedError
-
-
-# ── Alias de retrocompatibilidad (deprecado desde 5.0) ────────────────────────
-from hexcore._deprecation import deprecated_aliases  # noqa: E402
-
-_DEPRECATED_ALIASES = {"IMiddleware": "AbstractMiddleware"}
-
-__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())
-
-if t.TYPE_CHECKING:
-    IMiddleware = AbstractMiddleware

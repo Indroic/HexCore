@@ -214,14 +214,3 @@ try:
 except ImportError:
     D = t.TypeVar("D") # type: ignore
     class BeanieRepository(t.Generic[T, D]): ... # type: ignore
-
-
-# ── Alias de retrocompatibilidad (deprecados desde 5.0, se eliminan en 6.0) ────
-from hexcore._deprecation import deprecated_aliases  # noqa: E402
-
-_DEPRECATED_ALIASES = {
-    "SQLAlchemyCommonImplementationsRepo": "SqlAlchemyRepository",
-    "BeanieODMCommonImplementationsRepo": "BeanieRepository",
-}
-
-__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())

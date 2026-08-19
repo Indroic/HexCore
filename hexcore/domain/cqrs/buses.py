@@ -72,23 +72,3 @@ class AbstractEventBus(abc.ABC):
     ) -> None:
         """Registra un handler para un tipo de evento."""
         raise NotImplementedError
-
-
-# ── Alias de retrocompatibilidad (deprecados desde 5.0) ───────────────────────
-# Se exponen por `__getattr__` y no como asignaciones, porque una asignación no puede
-# avisar: leerla no ejecuta nada. Ver hexcore._deprecation.
-from hexcore._deprecation import deprecated_aliases  # noqa: E402
-
-_DEPRECATED_ALIASES = {
-    "ICommandBus": "AbstractCommandBus",
-    "IQueryBus": "AbstractQueryBus",
-    "IEventBus": "AbstractEventBus",
-}
-
-__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())
-
-if t.TYPE_CHECKING:
-    # Para que los type checkers sigan resolviendo los alias sin ejecutar el warning.
-    ICommandBus = AbstractCommandBus
-    IQueryBus = AbstractQueryBus
-    IEventBus = AbstractEventBus

@@ -72,32 +72,3 @@ class EventBus(abc.ABC):
         """Publica un evento a todos los handlers suscritos."""
         raise NotImplementedError
 
-    # --- Retrocompatibilidad (deprecado desde 5.0, se elimina en 6.0) ---
-    def register(self, event_type: type, handler: EventHandler) -> None:
-        """Alias deprecado de `subscribe`."""
-        from hexcore._deprecation import warn_deprecated
-
-        warn_deprecated(
-            "EventBus.register()", "EventBus.subscribe()", kind="método", stacklevel=2
-        )
-        self.subscribe(event_type, handler)
-
-    async def dispatch(self, event: t.Any) -> None:
-        """Alias deprecado de `publish`."""
-        from hexcore._deprecation import warn_deprecated
-
-        warn_deprecated(
-            "EventBus.dispatch()", "EventBus.publish()", kind="método", stacklevel=2
-        )
-        await self.publish(event)
-
-
-# ── Alias de retrocompatibilidad (deprecado desde 5.0, se elimina en 6.0) ──────
-from hexcore._deprecation import deprecated_aliases  # noqa: E402
-
-_DEPRECATED_ALIASES = {"IEventDispatcher": "EventBus"}
-
-__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())
-
-if t.TYPE_CHECKING:
-    IEventDispatcher = EventBus

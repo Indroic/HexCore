@@ -1,8 +1,8 @@
 {
-  "error_total": 213,
+  "error_total": 212,
   "per_file": {
     "hexcore/application/dtos/cursor.py": 3,
-    "hexcore/config.py": 2,
+    "hexcore/config.py": 1,
     "hexcore/domain/cqrs/cron.py": 1,
     "hexcore/domain/cqrs/resolution.py": 1,
     "hexcore/infrastructure/api/cqrs.py": 4,

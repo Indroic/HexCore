@@ -448,16 +448,44 @@ def test_support_policy_marks_only_the_current_major_as_active():
     )
 
 
-def test_deprecated_api_table_lists_symbols_that_still_work():
+def test_the_removed_api_table_matches_reality():
     """
-    Si la tabla promete que la superficie de v1/v2 sigue funcionando, tiene que seguir
-    funcionando. Se hace `getattr` de verdad y no `dir()`, porque los alias se resuelven
-    por `__getattr__` de módulo y por tanto no aparecen en `dir()`.
+    La tabla de API removida del README tiene que decir la verdad en **las dos direcciones**:
+    los nombres viejos ya no resuelven, y los canónicos que propone sí.
+
+    Antes este test verificaba lo contrario —que los alias siguieran funcionando— porque el
+    README prometía eso. Se eliminaron en 7.0, así que se invierte junto con la tabla. Que el
+    test siga enumerándolos es lo que evita que la documentación quede prometiendo una
+    compatibilidad que ya no existe.
     """
     import importlib
-    import warnings
 
-    must_work = [
+    removidos = [
+        ("hexcore.domain.cqrs", "ICommandBus"),
+        ("hexcore.domain.cqrs", "IQueryBus"),
+        ("hexcore.domain.cqrs", "IEventBus"),
+        ("hexcore.domain.cqrs", "ICommandHandler"),
+        ("hexcore.domain.cqrs", "IQueryHandler"),
+        ("hexcore.domain.cqrs", "IMiddleware"),
+        ("hexcore.domain.cqrs", "ISerializer"),
+        ("hexcore.domain.cqrs.buses", "ICommandBus"),
+        ("hexcore.domain.cqrs.handlers", "ICommandHandler"),
+        ("hexcore.domain.cqrs.middleware", "IMiddleware"),
+        ("hexcore.domain.cqrs.serializer", "ISerializer"),
+        ("hexcore.domain.events", "IEventDispatcher"),
+    ]
+
+    sobrevivientes = [
+        f"{module_path}.{name}"
+        for module_path, name in removidos
+        if getattr(importlib.import_module(module_path), name, None) is not None
+    ]
+    assert not sobrevivientes, (
+        "el README dice que estos nombres se removieron, y siguen resolviendo: "
+        + ", ".join(sobrevivientes)
+    )
+
+    canonicos = [
         ("hexcore.domain.cqrs", "AbstractCommandBus"),
         ("hexcore.domain.cqrs", "AbstractQueryBus"),
         ("hexcore.domain.cqrs", "AbstractEventBus"),
@@ -465,30 +493,21 @@ def test_deprecated_api_table_lists_symbols_that_still_work():
         ("hexcore.domain.cqrs", "AbstractQueryHandler"),
         ("hexcore.domain.cqrs", "AbstractMiddleware"),
         ("hexcore.domain.cqrs", "AbstractSerializer"),
-        ("hexcore.domain.cqrs.buses", "AbstractCommandBus"),
-        ("hexcore.domain.cqrs.handlers", "AbstractCommandHandler"),
-        ("hexcore.domain.cqrs.middleware", "AbstractMiddleware"),
-        ("hexcore.domain.cqrs.serializer", "AbstractSerializer"),
-        ("hexcore.domain.events", "IEventDispatcher"),
+        ("hexcore.domain.events", "EventBus"),
     ]
-
-    broken: list[str] = []
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        for module_path, name in must_work:
-            module = importlib.import_module(module_path)
-            if getattr(module, name, None) is None:
-                broken.append(f"{module_path}.{name}")
-
-    assert not broken, (
-        "el README promete que estos alias siguen funcionando, y no: " + ", ".join(broken)
+    faltantes = [
+        f"{module_path}.{name}"
+        for module_path, name in canonicos
+        if getattr(importlib.import_module(module_path), name, None) is None
+    ]
+    assert not faltantes, (
+        "el README propone estos reemplazos y no existen: " + ", ".join(faltantes)
     )
 
     readme = _read("README.md")
-    canonical = [
-        "AbstractCommandBus", "AbstractQueryBus", "AbstractEventBus",
-        "AbstractCommandHandler", "AbstractQueryHandler",
-        "AbstractMiddleware", "AbstractSerializer",
-    ]
-    for name in {n for _m, n in must_work} | set(canonical):
+    for _module_path, name in removidos + canonicos:
         assert name in readme, f"{name} no aparece en el README"
+
+    # La tabla ya no puede prometer que los alias siguen funcionando.
+    assert "se eliminará en **6.0**" not in readme
+    assert "sigue funcionando" not in readme.split("### API removida", 1)[-1].split("##", 1)[0]

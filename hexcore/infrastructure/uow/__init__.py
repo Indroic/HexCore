@@ -199,20 +199,8 @@ from .scopes import (  # noqa: E402
 __all__ = [
     "SqlAlchemyUnitOfWork",
     "BeanieUnitOfWork",
-    "NoSqlUnitOfWork",
     "session_scope",
     "uow_scope",
     "open_uow_scope",
     "nosql_uow_scope",
 ]
-
-
-# ── Alias de retrocompatibilidad (deprecado desde 5.0, se elimina en 6.0) ──────
-from hexcore._deprecation import deprecated_aliases  # noqa: E402
-
-_DEPRECATED_ALIASES = {"NoSqlUnitOfWork": "BeanieUnitOfWork"}
-
-__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())
-
-if t.TYPE_CHECKING:
-    NoSqlUnitOfWork = BeanieUnitOfWork

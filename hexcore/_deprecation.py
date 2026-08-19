@@ -1,9 +1,10 @@
 """
-Mecanismo de deprecación de la superficie de API anterior a 5.0.
+Mecanismo de deprecación de HexCore.
 
-Conviven dos nombres para varios conceptos (`AbstractCommandBus`/`ICommandBus`,
-`AbstractSerializer`/`ISerializer`, …) por retrocompatibilidad con 1.x/2.x. Los canónicos
-son los `Abstract*`; los alias siguen funcionando, pero avisan y se eliminarán en 7.0.
+Los alias anteriores a 5.0 (`ICommandBus`, `ISerializer`, `NoSqlUnitOfWork`, …) **se
+eliminaron en 7.0**: estaban deprecados desde 5.0, o sea dos majors de aviso. Este módulo
+queda como el mecanismo, no como su inventario — lo usa lo que se deprece de acá en adelante,
+empezando por `hexcore.domain.auth`, que Darwin reemplaza.
 
 Un alias declarado como `ICommandBus = AbstractCommandBus` **no puede avisar**: es una
 asignación, y leerlo no ejecuta nada. Por eso el aviso se implementa con `__getattr__` de
@@ -32,16 +33,21 @@ __all__ = [
     "deprecated_callable",
 ]
 
-#: Versión en la que se eliminan los alias. Se menciona en cada aviso para que el usuario
-#: sepa cuánto margen tiene.
+#: Versión en la que se elimina lo que se deprece ahora. Se menciona en cada aviso para que
+#: el usuario sepa cuánto margen tiene.
 #:
-#: **Tiene que ser estrictamente mayor que la versión publicada**, o el aviso se contradice
-#: a sí mismo: anunciar "se elimina en 6.0" corriendo en 6.0.0, con los alias delante, le
-#: enseña al usuario que estos avisos no hay que leerlos. Ya pasó, porque en este repo dos
-#: majors salieron de commits `feat!:` involuntarios. Lo vigila
-#: `test_removed_in_is_ahead_of_the_published_version`: si un bump vuelve a alcanzar a este
-#: valor, el fallo salta en CI y no en el aviso que lee el usuario.
-REMOVED_IN = "7.0"
+#: **Tiene que ser estrictamente mayor que la versión publicada**, o el aviso se contradice a
+#: sí mismo: anunciar "se elimina en 6.0" corriendo en 6.0.0, con los alias delante, le enseña
+#: al usuario que estos avisos no hay que leerlos. Ya pasó, y no por descuido sino porque en
+#: este repo dos majors salieron de commits `feat!:` involuntarios.
+#:
+#: En 7.0 los alias pre-5.0 **se eliminaron de verdad**, así que la constante pasa a 8.0: la
+#: próxima ventana real, para lo que se deprece de acá en adelante.
+#:
+#: Lo vigila `test_removed_in_is_ahead_of_the_published_version`: si un bump vuelve a alcanzar
+#: este valor, el fallo salta en CI y no en el aviso que lee el usuario. Ese test es el que
+#: convierte "se nos pasó" en "no se puede releasear".
+REMOVED_IN = "8.0"
 
 
 def warn_deprecated(
@@ -116,8 +122,9 @@ def deprecated_callable(
     """
     Envuelve un callable para que avise al invocarse y delegue en su reemplazo.
 
-    Para métodos deprecados (`EventBus.register`, `reset_sqlalchemy_engine`), donde el
-    aviso va en la llamada y no en el acceso al nombre.
+    Para métodos deprecados, donde el aviso va en la llamada y no en el acceso al nombre.
+    Sus dos usuarios originales —`EventBus.register` y `reset_sqlalchemy_engine`— se
+    eliminaron en 7.0; el helper queda para el próximo.
     """
     import functools
 

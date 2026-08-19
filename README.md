@@ -47,7 +47,7 @@ await cqrs.run_procrastinate_worker(
 - [Repositorios y entidades](#repositorios-y-entidades)
 - [Configuración](#configuración)
 - [Templates de proyecto (CLI)](#templates-de-proyecto-cli)
-- [Versiones y soporte](#versiones-y-soporte) ← **todo lo anterior a 5.0 está deprecado**
+- [Versiones y soporte](#versiones-y-soporte) ← **la API anterior a 5.0 se eliminó en 7.0**
 - [Guía de migración a 5.x](#guía-de-migración-a-5x)
 - [Contribuir](#contribuir)
 
@@ -95,8 +95,8 @@ import hexcore.sql as sql       # init_engine, session_scope, uow_scope, Base, D
 ```
 
 Las fachadas exponen **sólo los nombres canónicos** (`AbstractCommandBus`,
-`AbstractSerializer`, …). Los alias históricos `I*` siguen importables por su ruta de siempre,
-pero están deprecados — ver [Versiones y soporte](#versiones-y-soporte).
+`AbstractSerializer`, …). Los alias históricos `I*` **se eliminaron en 7.0** — ver
+[Versiones y soporte](#versiones-y-soporte) para la tabla de reemplazos.
 
 ---
 
@@ -911,13 +911,23 @@ estructura de migraciones con Alembic.
 | Serie | Estado | Qué significa |
 | :-- | :-- | :-- |
 | **6.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. |
-| **5.x** | ⛔ **Deprecada** | Misma superficie de API que 6.x. Migrar es actualizar la versión. |
+| **5.x** | ⛔ **Deprecada** | Sigue funcionando y los alias anteriores a 5.0 todavía están presentes, pero no recibe correcciones. Incluye los defectos de seguridad de CORS y rate limiting corregidos en 7.0. |
 | **4.x** | ⛔ **Deprecada** | Aplicación **parcial**: le faltan el fix del event loop de Celery, las fachadas y la documentación alineada. |
 | **3.x** | ⛔ **Deprecada** | Aplicación **parcial**: tiene las correcciones P0/P1 pero ninguna de las factories de FastAPI. |
 | **2.x** | ⛔ **Deprecada** | Contiene los bugs silenciosos corregidos en 5.x (ver abajo). |
 | **1.x** | ⛔ **Deprecada** | Sin soporte de ningún tipo. |
 
-**Todo lo anterior a 5.0 está deprecado. Migrá a 6.x.**
+**Todo lo anterior a 6.0 está deprecado. Migrá a 6.x.**
+
+Los alias anteriores a 5.0 avisaban que se eliminaban "en 6.0". 6.0.0 salió sin eliminarlos —
+se prefirió mover la fecha antes que romper retroactivamente a quien ya había actualizado
+confiando en que seguían. **En 7.0 se eliminan de verdad**, con dos majors completos de aviso
+acumulados. La tabla de reemplazos está más abajo.
+
+> La fila de la serie 7.x se agrega al publicarla: `tests/test_documentation_examples.py`
+> verifica que la serie marcada como activa sea la de `pyproject.toml`, así que la tabla y la
+> versión no pueden desincronizarse. Ese test es el que detectó que 6.0.0 salió con 5.x todavía
+> marcada como activa.
 
 3.0.0 y 4.0.0 existen sólo porque el trabajo se mergeó por fases y cada merge disparó un bump
 automático: **no son releases pensadas para usarse**, son cortes intermedios de la misma
@@ -944,12 +954,15 @@ de error, así que un proyecto puede estar afectado sin saberlo.
 | `asyncio.run()` por tarea en Celery | `Event loop is closed` con un `AsyncEngine` compartido |
 | `HandlerRegistry` decía ser thread-safe sin ningún lock | Doble instanciación del handler bajo concurrencia |
 
-La superficie de API de v1/v2 **sigue funcionando** en 5.x —los alias de retrocompatibilidad no
-se han borrado— pero está deprecada, emite `DeprecationWarning` y se eliminará en **6.0**.
+La superficie de API de v1/v2 **se eliminó en 7.0**. Estuvo deprecada y emitiendo
+`DeprecationWarning` desde 5.0, o sea dos majors completos de aviso.
 
-### API deprecada y su reemplazo
+Si venís de 6.x o anterior y usabas alguno de estos nombres, el reemplazo es mecánico: son
+renombres, no cambios de comportamiento.
 
-| Deprecado (v1/v2) | Usá en su lugar |
+### API removida y su reemplazo
+
+| Removido en 7.0 (era v1/v2) | Usá en su lugar |
 | :-- | :-- |
 | `ICommandBus`, `IQueryBus`, `IEventBus` | `AbstractCommandBus`, `AbstractQueryBus`, `AbstractEventBus` |
 | `ICommandHandler`, `IQueryHandler` | `AbstractCommandHandler`, `AbstractQueryHandler` |
@@ -964,7 +977,12 @@ se han borrado— pero está deprecada, emite `DeprecationWarning` y se eliminar
 | `reset_sqlalchemy_engine()` | `dispose_engine()` |
 | `MiddlewareConfig` | **Eliminado en 3.0.** Era código muerto: nunca se leía. |
 
-Para ver qué estás usando, corré tus tests con los warnings visibles:
+Pasar `event_dispatcher=` a `ServerConfig` **falla con un error que dice qué usar**, en vez de
+ignorarse en silencio: pydantic descarta los kwargs que no conoce, y quedarte con el bus por
+defecto sin enterarte se manifestaría mucho después como "mis eventos no llegan".
+
+Si todavía estás en 6.x, corré tus tests con los warnings visibles para ver qué te falta migrar
+antes de subir a 7.0:
 
 ```sh
 python -m pytest -W "default::DeprecationWarning"
