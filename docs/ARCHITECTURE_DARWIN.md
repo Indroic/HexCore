@@ -3,8 +3,8 @@
 > Documento técnico de arquitectura. Port deliberado de [Better Auth](https://github.com/better-auth/better-auth)
 > (TypeScript) a Python + CQRS sobre HexCore 6.x.
 >
-> Estado: **diseño aprobado, Fase 0 implementada.** Sin fechas ni estimaciones: el orden es
-> por dependencia, no por calendario.
+> Estado: **diseño aprobado, Fases 0-6 implementadas.** Sin fechas ni estimaciones: el orden
+> es por dependencia, no por calendario.
 
 ---
 
@@ -37,12 +37,12 @@
 | **Extra de pip** | `[darwin]` | `[keystone]` | `[sigil]` |
 | **Costo** | Ninguno conocido. Sin colisión en PyPI ni en el ecosistema Python. | **OpenStack Keystone es un servicio de identidad.** Toda búsqueda, todo resultado de Stack Overflow y todo autocompletado de LLM va a ser sobre OpenStack. Fatal para la discoverability. | El menos autodescriptivo: quien escanea la lista de paquetes no aprende que `sigil` es auth. |
 
-> **Estado de implementación.** Fases 0-5 completas. Siguen: propagación del actor por la
-> cola (6), borde HTTP (7), plugins (8-9), kit de testing (10).
+> **Estado de implementación.** Fases 0-6 completas. Siguen: borde HTTP (7),
+> plugins (8-9), kit de testing (10).
 >
 > Darwin está marcado como **API provisional** (`DarwinProvisionalWarning`) hasta que el
-> borde HTTP cierre las formas: la Fase 6 agrega una clave al payload del serializer y la 7
-> define cómo se resuelve el contexto en un request.
+> borde HTTP cierre las formas: la Fase 7 define cómo se resuelve el contexto en un request,
+> y con eso pueden aparecer campos nuevos en `AuthContext` y en el sobre.
 
 **Elegido: `Darwin`.** Es el único de los tres que es simultáneamente (a) inequívoco sobre
 qué hace, (b) libre de colisiones, y (c) lo bastante corto para que `ServerConfig.darwin`,
@@ -505,35 +505,47 @@ de una subclase `AuthenticatedCommand(Command)` con un campo `auth`.
 
 Por qué el sobre y no la subclase:
 
-- La subclase **no puede** llevar el actor en `@background_handler` (eventos) ni en
-  `@background_task` (funciones sueltas). Habría que hacer el sobre igual, más adelante, y
+- La subclase **no puede** llevar el actor en `@background_handler` (eventos), que es la mitad
+  del uso de background del framework. Habría que hacer el sobre igual, más adelante, y
   `AuthenticatedCommand` quedaría como API pública a deprecar — exactamente el error que
   este repo ya cometió con `REMOVED_IN = "6.0"` shippeado en 6.0.0.
-- El costo real del sobre es chico y **aditivo**. Verificado: los 5 transportes tratan el
+- El costo real del sobre es chico y **aditivo**. Verificado: los transportes tratan el
   payload como opaco (`procrastinate_adapter.py:36`, `celery_adapter.py:133`,
   `postgres_bus.py:58-63`, `redis_bus.py:60-63`, `rabbitmq.py:88`). Los únicos lectores de
   estructura son `PydanticSerializer` y dos peeks de `__type__`.
+
+**Qué cubre y qué no.** Cubre `Command` (incluido `@background_command`) y
+`@background_handler`, o sea los dos caminos que pasan por el serializer. **No cubre
+`@background_task`**, y es una limitación estructural, no un pendiente: en una tarea genérica
+el payload **es** el dict de kwargs con el que el worker llama a `task_func(**payload)`, así
+que una clave `__meta__` colisionaría con un parámetro y rompería la llamada; y no hay
+objeto-mensaje al que atar el grant. Una tarea que necesita saber quién la originó recibe ese
+dato como **parámetro explícito**. (El único productor de tareas en el árbol es el scheduler
+de cron, que no tiene actor de usuario.)
 
 Los dos métodos nuevos son **concretos** en el ABC, así que ninguna implementación existente
 de `AbstractSerializer` se rompe:
 
 ```python
+# hexcore/domain/cqrs/serializer.py
 class AbstractSerializer(abc.ABC):
     @abc.abstractmethod
-    def serialize(self, message: t.Any) -> dict: ...      # sin tocar
+    def serialize(self, message: t.Any) -> dict[str, t.Any]: ...     # sin tocar
 
-    # Concretos: agregar un abstractmethod rompería a todo el que tenga un serializer propio.
-    def serialize_envelope(self, message: t.Any, metadata: t.Mapping | None = None) -> dict:
+    # Concretos: un abstractmethod rompería a todo el que tenga un serializer propio.
+    def serialize_envelope(self, message, metadata=None) -> dict[str, t.Any]:
         payload = self.serialize(message)
+        if metadata is None:
+            metadata = collect_envelope_metadata(message)     # el registro de proveedores
         if metadata:
-            payload["__meta__"] = dict(metadata)
+            payload[ENVELOPE_METADATA_KEY] = dict(metadata)
         return payload
 
-    def deserialize_envelope(self, data: dict) -> tuple[t.Any, dict]:
-        metadata = data.get("__meta__") or {}
-        # Un payload viejo SIN `__meta__` tiene que seguir deserializando: es la razón de
-        # que estos métodos sean concretos.
-        return self.deserialize({k: v for k, v in data.items() if k != "__meta__"}), metadata
+    def deserialize_envelope(self, data) -> tuple[t.Any, dict[str, t.Any]]:
+        # Un payload viejo SIN `__meta__` tiene que seguir deserializando: es la razón de que
+        # estos métodos sean concretos. Y la clave se **saca** antes de delegar, en vez de
+        # confiar en que `deserialize` la ignore: un serializer estricto es legítimo.
+        ...
 ```
 
 Payload resultante:
@@ -546,27 +558,65 @@ Payload resultante:
 }
 ```
 
+**El núcleo no sabe nada de identidad.** `hexcore/domain/cqrs/envelope.py` es un punto de
+extensión con dos registros por clave: *proveedores* (`(message) -> valor | None`, consultados
+al encolar) y *restauradores* (`AbstractEnvelopeRestorer`, consultados en el worker). Darwin
+registra los suyos bajo la clave `"auth"` en `configure_identity()`, y `reset_identity()` los
+deregistra. **Sin nadie registrado el payload queda byte a byte idéntico** al que el framework
+generaba antes — es lo que hace que esto sea aditivo y no un cambio rompedor, y hay un test
+que lo asserta comparando `serialize_envelope()` con `serialize()`.
+
+Una clave del sobre **sin** restaurador registrado no se ejecuta: lanza `RuntimeError` con la
+línea de cableado que falta. El caso real es un worker al que le falta `configure_identity()`,
+y ejecutar ahí correría el handler sin la autoridad que el mensaje traía.
+
+`AbstractEnvelopeRestorer.restore` es un context manager **asíncrono**, y las dos cosas
+importan: context manager porque el `reset` del `ContextVar` tiene que ocurrir aunque el
+handler lance —si no, un job que falla le filtra su contexto al siguiente del mismo worker— y
+asíncrono porque la revalidación va contra el almacén.
+
 **El detalle crítico: el grant va atado al mensaje.** El payload firmado incluye
-`cid = command_id` (que todo `Command` ya tiene) y `mt = __type__`. La verificación rechaza
-si no coinciden.
+`cid = command_id` (o `event_id`) y `mt = build_fqn(type(message))`. La verificación rechaza si
+no coinciden. `mt` se calcula sobre el **tipo del objeto ya reconstruido**, no sobre el
+`__type__` del payload: así el chequeo no depende del formato del serializer, y manipular
+`__type__` produce otra clase cuyo FQN tampoco coincide.
 
 Sin ese binding, el ataque es: capturar el sobre de un `DeleteAccount` legítimo y
 re-adjuntarlo a un `TransferFunds`. El sobre verifica —está bien firmado— y el worker
 ejecuta la transferencia con la autoridad del grant de borrado. Es escalación de privilegios
-a un `LPUSH` de distancia.
+a un `LPUSH` de distancia. `cid` cubre la otra mitad: dos `TransferFunds` son del mismo tipo,
+así que sin el id el sobre de una transferencia de $10 sirve para una de $1.000.000.
+
+**El sobre no es un JWT, a propósito.** Se firma con HMAC-SHA256 usando
+`IdentityConfig.secret_key`, no con la clave del JWKS, y el formato es distinto del de un
+token. Un JWT invita a que alguien lo presente como credencial en un endpoint, y este valor no
+es una credencial de portador: no lo emite un login, no lo ve un cliente, y vale sólo adjunto
+al mensaje al que se ató. El input del MAC lleva una etiqueta de dominio, así que el mismo
+secreto usado en otro protocolo no puede producir una falsificación cruzada. Lleva `v` desde el
+día uno: el sobre tiene TTL, así que cuando el formato cambie va a haber sobres de los dos
+formatos en la cola durante la ventana del deploy.
+
+**El `transport` restaurado es siempre `"worker"`**, nunca el original. Un job de background no
+está sirviendo un request con cookie, y el código que ramifica por transporte —el chequeo
+anti-CSRF— tiene que poder distinguirlo. **Y `AuthContext.user` no viaja**: es el modelo
+extendido de la app, de tipo arbitrario y sin garantía de ser serializable. Un handler de
+background que lo necesite lo carga con `subject_id`.
 
 **El worker re-valida contra la base.** Verificar la firma y el `exp` no alcanza: entre el
-encolado y la ejecución la sesión puede haberse revocado. El consumer chequea que la fila de
-`session` esté viva. Un TTL de 24 h en el sobre sin este chequeo son 24 h de ejecución con
-una sesión revocada.
+encolado y la ejecución la sesión puede haberse revocado. El restaurador chequea que la fila de
+`session` esté viva (`is_live_at`, que cubre revocada, consumida y vencida). Un TTL de 24 h en
+el sobre sin este chequeo son 24 h de ejecución con una sesión revocada. Sólo se revalida
+cuando el actor **tiene** `session_id`: un `SystemPrincipal` no tiene sesión revocable, su
+autoridad es el cableado del proceso.
 
 ```python
 # hexcore/infrastructure/workers/consumer.py
 message, metadata = self._serializer.deserialize_envelope(payload)
-context = self._auth_codec.verify(metadata.get("auth"), message)  # firma + cid + mt + exp
-await self._sessions.assert_live(context.actor.session_id)        # y la fila de session
-with auth_scope(context), worker_execution():
-    await self._command_bus.dispatch(message)
+# El scope va por fuera de `worker_execution()`: si el sobre no verifica, el mensaje no
+# llega ni a entrar al bus.
+async with restored_envelope_scope(metadata, message):   # firma + cid + mt + exp + la fila
+    with worker_execution():
+        await self._command_bus.dispatch(message)
 ```
 
 ⚠️ **Trampa verificada, y hay un test que la fija.** No se puede ramificar sobre
@@ -1012,20 +1062,34 @@ Tests: sin configurar → `RuntimeError` con la remediación en el mensaje; init
 thread-safe; flujo completo sobre `sqlite_session` (sign-up → verify → sign-in → refresh →
 sign-out) y sus caminos de fallo.
 
-### Fase 6 — Propagación del actor + auditoría
+### Fase 6 — Propagación del actor ✅
 
-**Modifica el núcleo** (decisión de §3.3): `domain/cqrs/serializer.py` (+2 métodos
-concretos), `infrastructure/cqrs/pydantic_serializer.py`,
-`infrastructure/workers/consumer.py`, y los call sites de `serialize()` en los 5 transportes.
+**Modifica el núcleo** (decisión de §3.3). Nuevo: `domain/cqrs/envelope.py` (el punto de
+extensión: registros, `restored_envelope_scope`, `message_correlation_id`) y
+`darwin/infrastructure/envelope.py` (`AuthEnvelopeCodec`, `AuthEnvelopeRestorer`,
+`auth_envelope_provider`). Modificados: `domain/cqrs/serializer.py` (+2 métodos concretos),
+`darwin/application/container.py` (`envelope_codec()`, `envelope_restorer()`, y el registro en
+`configure_identity` / la baja en `reset_identity`), y los seis call sites —
+`in_memory_buses.py` (×2), `postgres_bus.py`, `redis_bus.py`, `rabbitmq.py`,
+`procrastinate.py` — más `workers/consumer.py` en sus tres rutas.
 
-Tests: round trip real (sellar → `PydanticSerializer` → `CQRSConsumer.process_command` sobre
-un bus de `build_test_buses()` → el handler ve el mismo actor **y** el mismo subject);
-**payload legado sin `__meta__` sigue deserializando** (la razón de que los métodos sean
+`pydantic_serializer.py` **no** se tocó: los dos métodos nuevos son concretos en el ABC y
+envuelven `serialize`/`deserialize`, así que hereda el comportamiento sin cambios.
+
+Tests (`test_cqrs_envelope.py`, 24 — el mecanismo pelado, sin Darwin; `test_darwin_envelope.py`,
+37): round trip real (sellar → `PydanticSerializer` → `CQRSConsumer.process_command` sobre un
+bus de `build_test_buses()` → el handler ve el mismo actor **y** el mismo subject, y el
+`transport` es `"worker"`); **payload legado sin `__meta__` sigue deserializando** y
+`serialize_envelope() == serialize()` sin proveedores (la razón de que los métodos sean
 concretos); sobre manipulado (un byte del payload, un byte de la firma, actor y subject
-swapeados) → `WorkerContextIntegrityError`; **grant re-adjuntado a otro comando → rechazado**
-(el binding `cid`/`mt` de §3.3); **la regresión de `IN_WORKER`** (assert de que
-`is_worker_execution()` es `False` dentro del middleware incluso despachado desde el
-consumer, documentando por qué no hay que consultarlo).
+swapeados, escalar los scopes editando el JSON, otro secreto de firma) →
+`WorkerContextIntegrityError`; **grant re-adjuntado a otro comando y a otra instancia del mismo
+comando → rechazado** (el binding `cid`/`mt`); sobre vencido y sobre fechado en el futuro, con
+la tolerancia de reloj; versión desconocida; sesión revocada, inexistente y ya rotada →
+rechazadas contra SQLite real; worker sin Darwin cableado → `RuntimeError` con remediación; y
+**la regresión de `IN_WORKER`** (assert de que `is_worker_execution()` es `False` dentro del
+middleware incluso despachado desde el consumer, y de que lo que sí está disponible es el
+contexto ambiental).
 
 ### Fase 7 — Borde HTTP
 
@@ -1108,17 +1172,18 @@ corre los bloques `Uso::`.
 | `hexcore/infrastructure/api/rate_limit.py` | ✅ **Hecho (Fase 0):** XFF, atomicidad. | 0 | fix |
 | `hexcore/infrastructure/api/exception_handlers.py` | ✅ **Hecho (Fase 0):** `headers_for`. Fase 7 sólo mergea el mapa de Darwin. | 0 / 7 | aditivo |
 | `hexcore/infrastructure/repositories/orms/sqlalchemy/__init__.py` | `naming_convention` completa (§2.6). | 1 | fix |
-| `hexcore/domain/cqrs/serializer.py` | +2 métodos **concretos** para el sobre. Ninguna subclase existente se rompe. | 6 | aditivo |
-| `hexcore/infrastructure/cqrs/pydantic_serializer.py` | Override por simetría. | 6 | aditivo |
-| `hexcore/infrastructure/workers/consumer.py` | Verifica el sobre, re-chequea la sesión, rehidrata el ContextVar. | 6 | aditivo |
-| `infrastructure/cqrs/{rabbitmq,postgres_bus,redis_bus,procrastinate}.py`, `task_queues/*` | `serialize()` → `serialize_envelope()`. ~1 línea cada uno. | 6 | aditivo |
+| `hexcore/domain/cqrs/envelope.py` | ✅ **Hecho (Fase 6):** archivo nuevo. El punto de extensión del sobre — registros por clave, `restored_envelope_scope`, `message_correlation_id`. Stdlib puro, sin saber nada de identidad. | 6 | aditivo |
+| `hexcore/domain/cqrs/serializer.py` | ✅ **Hecho (Fase 6):** +2 métodos **concretos** para el sobre. Ninguna subclase existente se rompe. | 6 | aditivo |
+| `hexcore/infrastructure/cqrs/pydantic_serializer.py` | ✅ **Sin cambios.** Se planeaba un override por simetría y no hace falta: hereda los métodos concretos, que envuelven `serialize`/`deserialize`. | 6 | — |
+| `hexcore/infrastructure/workers/consumer.py` | ✅ **Hecho (Fase 6):** `deserialize_envelope` + `restored_envelope_scope` en las tres rutas. `process_task` queda afuera (§3.3). | 6 | aditivo |
+| `application/cqrs/in_memory_buses.py`, `infrastructure/cqrs/{rabbitmq,postgres_bus,redis_bus,procrastinate}.py` | ✅ **Hecho (Fase 6):** `serialize()` → `serialize_envelope()` en los seis sitios de encolado, y restauración en los cuatro consumos. `task_queues/*` **no** se toca: tratan el payload como opaco. | 6 | aditivo |
 | `hexcore/infrastructure/api/app.py` | `AppFeatures` += `auth_context`, `csrf` (default **off**); orden de middlewares; merge del mapa. | 7 | aditivo |
 | `hexcore/infrastructure/cli.py` | `app.add_typer(darwin_cli, name="identity")`; `ensure_identity_schema_loaded()` en el `env.py` generado. | 8 | aditivo |
 | `hexcore/infrastructure/repositories/orms/sqlalchemy/utils.py` | `import_all_models`: `iter_modules` → `walk_packages` (§5.3). Arregla un `DROP TABLE` latente que ya afecta a `hexcore_cron_jobs`. | 8 | fix |
 | `hexcore/domain/auth/*`, `hexcore/__init__.py` | Absorbidos y deprecados. | 10 | deprecación |
 | `hexcore/_deprecation.py` | ✅ **Hecho (Fase 0):** `REMOVED_IN` → 7.0. | 0 | fix |
 | `pyproject.toml` | Extras `darwin`, `darwin-passkey`, agregados a `all`. | 2 / 9 | aditivo |
-| `tests/test_optional_dependencies.py` | Filas nuevas en las fases 2, 3, 4 y 9. ⚠️ `argon2-cffi` se importa como `argon2`. | 2-9 | aditivo |
+| `tests/test_optional_dependencies.py` | Filas nuevas en las fases 2, 3, 4, 6 y 9. ⚠️ `argon2-cffi` se importa como `argon2`. ⚠️ **No** se puede chequear contra `pydantic`: no es opcional — `hexcore/__init__.py` lo importa eager, así que esconderlo rompe cualquier import del paquete. | 2-9 | aditivo |
 | `hexcore/testing/{fakes,fixtures}.py` | `FakeUnitOfWork` + `FakeRepository` genéricos. | 10 | aditivo |
 
 **Nada de `hexcore/domain/cqrs/` ni `hexcore/application/cqrs/` cambia excepto el sobre del

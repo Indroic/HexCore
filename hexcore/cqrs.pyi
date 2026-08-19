@@ -9,7 +9,7 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 53 símbolos de `hexcore.cqrs` tipan `Any`. El runtime no cambia — Python usa
+# los 64 símbolos de `hexcore.cqrs` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
@@ -36,6 +36,17 @@ from hexcore.domain.cqrs.cron import ILockProvider as ILockProvider
 from hexcore.domain.cqrs.decorators import background_command as background_command
 from hexcore.domain.cqrs.decorators import background_handler as background_handler
 from hexcore.domain.cqrs.decorators import background_task as background_task
+from hexcore.domain.cqrs.envelope import AbstractEnvelopeRestorer as AbstractEnvelopeRestorer
+from hexcore.domain.cqrs.envelope import ENVELOPE_METADATA_KEY as ENVELOPE_METADATA_KEY
+from hexcore.domain.cqrs.envelope import EnvelopeMetadataProvider as EnvelopeMetadataProvider
+from hexcore.domain.cqrs.envelope import clear_envelope_registry as clear_envelope_registry
+from hexcore.domain.cqrs.envelope import collect_envelope_metadata as collect_envelope_metadata
+from hexcore.domain.cqrs.envelope import message_correlation_id as message_correlation_id
+from hexcore.domain.cqrs.envelope import register_envelope_metadata_provider as register_envelope_metadata_provider
+from hexcore.domain.cqrs.envelope import register_envelope_restorer as register_envelope_restorer
+from hexcore.domain.cqrs.envelope import registered_envelope_keys as registered_envelope_keys
+from hexcore.domain.cqrs.envelope import restored_envelope_scope as restored_envelope_scope
+from hexcore.domain.cqrs.envelope import unregister_envelope_key as unregister_envelope_key
 from hexcore.domain.cqrs.exceptions import CQRSError as CQRSError
 from hexcore.domain.cqrs.exceptions import DeserializationError as DeserializationError
 from hexcore.domain.cqrs.exceptions import DuplicateHandlerError as DuplicateHandlerError
@@ -70,6 +81,7 @@ from hexcore.infrastructure.workers.runner import worker_loop as worker_loop
 __all__ = [
     "AbstractCommandBus",
     "AbstractCommandHandler",
+    "AbstractEnvelopeRestorer",
     "AbstractEventBus",
     "AbstractMiddleware",
     "AbstractQueryBus",
@@ -88,6 +100,8 @@ __all__ = [
     "DomainEvent",
     "DuplicateHandlerError",
     "DynamicScheduler",
+    "ENVELOPE_METADATA_KEY",
+    "EnvelopeMetadataProvider",
     "HandlerFactory",
     "HandlerNotFoundError",
     "HandlerRegistry",
@@ -113,12 +127,20 @@ __all__ = [
     "background_command",
     "background_handler",
     "background_task",
+    "clear_envelope_registry",
+    "collect_envelope_metadata",
     "create_cron_tables",
     "cron_job",
     "is_worker_execution",
+    "message_correlation_id",
+    "register_envelope_metadata_provider",
+    "register_envelope_restorer",
+    "registered_envelope_keys",
+    "restored_envelope_scope",
     "run_cqrs_worker",
     "run_procrastinate_worker",
     "seed_cron_jobs",
+    "unregister_envelope_key",
     "worker_execution",
     "worker_loop",
 ]

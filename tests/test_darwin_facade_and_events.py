@@ -501,15 +501,16 @@ def test_pedir_la_clase_del_warning_no_dispara_el_warning():
 
 def test_la_fase_declarada_coincide_con_lo_implementado():
     """
-    El número del aviso tiene que ser cierto. Si alguien cierra la Fase 5 y no lo mueve, el
+    El número del aviso tiene que ser cierto. Si alguien cierra una fase y no lo mueve, el
     aviso miente en la dirección peligrosa: promete menos madurez de la que hay y la gente lo
     ignora.
     """
     from hexcore.darwin import _provisional
 
     assert _provisional.CURRENT_PHASE < _provisional.STABLE_PHASE
-    # La capa de aplicación (5) existe; el borde HTTP (7) todavía no.
+    # El sobre que cruza la cola (6) existe; el borde HTTP (7) todavía no.
     import importlib.util
 
     assert importlib.util.find_spec("hexcore.darwin.application.container") is not None
+    assert importlib.util.find_spec("hexcore.darwin.infrastructure.envelope") is not None
     assert importlib.util.find_spec("hexcore.darwin.infrastructure.transports") is None

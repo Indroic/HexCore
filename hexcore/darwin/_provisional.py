@@ -15,10 +15,9 @@ __all__ = ["DarwinProvisionalWarning", "warn_provisional", "reset_provisional_wa
 #: Fases implementadas y fase en la que la superficie se considera estable.
 #:
 #: Mientras el borde HTTP (7) no esté cerrado, las formas de `AuthContext`, de los puertos y del
-#: emisor de tokens todavía se pueden mover: la Fase 6 cambia el serializer para propagar el
-#: actor por la cola —lo que agrega una clave al payload y toca el consumer del worker— y la 7
-#: define cómo se resuelve el contexto en un request.
-CURRENT_PHASE = 5
+#: emisor de tokens todavía se pueden mover: la Fase 7 define cómo se resuelve el contexto en un
+#: request, y con eso pueden aparecer campos nuevos en `AuthContext` y en el sobre.
+CURRENT_PHASE = 6
 STABLE_PHASE = 7
 
 
@@ -62,8 +61,9 @@ def warn_provisional(stacklevel: int = 3) -> None:
         "hexcore.darwin (Darwin) es API PROVISIONAL: van implementadas las fases "
         f"0-{CURRENT_PHASE} de {STABLE_PHASE}, y la superficie puede cambiar sin un bump de "
         "major hasta que el borde HTTP esté cerrado. Se puede usar —el dominio, la "
-        "persistencia, la capa de crypto y los flujos de sesión están completos y "
-        "exacta de hexcore si construís sobre él.\n\n"
+        "persistencia, la capa de crypto, los flujos de sesión y la propagación del actor "
+        "por la cola están completos y testeados— pero pineá la versión exacta de hexcore "
+        "si construís sobre él.\n\n"
         "Para silenciarlo:\n\n"
         "    warnings.filterwarnings('ignore', category=DarwinProvisionalWarning)\n",
         DarwinProvisionalWarning,

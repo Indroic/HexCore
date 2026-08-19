@@ -287,6 +287,21 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "hexcore.darwin.infrastructure.revocation",
         "CacheErrorPolicy",
     ),
+    # ── El sobre que cruza la cola (Fase 6) ─────────────────────────────────
+    "ENVELOPE_KEY": ("hexcore.darwin.infrastructure.envelope", "ENVELOPE_KEY"),
+    "ENVELOPE_VERSION": ("hexcore.darwin.infrastructure.envelope", "ENVELOPE_VERSION"),
+    "AuthEnvelopeCodec": (
+        "hexcore.darwin.infrastructure.envelope",
+        "AuthEnvelopeCodec",
+    ),
+    "AuthEnvelopeRestorer": (
+        "hexcore.darwin.infrastructure.envelope",
+        "AuthEnvelopeRestorer",
+    ),
+    "auth_envelope_provider": (
+        "hexcore.darwin.infrastructure.envelope",
+        "auth_envelope_provider",
+    ),
     # ── Marca de API provisional ───────────────────────────────────────────────
     "DarwinProvisionalWarning": (
         "hexcore.darwin._provisional",

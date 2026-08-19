@@ -9,7 +9,7 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 146 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 151 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
@@ -110,6 +110,11 @@ from hexcore.darwin.domain.value_objects import TokenType as TokenType
 from hexcore.darwin.domain.value_objects import VerificationPurpose as VerificationPurpose
 from hexcore.darwin.infrastructure.clock import FixedClock as FixedClock
 from hexcore.darwin.infrastructure.clock import SystemClock as SystemClock
+from hexcore.darwin.infrastructure.envelope import AuthEnvelopeCodec as AuthEnvelopeCodec
+from hexcore.darwin.infrastructure.envelope import AuthEnvelopeRestorer as AuthEnvelopeRestorer
+from hexcore.darwin.infrastructure.envelope import ENVELOPE_KEY as ENVELOPE_KEY
+from hexcore.darwin.infrastructure.envelope import ENVELOPE_VERSION as ENVELOPE_VERSION
+from hexcore.darwin.infrastructure.envelope import auth_envelope_provider as auth_envelope_provider
 from hexcore.darwin.infrastructure.hashing import Argon2PasswordHasher as Argon2PasswordHasher
 from hexcore.darwin.infrastructure.hashing import compare_hashes as compare_hashes
 from hexcore.darwin.infrastructure.hashing import generate_numeric_code as generate_numeric_code
@@ -183,6 +188,8 @@ __all__ = [
     "AuditLogMixin",
     "AuditLogModel",
     "AuthContext",
+    "AuthEnvelopeCodec",
+    "AuthEnvelopeRestorer",
     "AuthenticateToken",
     "AuthenticationError",
     "AuthorizationError",
@@ -197,6 +204,8 @@ __all__ = [
     "DEFAULT_USER_TABLE",
     "DEFAULT_VERIFICATION_TABLE",
     "DarwinProvisionalWarning",
+    "ENVELOPE_KEY",
+    "ENVELOPE_VERSION",
     "Email",
     "EmailAlreadyRegisteredError",
     "EmailNotVerifiedError",
@@ -283,6 +292,7 @@ __all__ = [
     "VerifyEmail",
     "WorkerContextIntegrityError",
     "audience_for",
+    "auth_envelope_provider",
     "auth_scope",
     "compare_hashes",
     "configure_identity",

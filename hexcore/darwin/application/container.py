@@ -35,6 +35,10 @@ if t.TYPE_CHECKING:
         AbstractUserRepository,
         AbstractVerificationRepository,
     )
+    from hexcore.darwin.infrastructure.envelope import (
+        AuthEnvelopeCodec,
+        AuthEnvelopeRestorer,
+    )
     from hexcore.darwin.infrastructure.keys import AbstractKeyStore
     from hexcore.darwin.infrastructure.tokens import (
         JoserfcTokenIssuer,
@@ -115,6 +119,8 @@ class IdentityContainer:
         self._verifier: "JoserfcTokenVerifier | None" = None
         self._session_service: "SessionService | None" = None
         self._identity_service: "IdentityService | None" = None
+        self._envelope_codec: "AuthEnvelopeCodec | None" = None
+        self._envelope_restorer: "AuthEnvelopeRestorer | None" = None
 
     @property
     def config(self) -> "IdentityConfig":
@@ -263,6 +269,46 @@ class IdentityContainer:
                 )
             return self._verifier
 
+    # ── El sobre que cruza la cola ────────────────────────────────────────────
+    def envelope_codec(self) -> "AuthEnvelopeCodec":
+        """
+        El códec del sobre firmado.
+
+        Usa `config.secret_key` (simétrica) y no la clave del JWKS: el sobre lo produce y lo
+        consume el mismo despliegue, así que no hay verificador de terceros al que publicarle
+        una clave pública, y un HMAC es mucho más barato en un camino que corre por cada
+        mensaje encolado.
+        """
+        with self._lock:
+            if self._envelope_codec is None:
+                from hexcore.darwin.infrastructure.envelope import AuthEnvelopeCodec
+
+                clave = self._config.secret_key
+                if clave is None:  # pragma: no cover - `IdentityConfig` ya lo garantiza
+                    raise RuntimeError(
+                        "Darwin no tiene clave de firma, así que no puede sellar el sobre "
+                        "que cruza la cola. Declará HEXCORE_DARWIN_SECRET_KEY."
+                    )
+                self._envelope_codec = AuthEnvelopeCodec(
+                    secret=clave.get_secret_value(),
+                    clock=self.clock(),
+                    ttl=self._config.worker_context_ttl,
+                )
+            return self._envelope_codec
+
+    def envelope_restorer(self) -> "AuthEnvelopeRestorer":
+        """El restaurador que el worker usa para reabrir el sobre y revalidar la sesión."""
+        with self._lock:
+            if self._envelope_restorer is None:
+                from hexcore.darwin.infrastructure.envelope import AuthEnvelopeRestorer
+
+                self._envelope_restorer = AuthEnvelopeRestorer(
+                    codec=self.envelope_codec(),
+                    sessions=self.sessions_repository(),
+                    clock=self.clock(),
+                )
+            return self._envelope_restorer
+
     # ── Servicios ─────────────────────────────────────────────────────────────
     def session_service(self) -> "SessionService":
         with self._lock:
@@ -354,6 +400,7 @@ def configure_identity(
 
     with _container_lock:
         _container = IdentityContainer(config, **componentes)
+        _registrar_el_sobre()
         return _container
 
 
@@ -371,11 +418,48 @@ def get_identity_container() -> IdentityContainer:
 
 
 def reset_identity() -> None:
-    """Descarta el contenedor. Para tests y para reconfigurar en un worker."""
+    """
+    Descarta el contenedor **y** el cableado del sobre. Para tests y para reconfigurar.
+
+    Deregistra el proveedor y el restaurador porque son estado global del **núcleo**, no del
+    contenedor: dejarlos puestos haría que un test posterior sellara un sobre contra un
+    contenedor que ya no existe, y el error saldría en el encolado de otro test.
+    """
     global _container
+
+    from hexcore.darwin.infrastructure.envelope import ENVELOPE_KEY
+    from hexcore.domain.cqrs.envelope import unregister_envelope_key
 
     with _container_lock:
         _container = None
+        unregister_envelope_key(ENVELOPE_KEY)
+
+
+def _registrar_el_sobre() -> None:
+    """
+    Registra el proveedor y el restaurador del sobre en el núcleo.
+
+    Se hace al **configurar** y no al importar: un proceso que importa Darwin pero no lo
+    cablea no debe empezar a sellar sobres que nadie va a poder abrir. Y se hace acá y no en
+    los transportes porque el sobre es una propiedad del proceso: los cinco transportes
+    tienen que sellar igual sin que nadie los configure de a uno.
+
+    Los dos objetos que se registran resuelven el contenedor **en cada uso**, así que esto no
+    construye el códec ni toca la clave de firma — `configure_identity()` sigue siendo
+    perezoso.
+    """
+    from hexcore.darwin.infrastructure.envelope import (
+        AUTH_RESTORER,
+        ENVELOPE_KEY,
+        auth_envelope_provider,
+    )
+    from hexcore.domain.cqrs.envelope import (
+        register_envelope_metadata_provider,
+        register_envelope_restorer,
+    )
+
+    register_envelope_metadata_provider(ENVELOPE_KEY, auth_envelope_provider)
+    register_envelope_restorer(ENVELOPE_KEY, AUTH_RESTORER)
 
 
 # ── Dependencias FastAPI ──────────────────────────────────────────────────────

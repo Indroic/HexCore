@@ -90,6 +90,48 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "WorkerDied": ("hexcore.infrastructure.workers.runner", "WorkerDied"),
     "is_worker_execution": ("hexcore.domain.cqrs.context", "is_worker_execution"),
     "worker_execution": ("hexcore.domain.cqrs.context", "worker_execution"),
+    # ── El sobre que cruza la cola ────────────────────────────────────────────
+    "ENVELOPE_METADATA_KEY": ("hexcore.domain.cqrs.envelope", "ENVELOPE_METADATA_KEY"),
+    "AbstractEnvelopeRestorer": (
+        "hexcore.domain.cqrs.envelope",
+        "AbstractEnvelopeRestorer",
+    ),
+    "EnvelopeMetadataProvider": (
+        "hexcore.domain.cqrs.envelope",
+        "EnvelopeMetadataProvider",
+    ),
+    "register_envelope_metadata_provider": (
+        "hexcore.domain.cqrs.envelope",
+        "register_envelope_metadata_provider",
+    ),
+    "register_envelope_restorer": (
+        "hexcore.domain.cqrs.envelope",
+        "register_envelope_restorer",
+    ),
+    "unregister_envelope_key": (
+        "hexcore.domain.cqrs.envelope",
+        "unregister_envelope_key",
+    ),
+    "clear_envelope_registry": (
+        "hexcore.domain.cqrs.envelope",
+        "clear_envelope_registry",
+    ),
+    "registered_envelope_keys": (
+        "hexcore.domain.cqrs.envelope",
+        "registered_envelope_keys",
+    ),
+    "collect_envelope_metadata": (
+        "hexcore.domain.cqrs.envelope",
+        "collect_envelope_metadata",
+    ),
+    "restored_envelope_scope": (
+        "hexcore.domain.cqrs.envelope",
+        "restored_envelope_scope",
+    ),
+    "message_correlation_id": (
+        "hexcore.domain.cqrs.envelope",
+        "message_correlation_id",
+    ),
     # ── Cron ──────────────────────────────────────────────────────────────────
     "CronJobDefinition": ("hexcore.domain.cqrs.cron", "CronJobDefinition"),
     "ICronJobRepository": ("hexcore.domain.cqrs.cron", "ICronJobRepository"),

@@ -67,7 +67,10 @@ class InMemoryCommandBus(AbstractCommandBus):
 
             async def background_dispatcher(cmd: Command) -> None:
                 queue_name = getattr(cmd_type, "__cqrs_queue__", "default")
-                payload = self._serializer.serialize(cmd) # type: ignore
+                # `serialize_envelope` y no `serialize`: agrega el sobre de metadata
+                # ambiental (quién está autenticado) para que el worker pueda restaurarlo.
+                # Sin proveedores registrados el payload es idéntico al de antes.
+                payload = self._serializer.serialize_envelope(cmd) # type: ignore
                 await self._enqueuer.enqueue_command(cmd_type.__name__, payload, queue=queue_name) # type: ignore
                 logger.debug("[SmartRouting] Comando %s enrutado a background (queue=%s)", cmd_type.__name__, queue_name)
 
@@ -167,7 +170,7 @@ class InMemoryEventBus(AbstractEventBus):
                 ) -> None:
                     handler_name = getattr(_h, "__cqrs_handler_name__")
                     queue_name = getattr(_h, "__cqrs_queue__", "default")
-                    payload = self._serializer.serialize(evt) # type: ignore
+                    payload = self._serializer.serialize_envelope(evt) # type: ignore
                     await self._enqueuer.enqueue_handler(handler_name, payload, queue=queue_name) # type: ignore
                     logger.debug("[SmartRouting] EventHandler %s enrutado a background (queue=%s)", handler_name, queue_name)
                     

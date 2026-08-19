@@ -56,6 +56,18 @@ import pytest
     ("joserfc", "hexcore.darwin.application.container"),
     ("argon2", "hexcore.darwin.application.container"),
     ("fastapi", "hexcore.darwin.application.container"),
+    # El sobre que cruza la cola: lo importa `configure_identity`, y su restaurador lo
+    # invoca el `CQRSConsumer`, que corre en workers sin extras de API. El códec es
+    # `hmac` + `json` de la stdlib a propósito y no joserfc: el sobre no es un JWT.
+    ("sqlalchemy", "hexcore.darwin.infrastructure.envelope"),
+    ("joserfc", "hexcore.darwin.infrastructure.envelope"),
+    ("argon2", "hexcore.darwin.infrastructure.envelope"),
+    ("fastapi", "hexcore.darwin.infrastructure.envelope"),
+    # El punto de extensión del núcleo lo importan el serializer y los cinco transportes.
+    # (No se chequea contra pydantic: no es opcional — `hexcore/__init__.py` lo importa
+    # eager, así que esconderlo rompe cualquier import del paquete.)
+    ("sqlalchemy", "hexcore.domain.cqrs.envelope"),
+    ("fastapi", "hexcore.domain.cqrs.envelope"),
 ])
 def test_optional_dependencies_do_not_crash_imports(module_to_hide, module_to_import):
     """
