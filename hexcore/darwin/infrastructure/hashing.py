@@ -32,7 +32,34 @@ __all__ = [
     "compare_hashes",
     "generate_token",
     "generate_numeric_code",
+    "derive_csrf_token",
 ]
+
+#: Separación de dominio del HMAC del valor anti-CSRF. Sin la etiqueta, el mismo secreto
+#: firmando otro protocolo permitiría reusar una firma de allá como valor válido acá.
+_CSRF_LABEL = b"hexcore.darwin.csrf.v1"
+
+
+def derive_csrf_token(session_id: str, secret: str) -> str:
+    """
+    Deriva el valor anti-CSRF de una sesión: `HMAC(secreto, sid)`.
+
+    **Derivado y no aleatorio, y esa es toda la decisión.** La cookie de CSRF no puede llevar
+    el prefijo `__Host-` ni `HttpOnly` —el cliente tiene que poder leerla para devolverla en
+    el header— así que un subdominio comprometido **puede escribirla**. Con un valor
+    aleatorio, el atacante escribe la cookie y manda el mismo valor en el header: pasa el
+    double-submit con un valor que eligió él. Derivándolo del `sid` con una clave del
+    servidor, un valor inventado no verifica.
+
+    Es determinista a propósito: el mismo `sid` da el mismo valor, así que el cliente puede
+    perder la cookie y recuperarla sin rotar la sesión.
+    """
+    mac = hmac.new(
+        secret.encode("utf-8"),
+        _CSRF_LABEL + b"." + session_id.encode("utf-8"),
+        hashlib.sha256,
+    )
+    return mac.hexdigest()
 
 class Argon2PasswordHasher(AbstractPasswordHasher):
     """

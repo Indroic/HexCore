@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
 
 import pytest
 
@@ -38,7 +37,6 @@ from hexcore.darwin import (  # noqa: E402
     FixedClock,
     IdentityConfig,
     InvalidCredentialsError,
-    PasswordPolicy,
     StaticKeyStore,
     TokenConfig,
     TokenExpiredError,

@@ -19,6 +19,10 @@ del símbolo que pedís, así que `from hexcore.darwin import AuthContext` no to
 argon2, ni sqlalchemy. Eso es lo que verifica `tests/test_optional_dependencies.py`, y es la
 razón de que este archivo no tenga ni un `from .domain import ...` en el nivel superior.
 
+Darwin dejó de ser API provisional en la Fase 7: el borde HTTP cerró las formas de
+`AuthContext`, de los puertos, de los transportes y del emisor de tokens. Las fases que
+siguen —plugins y kit de testing— **agregan** superficie sin cambiar la que ya está.
+
 El tipado lo aporta `hexcore/darwin/__init__.pyi`, **generado** desde este `_EXPORTS` por
 `scripts/gen_stubs.py`. Sin el stub, `__all__ = sorted(_EXPORTS)` y `__getattr__` son
 expresiones de runtime y todo lo de acá tiparía `Any`. No edites el `.pyi` a mano: agregá la
@@ -28,11 +32,6 @@ from __future__ import annotations
 
 import importlib
 import typing as t
-
-from hexcore.darwin._provisional import (
-    DarwinProvisionalWarning as DarwinProvisionalWarning,
-    warn_provisional as _warn_provisional,
-)
 
 _EXPORTS: dict[str, tuple[str, str]] = {
     # ── Contexto: quién ejecuta vs a quién afecta ──────────────────────────────
@@ -302,10 +301,92 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "hexcore.darwin.infrastructure.envelope",
         "auth_envelope_provider",
     ),
-    # ── Marca de API provisional ───────────────────────────────────────────────
-    "DarwinProvisionalWarning": (
-        "hexcore.darwin._provisional",
-        "DarwinProvisionalWarning",
+    # ── Borde HTTP (Fase 7 — requiere el extra [api]) ────────────────────────
+    "TRANSPORT_HEADER": ("hexcore.darwin.infrastructure.transports", "TRANSPORT_HEADER"),
+    "AbstractTransport": (
+        "hexcore.darwin.infrastructure.transports",
+        "AbstractTransport",
+    ),
+    "CookieTransport": ("hexcore.darwin.infrastructure.transports", "CookieTransport"),
+    "BearerTransport": ("hexcore.darwin.infrastructure.transports", "BearerTransport"),
+    "TransportResolver": (
+        "hexcore.darwin.infrastructure.transports",
+        "TransportResolver",
+    ),
+    "CSRF_HEADER": ("hexcore.darwin.infrastructure.api.middlewares", "CSRF_HEADER"),
+    "AuthContextMiddleware": (
+        "hexcore.darwin.infrastructure.api.middlewares",
+        "AuthContextMiddleware",
+    ),
+    "CsrfMiddleware": (
+        "hexcore.darwin.infrastructure.api.middlewares",
+        "CsrfMiddleware",
+    ),
+    "auth_from_request": (
+        "hexcore.darwin.infrastructure.api.middlewares",
+        "auth_from_request",
+    ),
+    "WWW_AUTHENTICATE": (
+        "hexcore.darwin.infrastructure.api.dependencies",
+        "WWW_AUTHENTICATE",
+    ),
+    "provide_auth": (
+        "hexcore.darwin.infrastructure.api.dependencies",
+        "provide_auth",
+    ),
+    "provide_optional_auth": (
+        "hexcore.darwin.infrastructure.api.dependencies",
+        "provide_optional_auth",
+    ),
+    "require_authenticated": (
+        "hexcore.darwin.infrastructure.api.dependencies",
+        "require_authenticated",
+    ),
+    "require_scopes": (
+        "hexcore.darwin.infrastructure.api.dependencies",
+        "require_scopes",
+    ),
+    "require_roles": (
+        "hexcore.darwin.infrastructure.api.dependencies",
+        "require_roles",
+    ),
+    "require_not_impersonated": (
+        "hexcore.darwin.infrastructure.api.dependencies",
+        "require_not_impersonated",
+    ),
+    "identity_exception_headers": (
+        "hexcore.darwin.infrastructure.api.dependencies",
+        "identity_exception_headers",
+    ),
+    "build_identity_router": (
+        "hexcore.darwin.infrastructure.api.routers",
+        "build_identity_router",
+    ),
+    "emit_tokens": ("hexcore.darwin.infrastructure.api.routers", "emit_tokens"),
+    "resolve_transport": (
+        "hexcore.darwin.infrastructure.api.routers",
+        "resolve_transport",
+    ),
+    "SessionResponse": ("hexcore.darwin.infrastructure.api.routers", "SessionResponse"),
+    "MeResponse": ("hexcore.darwin.infrastructure.api.routers", "MeResponse"),
+    "SignInRequest": ("hexcore.darwin.infrastructure.api.routers", "SignInRequest"),
+    "SignUpRequest": ("hexcore.darwin.infrastructure.api.routers", "SignUpRequest"),
+    "VerifyEmailRequest": (
+        "hexcore.darwin.infrastructure.api.routers",
+        "VerifyEmailRequest",
+    ),
+    "IdentityStep": ("hexcore.darwin.infrastructure.lifespan", "IdentityStep"),
+    "SessionReaperStep": (
+        "hexcore.darwin.infrastructure.lifespan",
+        "SessionReaperStep",
+    ),
+    "identity_startup_steps": (
+        "hexcore.darwin.infrastructure.lifespan",
+        "identity_startup_steps",
+    ),
+    "derive_csrf_token": (
+        "hexcore.darwin.infrastructure.hashing",
+        "derive_csrf_token",
     ),
     # ── Capa de aplicación ────────────────────────────────────────────────────
     "IdentityConfig": ("hexcore.darwin.application.config", "IdentityConfig"),
@@ -384,12 +465,6 @@ def __getattr__(name: str) -> t.Any:
         raise AttributeError(
             f"module 'hexcore.darwin' has no attribute {name!r}"
         ) from None
-
-    # No se avisa por la propia clase del warning: filtrarlo requiere importarla, y avisar
-    # ahí haría imposible silenciarlo sin disparar lo que se quiere silenciar. (En la práctica
-    # ni llega acá: se importa eager arriba, así que está en globals.)
-    if name != "DarwinProvisionalWarning":
-        _warn_provisional()
 
     value = getattr(importlib.import_module(module_path), attribute)
     # Se cachea en los globals: el segundo acceso no vuelve a pasar por acá.

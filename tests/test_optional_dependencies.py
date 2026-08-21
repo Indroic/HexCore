@@ -68,6 +68,19 @@ import pytest
     # eager, así que esconderlo rompe cualquier import del paquete.)
     ("sqlalchemy", "hexcore.domain.cqrs.envelope"),
     ("fastapi", "hexcore.domain.cqrs.envelope"),
+    # El borde HTTP (Fase 7) SÍ necesita `[api]` —es Starlette— pero no debe arrastrar los
+    # otros extras: un proceso web sin `[sql]` tiene que poder importar los transportes.
+    ("joserfc", "hexcore.darwin.infrastructure.transports"),
+    ("argon2", "hexcore.darwin.infrastructure.transports"),
+    ("sqlalchemy", "hexcore.darwin.infrastructure.transports"),
+    ("joserfc", "hexcore.darwin.infrastructure.api.middlewares"),
+    ("argon2", "hexcore.darwin.infrastructure.api.middlewares"),
+    ("sqlalchemy", "hexcore.darwin.infrastructure.api.middlewares"),
+    ("joserfc", "hexcore.darwin.infrastructure.api.dependencies"),
+    ("sqlalchemy", "hexcore.darwin.infrastructure.api.dependencies"),
+    # El lifespan lo importa el arranque de la app; no puede exigir crypto para existir.
+    ("joserfc", "hexcore.darwin.infrastructure.lifespan"),
+    ("argon2", "hexcore.darwin.infrastructure.lifespan"),
 ])
 def test_optional_dependencies_do_not_crash_imports(module_to_hide, module_to_import):
     """

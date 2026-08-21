@@ -9,11 +9,10 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 151 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 179 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
-from hexcore.darwin._provisional import DarwinProvisionalWarning as DarwinProvisionalWarning
 from hexcore.darwin.application.commands import AuthenticateToken as AuthenticateToken
 from hexcore.darwin.application.commands import ChangePassword as ChangePassword
 from hexcore.darwin.application.commands import IssueVerificationCode as IssueVerificationCode
@@ -108,6 +107,26 @@ from hexcore.darwin.domain.value_objects import Email as Email
 from hexcore.darwin.domain.value_objects import TokenPair as TokenPair
 from hexcore.darwin.domain.value_objects import TokenType as TokenType
 from hexcore.darwin.domain.value_objects import VerificationPurpose as VerificationPurpose
+from hexcore.darwin.infrastructure.api.dependencies import WWW_AUTHENTICATE as WWW_AUTHENTICATE
+from hexcore.darwin.infrastructure.api.dependencies import identity_exception_headers as identity_exception_headers
+from hexcore.darwin.infrastructure.api.dependencies import provide_auth as provide_auth
+from hexcore.darwin.infrastructure.api.dependencies import provide_optional_auth as provide_optional_auth
+from hexcore.darwin.infrastructure.api.dependencies import require_authenticated as require_authenticated
+from hexcore.darwin.infrastructure.api.dependencies import require_not_impersonated as require_not_impersonated
+from hexcore.darwin.infrastructure.api.dependencies import require_roles as require_roles
+from hexcore.darwin.infrastructure.api.dependencies import require_scopes as require_scopes
+from hexcore.darwin.infrastructure.api.middlewares import AuthContextMiddleware as AuthContextMiddleware
+from hexcore.darwin.infrastructure.api.middlewares import CSRF_HEADER as CSRF_HEADER
+from hexcore.darwin.infrastructure.api.middlewares import CsrfMiddleware as CsrfMiddleware
+from hexcore.darwin.infrastructure.api.middlewares import auth_from_request as auth_from_request
+from hexcore.darwin.infrastructure.api.routers import MeResponse as MeResponse
+from hexcore.darwin.infrastructure.api.routers import SessionResponse as SessionResponse
+from hexcore.darwin.infrastructure.api.routers import SignInRequest as SignInRequest
+from hexcore.darwin.infrastructure.api.routers import SignUpRequest as SignUpRequest
+from hexcore.darwin.infrastructure.api.routers import VerifyEmailRequest as VerifyEmailRequest
+from hexcore.darwin.infrastructure.api.routers import build_identity_router as build_identity_router
+from hexcore.darwin.infrastructure.api.routers import emit_tokens as emit_tokens
+from hexcore.darwin.infrastructure.api.routers import resolve_transport as resolve_transport
 from hexcore.darwin.infrastructure.clock import FixedClock as FixedClock
 from hexcore.darwin.infrastructure.clock import SystemClock as SystemClock
 from hexcore.darwin.infrastructure.envelope import AuthEnvelopeCodec as AuthEnvelopeCodec
@@ -117,6 +136,7 @@ from hexcore.darwin.infrastructure.envelope import ENVELOPE_VERSION as ENVELOPE_
 from hexcore.darwin.infrastructure.envelope import auth_envelope_provider as auth_envelope_provider
 from hexcore.darwin.infrastructure.hashing import Argon2PasswordHasher as Argon2PasswordHasher
 from hexcore.darwin.infrastructure.hashing import compare_hashes as compare_hashes
+from hexcore.darwin.infrastructure.hashing import derive_csrf_token as derive_csrf_token
 from hexcore.darwin.infrastructure.hashing import generate_numeric_code as generate_numeric_code
 from hexcore.darwin.infrastructure.hashing import generate_token as generate_token
 from hexcore.darwin.infrastructure.hashing import hash_token as hash_token
@@ -129,6 +149,9 @@ from hexcore.darwin.infrastructure.keys import StaticKeyStore as StaticKeyStore
 from hexcore.darwin.infrastructure.keys import UnknownKeyError as UnknownKeyError
 from hexcore.darwin.infrastructure.keys import generate_signing_key as generate_signing_key
 from hexcore.darwin.infrastructure.keys import jwks_document as jwks_document
+from hexcore.darwin.infrastructure.lifespan import IdentityStep as IdentityStep
+from hexcore.darwin.infrastructure.lifespan import SessionReaperStep as SessionReaperStep
+from hexcore.darwin.infrastructure.lifespan import identity_startup_steps as identity_startup_steps
 from hexcore.darwin.infrastructure.models import AccountModel as AccountModel
 from hexcore.darwin.infrastructure.models import AuditLogModel as AuditLogModel
 from hexcore.darwin.infrastructure.models import IDENTITY_MODELS as IDENTITY_MODELS
@@ -164,6 +187,11 @@ from hexcore.darwin.infrastructure.tokens import JoserfcTokenIssuer as JoserfcTo
 from hexcore.darwin.infrastructure.tokens import JoserfcTokenVerifier as JoserfcTokenVerifier
 from hexcore.darwin.infrastructure.tokens import TokenTtl as TokenTtl
 from hexcore.darwin.infrastructure.tokens import audience_for as audience_for
+from hexcore.darwin.infrastructure.transports import AbstractTransport as AbstractTransport
+from hexcore.darwin.infrastructure.transports import BearerTransport as BearerTransport
+from hexcore.darwin.infrastructure.transports import CookieTransport as CookieTransport
+from hexcore.darwin.infrastructure.transports import TRANSPORT_HEADER as TRANSPORT_HEADER
+from hexcore.darwin.infrastructure.transports import TransportResolver as TransportResolver
 
 __all__ = [
     "AUTH_CONTEXT",
@@ -174,6 +202,7 @@ __all__ = [
     "AbstractPasswordHasher",
     "AbstractRevocationList",
     "AbstractSessionRepository",
+    "AbstractTransport",
     "AbstractUserRepository",
     "AbstractVerificationRepository",
     "AccessTokenClaims",
@@ -188,22 +217,26 @@ __all__ = [
     "AuditLogMixin",
     "AuditLogModel",
     "AuthContext",
+    "AuthContextMiddleware",
     "AuthEnvelopeCodec",
     "AuthEnvelopeRestorer",
     "AuthenticateToken",
     "AuthenticationError",
     "AuthorizationError",
+    "BearerTransport",
     "CREDENTIAL_PROVIDER",
+    "CSRF_HEADER",
     "CacheErrorPolicy",
     "CacheRevocationList",
     "ChangePassword",
     "CookieConfig",
+    "CookieTransport",
+    "CsrfMiddleware",
     "CsrfValidationError",
     "DEFAULT_ACCOUNT_TABLE",
     "DEFAULT_SESSION_TABLE",
     "DEFAULT_USER_TABLE",
     "DEFAULT_VERIFICATION_TABLE",
-    "DarwinProvisionalWarning",
     "ENVELOPE_KEY",
     "ENVELOPE_VERSION",
     "Email",
@@ -218,6 +251,7 @@ __all__ = [
     "IdentityError",
     "IdentityService",
     "IdentitySession",
+    "IdentityStep",
     "Impersonation",
     "ImpersonationEndedEvent",
     "ImpersonationNotPermittedError",
@@ -231,6 +265,7 @@ __all__ = [
     "JwksModel",
     "KeyStatus",
     "ListActiveSessions",
+    "MeResponse",
     "NoActiveKeyError",
     "PasswordPolicy",
     "Permission",
@@ -245,15 +280,19 @@ __all__ = [
     "SessionCreatedEvent",
     "SessionMixin",
     "SessionModel",
+    "SessionReaperStep",
     "SessionRefreshedEvent",
+    "SessionResponse",
     "SessionReuseDetectedEvent",
     "SessionRevokedEvent",
     "SessionService",
     "SignIn",
+    "SignInRequest",
     "SignInResult",
     "SignOut",
     "SignOutEverywhere",
     "SignUp",
+    "SignUpRequest",
     "SignUpResult",
     "SigningKey",
     "SqlAlchemyAccountRepository",
@@ -264,6 +303,7 @@ __all__ = [
     "StaticKeyStore",
     "SystemClock",
     "SystemPrincipal",
+    "TRANSPORT_HEADER",
     "TimestampMixin",
     "TokenAudienceMismatchError",
     "TokenConfig",
@@ -275,6 +315,7 @@ __all__ = [
     "TokenTtl",
     "TokenType",
     "Transport",
+    "TransportResolver",
     "UnauthenticatedError",
     "UnknownKeyError",
     "User",
@@ -290,31 +331,46 @@ __all__ = [
     "VerificationModel",
     "VerificationPurpose",
     "VerifyEmail",
+    "VerifyEmailRequest",
+    "WWW_AUTHENTICATE",
     "WorkerContextIntegrityError",
     "audience_for",
     "auth_envelope_provider",
+    "auth_from_request",
     "auth_scope",
+    "build_identity_router",
     "compare_hashes",
     "configure_identity",
     "create_identity_tables",
     "current_auth",
     "default_registry",
+    "derive_csrf_token",
     "drop_identity_tables",
+    "emit_tokens",
     "ensure_identity_schema_loaded",
     "generate_numeric_code",
     "generate_signing_key",
     "generate_token",
     "get_identity_container",
     "hash_token",
+    "identity_exception_headers",
+    "identity_startup_steps",
     "identity_tables",
     "jwks_document",
+    "provide_auth",
     "provide_identity",
     "provide_identity_config",
+    "provide_optional_auth",
     "provide_session_service",
     "register_identity_handlers",
     "require_auth",
+    "require_authenticated",
+    "require_not_impersonated",
+    "require_roles",
+    "require_scopes",
     "reset_default_registry",
     "reset_identity",
+    "resolve_transport",
     "system_context",
     "validate_user_model",
 ]

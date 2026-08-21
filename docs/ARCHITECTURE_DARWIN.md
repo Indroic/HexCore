@@ -3,7 +3,7 @@
 > Documento técnico de arquitectura. Port deliberado de [Better Auth](https://github.com/better-auth/better-auth)
 > (TypeScript) a Python + CQRS sobre HexCore 6.x.
 >
-> Estado: **diseño aprobado, Fases 0-6 implementadas.** Sin fechas ni estimaciones: el orden
+> Estado: **diseño aprobado, Fases 0-7 implementadas.** Sin fechas ni estimaciones: el orden
 > es por dependencia, no por calendario.
 
 ---
@@ -37,12 +37,13 @@
 | **Extra de pip** | `[darwin]` | `[keystone]` | `[sigil]` |
 | **Costo** | Ninguno conocido. Sin colisión en PyPI ni en el ecosistema Python. | **OpenStack Keystone es un servicio de identidad.** Toda búsqueda, todo resultado de Stack Overflow y todo autocompletado de LLM va a ser sobre OpenStack. Fatal para la discoverability. | El menos autodescriptivo: quien escanea la lista de paquetes no aprende que `sigil` es auth. |
 
-> **Estado de implementación.** Fases 0-6 completas. Siguen: borde HTTP (7),
-> plugins (8-9), kit de testing (10).
+> **Estado de implementación.** Fases 0-7 completas. Siguen: plugins (8-9) y kit de
+> testing (10), que **agregan** superficie sin cambiar la que ya está.
 >
-> Darwin está marcado como **API provisional** (`DarwinProvisionalWarning`) hasta que el
-> borde HTTP cierre las formas: la Fase 7 define cómo se resuelve el contexto en un request,
-> y con eso pueden aparecer campos nuevos en `AuthContext` y en el sobre.
+> La marca de **API provisional** se retiró en la Fase 7, que era el punto de estabilidad
+> declarado: el borde HTTP cerró las formas de `AuthContext`, de los puertos, de los
+> transportes y del emisor de tokens. Dejarla "una fase más por las dudas" habría sido el
+> mismo desliz que `REMOVED_IN = "6.0"` shippeado en 6.0.0.
 
 **Elegido: `Darwin`.** Es el único de los tres que es simultáneamente (a) inequívoco sobre
 qué hace, (b) libre de colisiones, y (c) lo bastante corto para que `ServerConfig.darwin`,
@@ -1091,7 +1092,7 @@ rechazadas contra SQLite real; worker sin Darwin cableado → `RuntimeError` con
 middleware incluso despachado desde el consumer, y de que lo que sí está disponible es el
 contexto ambiental).
 
-### Fase 7 — Borde HTTP
+### Fase 7 — Borde HTTP ✅
 
 `transports`, `api/{middlewares,dependencies,routers}`, `lifespan` (`IdentityStep`,
 `JwksStep`, `SessionReaperStep`).
@@ -1117,14 +1118,43 @@ capa `api` la acoplaría al módulo y rompería el contrato de dependencias opci
 MRO, así que registrarla como 400 haría que una excepción nueva sin mapear se tragara como
 400 en vez de aparecer como 500 en los tests.
 
-Tests: doble publicación ContextVar + `request.state` con `reset` en `finally` incluso si el
-endpoint lanza; el mismo endpoint por los dos transportes; atributos de cookie aserteados
-literalmente; **CSRF** (POST cross-origin con cookie válida → 403; `Origin` que coincide →
-200; sin `X-CSRF-Token` → 403; valor forjado por un subdominio → 403); 401 lleva
-`WWW-Authenticate` (usa el `headers_for` de la Fase 0); **fijación de sesión** (el token
-cambia en login, cambio de contraseña, alta de 2FA, e inicio y fin de impersonación —
-aserteado como desigualdad, por evento); **replay/carrera de revocación**; fuerza bruta sobre
-sign-in con el `rate_limit` ya corregido.
+Creados: `infrastructure/transports.py`, `infrastructure/api/{middlewares,dependencies,routers}.py`,
+`infrastructure/lifespan.py`, y `derive_csrf_token` en `infrastructure/hashing.py`.
+
+⚠️ **Un middleware de Starlette corre por fuera de `ExceptionMiddleware`**, así que lo que
+lanza **no** pasa por los handlers que `register_exception_handlers` instaló: saldría como un
+500 con el traceback en texto plano. `CsrfMiddleware` por eso **devuelve** la `JSONResponse`
+en vez de propagar `CsrfValidationError`, replicando a mano la forma del cuerpo de error del
+framework. Lo encontró el test, no la revisión.
+
+**El valor anti-CSRF es derivado, no aleatorio** (`derive_csrf_token` = HMAC del `sid`). La
+cookie de CSRF no puede ser `HttpOnly` —el cliente tiene que leerla para devolverla en el
+header— así que un subdominio comprometido **puede escribirla**; con un valor aleatorio,
+escribe la cookie y manda el mismo valor en el header, pasando el double-submit con un valor
+que eligió él.
+
+**`/auth/me` lee la fila del usuario**, y es la excepción deliberada al "cero DB en el camino
+caliente": el mail no viaja en el token porque es PII, y un access token que el cliente guarda
+no es el lugar para ponerla. La regla de no tocar la base vale para cada petición autenticada,
+no para el endpoint cuyo propósito es devolver los datos del usuario. Lo detectó un test que
+esperaba el mail en `/me`.
+
+Tests (`test_darwin_http.py`, 35, con `TestClient` sobre `create_app()`): doble publicación
+ContextVar + `request.state` con `reset` en `finally` incluso si el endpoint lanza; el mismo
+endpoint por los dos transportes (cookie sin tokens en el cuerpo, Bearer sin `Set-Cookie`, y
+`Vary` en las dos); atributos de cookie aserteados **literalmente sobre el header**
+(`__Host-`, `HttpOnly`, `Secure`, `SameSite=lax`, `Path=/`, sin `Domain`); **confusión de
+transporte en los dos sentidos** (cookie replayeada como Bearer y viceversa → 401); **CSRF**
+(POST cross-origin con cookie válida → 403; origen declarado + double-submit → 200; sin
+`X-CSRF-Token` → 403; valor forjado → 403; `GET` exento; Bearer exento; POST anónimo exento);
+401 lleva `WWW-Authenticate` y 403 **no** (usa el `headers_for` de la Fase 0); fijación de
+sesión; sign-out borra cookies **y** revoca; fuerza bruta sobre sign-in con el `rate_limit` ya
+corregido.
+
+⚠️ **Nota de testing**: `rate_limit` usa `config.cache_backend`, que es un `MemoryCache`
+global del proceso. Una suite que pega en la ruta de login tiene que resetearlo por test, o
+los primeros pasan y del sexto en adelante todo da 429 — con el síntoma desconcertante de que
+cada test pasa aislado y falla en la suite.
 
 ### Fase 8 — Plugins + el de referencia
 
@@ -1177,7 +1207,7 @@ corre los bloques `Uso::`.
 | `hexcore/infrastructure/cqrs/pydantic_serializer.py` | ✅ **Sin cambios.** Se planeaba un override por simetría y no hace falta: hereda los métodos concretos, que envuelven `serialize`/`deserialize`. | 6 | — |
 | `hexcore/infrastructure/workers/consumer.py` | ✅ **Hecho (Fase 6):** `deserialize_envelope` + `restored_envelope_scope` en las tres rutas. `process_task` queda afuera (§3.3). | 6 | aditivo |
 | `application/cqrs/in_memory_buses.py`, `infrastructure/cqrs/{rabbitmq,postgres_bus,redis_bus,procrastinate}.py` | ✅ **Hecho (Fase 6):** `serialize()` → `serialize_envelope()` en los seis sitios de encolado, y restauración en los cuatro consumos. `task_queues/*` **no** se toca: tratan el payload como opaco. | 6 | aditivo |
-| `hexcore/infrastructure/api/app.py` | `AppFeatures` += `auth_context`, `csrf` (default **off**); orden de middlewares; merge del mapa. | 7 | aditivo |
+| `hexcore/infrastructure/api/app.py` | ✅ **Hecho (Fase 7):** `AppFeatures` += `auth_context`, `csrf` (default **off**); los dos middlewares de Darwin se registran **antes** de `RequestIDMiddleware` (o sea corren adentro, así que `get_request_id()` ya está poblado); `_con_darwin()` mergea `IDENTITY_EXCEPTION_STATUS_MAP` y la fábrica de `WWW-Authenticate`, importándolos **dentro de la función** para no acoplar la capa `api` a Darwin en tiempo de import. | 7 | aditivo |
 | `hexcore/infrastructure/cli.py` | `app.add_typer(darwin_cli, name="identity")`; `ensure_identity_schema_loaded()` en el `env.py` generado. | 8 | aditivo |
 | `hexcore/infrastructure/repositories/orms/sqlalchemy/utils.py` | `import_all_models`: `iter_modules` → `walk_packages` (§5.3). Arregla un `DROP TABLE` latente que ya afecta a `hexcore_cron_jobs`. | 8 | fix |
 | `hexcore/domain/auth/*`, `hexcore/__init__.py` | Absorbidos y deprecados. | 10 | deprecación |

@@ -396,35 +396,16 @@ def _sesion(**overrides) -> IdentitySession:
     return IdentitySession(**base)
 
 
-# ── Marca de API provisional ──────────────────────────────────────────────────
-#
-# Ojo con la identidad de la clase: `_fachada_recien_importada()` saca de `sys.modules` todo
-# `hexcore.darwin.*`, incluido `_provisional`, así que el módulo reimportado define una clase
-# `DarwinProvisionalWarning` **distinta** del objeto que tenga importado el test. Por eso se la
-# toma siempre de `modulo.DarwinProvisionalWarning` y no del import de arriba: comparar contra
-# la vieja no matchea, y el síntoma es un "DID NOT WARN" con el warning listado justo debajo.
-#
-# El reimport también deja `_ya_avisado = False` de arranque, así que no hace falta resetear.
-
-
-def test_la_fachada_avisa_que_darwin_es_provisional():
+# ── Darwin ya no es API provisional ───────────────────────────────────────────
+def test_darwin_no_avisa_de_api_provisional():
     """
-    Darwin ya viaja en la wheel y `hexcore.darwin` importa, así que es API pública — con las
-    fases 5-7 todavía por delante. El aviso es lo que evita que alguien construya sobre
-    `AuthContext` o el emisor de tokens creyendo que las formas están cerradas.
-    """
-    with _fachada_recien_importada():
-        modulo = importlib.import_module("hexcore.darwin")
+    La marca se retiró en la Fase 7, que es la que `STABLE_PHASE` declaraba como el punto de
+    estabilidad: el borde HTTP cerró las formas de `AuthContext`, de los puertos, de los
+    transportes y del emisor de tokens.
 
-        with pytest.warns(modulo.DarwinProvisionalWarning, match="PROVISIONAL"):
-            modulo.AuthContext
-
-
-def test_el_aviso_se_emite_una_sola_vez():
-    """
-    Una vez por proceso, no por acceso: la fachada se consulta en cada handler, y un warning
-    por atributo sería ruido que entrena a filtrar la categoría entera — con lo cual el aviso
-    deja de cumplir su función.
+    Retirarla y no correr la meta es deliberado. Dejarla "una fase más por las dudas" después
+    de haber declarado públicamente la 7 como el punto de estabilidad sería exactamente el
+    desliz que este repo ya cometió con `REMOVED_IN = "6.0"` shippeado en 6.0.0.
     """
     import warnings
 
@@ -434,83 +415,33 @@ def test_el_aviso_se_emite_una_sola_vez():
         with warnings.catch_warnings(record=True) as capturados:
             warnings.simplefilter("always")
             modulo.AuthContext
-            modulo.Principal
-            modulo.RoleRegistry
-            modulo.require_auth
+            modulo.build_identity_router
 
-        provisionales = [
-            w
-            for w in capturados
-            if issubclass(w.category, modulo.DarwinProvisionalWarning)
-        ]
-
-    assert len(provisionales) == 1
+    futuros = [w for w in capturados if issubclass(w.category, FutureWarning)]
+    assert futuros == []
 
 
-def test_el_aviso_es_futurewarning_y_no_deprecationwarning():
-    """
-    `FutureWarning` significa "esto va a cambiar" y Python lo muestra por defecto.
-    `DeprecationWarning` significa lo contrario —"esto se va"— y encima está oculto por
-    defecto, así que nadie lo vería.
-    """
-    from hexcore.darwin import DarwinProvisionalWarning
-
-    assert issubclass(DarwinProvisionalWarning, FutureWarning)
-    assert not issubclass(DarwinProvisionalWarning, DeprecationWarning)
-
-
-def test_el_aviso_se_puede_silenciar_sin_apagar_los_demas():
-    """
-    Tiene que ser filtrable de forma quirúrgica: quien decide usar Darwin provisional no
-    debería tener que apagar todos los `FutureWarning` de su proceso.
-    """
-    import warnings
-
-    with _fachada_recien_importada():
-        modulo = importlib.import_module("hexcore.darwin")
-        provisional = modulo.DarwinProvisionalWarning
-
-        with warnings.catch_warnings(record=True) as capturados:
-            warnings.simplefilter("always")
-            warnings.filterwarnings("ignore", category=provisional)
-            modulo.AuthContext
-            warnings.warn("otro aviso cualquiera", FutureWarning)
-
-        categorias = [w.category for w in capturados]
-
-    assert provisional not in categorias
-    assert FutureWarning in categorias
-
-
-def test_pedir_la_clase_del_warning_no_dispara_el_warning():
-    """
-    Filtrarlo requiere importar la clase. Si ese import avisara, sería imposible silenciarlo
-    sin disparar exactamente lo que se quiere silenciar.
-    """
-    import warnings
-
-    with _fachada_recien_importada():
-        modulo = importlib.import_module("hexcore.darwin")
-
-        with warnings.catch_warnings(record=True) as capturados:
-            warnings.simplefilter("always")
-            modulo.DarwinProvisionalWarning
-
-    assert capturados == []
-
-
-def test_la_fase_declarada_coincide_con_lo_implementado():
-    """
-    El número del aviso tiene que ser cierto. Si alguien cierra una fase y no lo mueve, el
-    aviso miente en la dirección peligrosa: promete menos madurez de la que hay y la gente lo
-    ignora.
-    """
-    from hexcore.darwin import _provisional
-
-    assert _provisional.CURRENT_PHASE < _provisional.STABLE_PHASE
-    # El sobre que cruza la cola (6) existe; el borde HTTP (7) todavía no.
+def test_el_modulo_de_la_marca_ya_no_existe():
+    """Se borró, no se dejó vacío: un módulo muerto en el árbol invita a volver a usarlo."""
     import importlib.util
 
-    assert importlib.util.find_spec("hexcore.darwin.application.container") is not None
-    assert importlib.util.find_spec("hexcore.darwin.infrastructure.envelope") is not None
-    assert importlib.util.find_spec("hexcore.darwin.infrastructure.transports") is None
+    assert importlib.util.find_spec("hexcore.darwin._provisional") is None
+
+
+def test_las_fases_0_a_7_estan_implementadas():
+    """
+    El guard que reemplaza al del número de fase: verifica que cada capa exista de verdad, y
+    no que una constante diga que existe.
+    """
+    import importlib.util
+
+    for modulo in (
+        "hexcore.darwin.domain.context",              # 2
+        "hexcore.darwin.infrastructure.models",       # 3
+        "hexcore.darwin.infrastructure.tokens",       # 4
+        "hexcore.darwin.application.container",       # 5
+        "hexcore.darwin.infrastructure.envelope",     # 6
+        "hexcore.darwin.infrastructure.transports",   # 7
+        "hexcore.darwin.infrastructure.api.routers",  # 7
+    ):
+        assert importlib.util.find_spec(modulo) is not None, modulo
