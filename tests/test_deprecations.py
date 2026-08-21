@@ -360,3 +360,137 @@ def test_la_fecha_de_remocion_sigue_estando_en_el_futuro():
         f"promete una remoción que ya pasó. O eliminá lo deprecado, o corré REMOVED_IN al "
         f"próximo major ({major_actual + 1}.0)."
     )
+
+
+# ── Fase 10: `hexcore.domain.auth` ────────────────────────────────────────────
+class TestDomainAuthDeprecado:
+    """
+    `hexcore.domain.auth` queda deprecado: lo reemplaza `hexcore.darwin`.
+
+    Los dos nombres **no se aliasan** a su reemplazo, y eso es la decisión: `TokenClaims` tiene
+    `client_id` obligatorio, un default mutable en `scopes` y **no tiene `sid`** —sin el cual la
+    revocación es imposible por construcción—; `AccessTokenClaims` tiene otros campos y otros
+    invariantes. Devolver el nuevo donde el usuario espera el viejo rompería su código en la línea
+    siguiente. Lo que hace falta es que el viejo siga funcionando **y avise**.
+    """
+
+    def test_importar_hexcore_no_avisa(self):
+        """
+        El aviso va al **acceder al nombre**, no al importar el paquete. Si saltara en el import,
+        cada consumidor vería el warning sin usar nada deprecado — y lo silenciaría entero.
+        """
+        import subprocess
+        import sys
+
+        resultado = subprocess.run(
+            [sys.executable, "-W", "error::DeprecationWarning", "-c", "import hexcore"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert resultado.returncode == 0, resultado.stderr
+
+    @pytest.mark.parametrize(
+        "nombre, reemplazo",
+        [
+            ("TokenClaims", "hexcore.darwin.AccessTokenClaims"),
+            ("PermissionsRegistry", "hexcore.darwin.RoleRegistry"),
+        ],
+    )
+    def test_el_acceso_desde_hexcore_avisa(self, nombre, reemplazo):
+        import hexcore
+
+        with pytest.warns(DeprecationWarning, match=reemplazo.replace(".", r"\.")):
+            getattr(hexcore, nombre)
+
+    @pytest.mark.parametrize(
+        "nombre", ["TokenClaims", "PermissionsRegistry"]
+    )
+    def test_el_acceso_desde_el_paquete_avisa(self, nombre):
+        import hexcore.domain.auth as auth
+
+        with pytest.warns(DeprecationWarning):
+            getattr(auth, nombre)
+
+    @pytest.mark.parametrize(
+        "nombre", ["TokenClaims", "PermissionsRegistry"]
+    )
+    def test_devuelve_el_objeto_viejo_y_no_el_reemplazo(self, nombre):
+        """
+        La propiedad que hace la deprecación usable: el código existente **sigue andando**. Un
+        alias al reemplazo lo rompería, porque los tipos no son intercambiables.
+        """
+        import hexcore
+
+        with pytest.warns(DeprecationWarning):
+            obtenido = getattr(hexcore, nombre)
+
+        assert obtenido.__name__ == nombre
+        assert obtenido.__module__.startswith("hexcore.domain.auth")
+
+    @pytest.mark.parametrize(
+        "nombre", ["TokenClaims", "PermissionsRegistry"]
+    )
+    def test_el_from_import_tambien_avisa(self, nombre):
+        """
+        PEP 562 cubre los `from`-imports, y hacía falta verificarlo: es la forma en que se
+        consumen estos dos nombres, y si no avisara la deprecación sería invisible.
+        """
+        import importlib
+
+        with pytest.warns(DeprecationWarning):
+            modulo = importlib.import_module("hexcore")
+            getattr(modulo, nombre)
+
+    @pytest.mark.parametrize(
+        "nombre", ["TokenClaims", "PermissionsRegistry"]
+    )
+    def test_siguen_en_all(self, nombre):
+        """
+        Tienen que seguir: `from hexcore import TokenClaims` es como se consumen, y sacarlos de
+        `__all__` rompería un `import *` sin dar el aviso que la deprecación existe para dar.
+        """
+        import hexcore
+        import hexcore.domain.auth as auth
+
+        assert nombre in hexcore.__all__
+        assert nombre in auth.__all__
+
+    def test_el_aviso_dice_la_version_correcta(self):
+        """
+        Se deprecaron en 7.0, no en 5.0. `warn_deprecated` hardcodeaba "5.0", y un aviso nuevo que
+        miente sobre cuándo empezó el margen pierde la única información accionable que tiene.
+        """
+        import hexcore
+        from hexcore._deprecation import REMOVED_IN
+
+        with pytest.warns(DeprecationWarning) as capturado:
+            hexcore.TokenClaims
+
+        mensaje = str(capturado[0].message)
+        assert "en HexCore 7.0" in mensaje
+        assert f"se eliminará en {REMOVED_IN}" in mensaje
+
+    def test_un_nombre_inexistente_sigue_dando_attribute_error(self):
+        """El `__getattr__` no puede convertir un typo en un warning."""
+        import hexcore
+
+        with pytest.raises(AttributeError, match="NoExiste"):
+            hexcore.NoExiste  # type: ignore[attr-defined]
+
+    def test_el_reemplazo_existe_y_es_mejor(self):
+        """
+        El aviso nombra un reemplazo: si no existiera, el usuario quedaría sin salida. Y se
+        aseveran las dos diferencias que motivan la deprecación.
+        """
+        pytest.importorskip("joserfc")
+        from hexcore.darwin import AccessTokenClaims, RoleRegistry
+
+        campos = set(AccessTokenClaims.model_fields)
+        assert {"sid", "act", "aud", "typ", "nbf", "gen", "imp"} <= campos, (
+            "el reemplazo tiene lo que le faltaba al viejo"
+        )
+        # `RoleRegistry` resuelve herencia transitiva; el `PermissionsRegistry` viejo era un
+        # `dict[str, str]` con métodos alrededor.
+        assert hasattr(RoleRegistry, "resolve_permissions")
+        assert hasattr(RoleRegistry, "register_role")

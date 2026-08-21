@@ -1778,19 +1778,118 @@ no-miembro, 409 de slug repetido, 409 al degradar al último owner, las pendient
 que el `PATCH` ignore un slug mandado. Más un test de que **los seis plugins conviven** en un
 registro con sus siete mixins y sus 29 excepciones mapeadas.
 
-### Fase 10 — Kit de testing, docs, deprecaciones
+### Fase 10 — Kit de testing y deprecaciones ✅
 
-`hexcore/darwin/testing/` con `FakeUserRepository`, `FakeClock`, `authenticated_context()`,
-`impersonated_client`.
+Tres entregas: los dos dobles genéricos que le faltaban a `hexcore/testing/`, el kit de Darwin, y
+la deprecación de `hexcore.domain.auth`.
 
-Cierra además el hueco detectado: `hexcore/testing/` **no tiene fake de repositorio ni de
-UoW**. Van al kit general, no al de Darwin, porque sirven mucho más allá de identidad.
+#### El kit genérico: `FakeRepository` y `FakeUnitOfWork`
 
-Deprecaciones: `domain/auth/value_objects.TokenClaims` → `AccessTokenClaims` y
-`domain/auth/permissions.PermissionsRegistry` → `RoleRegistry`, vía `deprecated_aliases`.
-Los dos están re-exportados en `hexcore/__init__.py` y en su `__all__`, así que se mueven
-detrás de un `__getattr__` de módulo: `from hexcore import TokenClaims` sigue funcionando
-(PEP 562 cubre los `from`-imports) y ahora avisa.
+Van al kit general y no al de Darwin porque sirven mucho más allá de identidad. `sqlite_engine`
+sigue siendo el correcto cuando lo que se prueba **es** la persistencia —una consulta, un
+constraint, una migración—; esto es para cuando lo que se prueba es la lógica que está arriba.
+
+Un doble de prueba tiene un modo de falla propio y peor que el de cualquier otro código: **si es
+más permisivo que la implementación, hace pasar tests que deberían fallar.** Las tres decisiones
+salen de ahí:
+
+1. **Guarda copias profundas, no las entidades que le pasaron.** Sin eso, mutar la entidad después
+   de guardarla cambia lo guardado, y el test pasa por una aliasing que en producción no existe —
+   el repositorio real serializa a la base. Es el falso positivo más común de un repositorio en
+   memoria, y la copia es *profunda* porque con una superficial una lista adentro se seguiría
+   compartiendo, que es el caso donde pasa desapercibido.
+2. **El `rollback` deshace de verdad**, restaurando cada repositorio a su punto de guardado. Un
+   doble que sólo cuenta la llamada hace que los tests de transaccionalidad pasen sin probar nada.
+3. **No auto-descubre repositorios**: los recibe explícitos. El descubrimiento por nombre de clase
+   es justamente el mecanismo que Darwin evita —`_repository_key_from_class_name` levanta
+   `ValueError` ante una colisión— y replicarlo en un doble traería el mismo problema a los tests.
+
+`get_by_id` **lanza** en vez de devolver `None`, para que el test lo vea ahí y no tres líneas
+después con un `AttributeError`. Y `calls` / `count_calls` existen para aseverar que un caso de uso
+no consultó dos veces lo mismo — el bug de rendimiento que un test contra una base no muestra.
+
+#### El kit de Darwin: `hexcore/darwin/testing/`
+
+Los tests de Darwin del propio framework corren contra SQLite, y ahí es lo correcto: parte de lo
+que prueban es la atomicidad de las sentencias. Un consumidor no está probando eso — está probando
+*su* caso de uso, que además pasa por auth. Para eso, levantar un motor, crear seis tablas y
+borrarlas es tiempo y ceremonia por nada.
+
+**Los seis dobles de los puertos** mantienen la propiedad que importa: las operaciones que la
+seguridad exige atómicas siguen siendo de un solo paso. `consume`, `consume_for_rotation` y
+`bump_token_generation` chequean y escriben sin ceder el control, así que de dos canjes concurrentes
+gana exactamente uno — igual que el `UPDATE ... RETURNING` real. Un fake que las partiera en dos
+haría que los tests de replay pasen y el código real falle. `FakeUserRepository.add` **lanza** con
+un mail repetido, igual que el `UNIQUE`; `FakeRevocationList` **vence de verdad**, porque la real
+guarda el vencimiento adentro del valor (`MemoryCache.set()` ignora `expire` y nunca desaloja) y un
+fake que no venciera esconderia ese bug.
+
+`PlainTextHasher` no hashea, y existe por una razón medible: Argon2id tarda ~100 ms **a propósito**,
+así que una suite con cincuenta sign-ins paga cinco segundos en KDF. El prefijo `plain$` está para
+que un `grep` en un dump encuentre inmediatamente si alguien lo cableó en producción. Y cuenta las
+llamadas a `hash_dummy`, que es lo que permite aseverar que el camino de "mail inexistente" iguala
+el tiempo — el chequeo que evita la enumeración de usuarios.
+
+**`authenticated_context()` y `impersonated_context()`** construyen el `AuthContext` directo, sin
+pasar por ningún flujo: es para probar lo que está *aguas abajo* de la autenticación, y emitir un
+token para eso acopla el test a la capa de crypto sin motivo. ⚠️ `impersonated_context()` existe
+porque armarlo a mano falla: `AuthContext` se niega a existir si `subject != actor` sin
+`Impersonation`, y el `Impersonation` exige `reason` no vacío y `expires_at > granted_at`. El primer
+intento de todo el mundo termina en un `ValidationError` que hay que leer dos veces — fricción
+deliberada en producción y ruido en un test. Hay un test que **documenta ese fallo** para que el
+motivo del helper quede escrito.
+
+**`configure_test_identity()`** cablea el módulo entero sin base y sin crypto lenta, pero emite
+tokens **de verdad**: `StaticKeyStore` con una Ed25519 generada. Falsear la firma haría que un test
+de confusión de `alg` no pruebe nada. Y `create_test_user()` pasa por el `sign_up` real, porque
+sembrar sólo el `User` deja alguien que existe y no puede iniciar sesión — el error más común al
+usar el kit, y el motivo de que haya una función en vez de una nota.
+
+Encontrado por un test: `configure_test_identity(users=...)` era ambiguo. `users` era el nombre del
+parámetro de siembra **y** la clave del puerto en `**overrides`, así que pasar un repositorio propio
+sembraba un repositorio como si fuera una lista de usuarios y el error salía tres capas abajo. La
+siembra pasó a `seed_users=`; `users=` es el puerto, igual que en `configure_identity`.
+
+Las fixtures (`identity_container`, `identity_clock`, `identity_audit`, `identity_users`) resetean
+el contenedor **y** el `cache_backend`: los dos son globales del proceso, y un test que no limpia le
+deja su estado al siguiente — con el síntoma peor de todos, que cada test pasa aislado y la suite
+falla apuntando a un archivo que no tiene nada que ver.
+
+#### La deprecación de `hexcore.domain.auth`
+
+`TokenClaims` → `hexcore.darwin.AccessTokenClaims` y `PermissionsRegistry` →
+`hexcore.darwin.RoleRegistry`. Los dos estaban re-exportados **eager** en `hexcore/__init__.py`, y
+pasaron detrás de un `__getattr__` de módulo: `from hexcore import TokenClaims` sigue funcionando
+—PEP 562 cubre los `from`-imports, y hay un test que lo verifica— y ahora avisa.
+
+⚠️ **No se aliasan a su reemplazo**, y esa es la decisión. `deprecated_aliases` resuelve el alias al
+nuevo nombre, que sirve cuando los dos apuntan a lo mismo; acá no. `TokenClaims` tiene `client_id`
+obligatorio, un default mutable en `scopes` y **no tiene `sid`** —sin el cual la revocación es
+imposible por construcción, porque no hay a qué fila apuntar—; `AccessTokenClaims` tiene otros
+campos y otros invariantes. Devolver el nuevo donde el usuario espera el viejo rompería su código en
+la línea siguiente. Lo que hace falta es que el viejo **siga funcionando y avise**, y para eso está
+el helper nuevo `deprecated_lazy_names`: avisa y devuelve lo viejo, cargado perezosamente porque el
+`from` eager es justamente lo que se está sacando.
+
+`warn_deprecated` ganó un parámetro `since`. Hardcodeaba `"5.0"`, así que un aviso nuevo mentía sobre
+cuándo empezó el margen — y el margen es la única información accionable del mensaje. Los alias
+pre-5.0 siguen diciendo 5.0; esto dice 7.0.
+
+Tests (`test_testing_kit.py` 55, más 11 en `test_deprecations.py`): del repositorio genérico, que
+guarda copias en los dos sentidos y que la copia es profunda, la paginación, el orden de inserción
+determinista, el conteo de llamadas. Del UoW, que el `rollback` **deshace de verdad**, que vuelve al
+último `commit` y no al inicio, que el `__aexit__` con excepción rollbackea y sin excepción no, que
+`add_repository` re-toma el punto de guardado, y el despacho de eventos. De los contextos: los tres
+helpers, que **armarlo a mano falla**, que los scopes son del actor, que el `system_context` no es un
+superusuario. De los fakes de Darwin: el índice por mail y que un cambio de mail saca la entrada
+vieja, que `add` repetido lanza, que `bump_token_generation` y `consume` son atómicos bajo
+`asyncio.gather`, que el canje filtra por `purpose`, y que la denylist vence. Del cableado: el
+sign-in completo **sin tocar disco**, que el token que sale verifica de verdad, que la rotación y la
+**detección de reuso** funcionan con los fakes, que un usuario sembrado no tiene contraseña, que la
+auditoría se puede aseverar, que un puerto se puede reemplazar y que el reloj es controlable. Y de
+la deprecación: que importar `hexcore` **no** avisa, que el acceso sí, que devuelve el objeto viejo
+y no el reemplazo, que el `from`-import avisa, que siguen en `__all__`, que el aviso dice 7.0, que un
+typo sigue dando `AttributeError`, y que el reemplazo existe y tiene lo que al viejo le faltaba.
 
 ⚠️ Las docs son ejecutables: [`tests/test_documentation_examples.py`](../tests/test_documentation_examples.py)
 corre los bloques `Uso::`.

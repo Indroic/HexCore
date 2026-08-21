@@ -239,6 +239,28 @@ import pytest
     ("fastapi", "hexcore.darwin.plugins.organization.service"),
     ("joserfc", "hexcore.darwin.plugins.organization.service"),
     ("argon2", "hexcore.darwin.plugins.organization.service"),
+    # ── Fase 10: los kits de testing ──────────────────────────────────────────
+    # El kit genérico son dos dobles sobre los puertos de dominio: nada de sqlalchemy. Es lo que
+    # permite que un consumidor sin `[sql]` pruebe sus casos de uso.
+    ("sqlalchemy", "hexcore.testing.repositories"),
+    ("fastapi", "hexcore.testing.repositories"),
+    ("sqlalchemy", "hexcore.testing"),
+    ("fastapi", "hexcore.testing"),
+    # El kit de Darwin: los fakes existen justamente para no necesitar el extra. `joserfc` sí lo
+    # necesita el cableado completo —emite tokens de verdad— pero se importa adentro de la
+    # función, así que nombrar el módulo no lo exige.
+    ("sqlalchemy", "hexcore.darwin.testing"),
+    ("fastapi", "hexcore.darwin.testing"),
+    ("joserfc", "hexcore.darwin.testing"),
+    ("argon2", "hexcore.darwin.testing"),
+    ("sqlalchemy", "hexcore.darwin.testing.fakes"),
+    ("fastapi", "hexcore.darwin.testing.fakes"),
+    ("joserfc", "hexcore.darwin.testing.fakes"),
+    ("argon2", "hexcore.darwin.testing.fakes"),
+    ("sqlalchemy", "hexcore.darwin.testing.helpers"),
+    ("fastapi", "hexcore.darwin.testing.helpers"),
+    ("joserfc", "hexcore.darwin.testing.helpers"),
+    ("argon2", "hexcore.darwin.testing.helpers"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.
