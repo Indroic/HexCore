@@ -45,6 +45,7 @@ __all__ = [
     "MeResponse",
     "build_identity_router",
     "emit_tokens",
+    "session_response_body",
     "resolve_transport",
 ]
 
@@ -145,8 +146,17 @@ def emit_tokens(
     )
 
 
-def _cuerpo(tokens: "TokenPair", transport: "AbstractTransport") -> SessionResponse:
-    """El cuerpo de la respuesta: con tokens sólo si el transporte es Bearer."""
+def session_response_body(
+    tokens: "TokenPair", transport: "AbstractTransport"
+) -> SessionResponse:
+    """
+    El cuerpo de la respuesta: con tokens sólo si el transporte es Bearer.
+
+    Es público —y no `_cuerpo`— porque los routers de los plugins lo reusan: `magic_link`
+    devuelve la misma forma que `/auth/sign-in`. Que cada plugin armara su propio cuerpo
+    dejaría que uno filtre los tokens en el cuerpo estando en modo cookie, que es justamente
+    la decisión que esta función centraliza.
+    """
     if transport.name == "cookie":
         return SessionResponse(
             session_id=str(tokens.session_id), expires_in=tokens.expires_in
@@ -254,7 +264,9 @@ def build_identity_router(
             user_agent=request.headers.get("User-Agent"),
         )
 
-        respuesta = JSONResponse(_cuerpo(tokens, transport).model_dump(exclude_none=True))
+        respuesta = JSONResponse(
+            session_response_body(tokens, transport).model_dump(exclude_none=True)
+        )
         emit_tokens(respuesta, tokens, transport, contenedor.config)
         return respuesta
 
@@ -286,7 +298,9 @@ def build_identity_router(
             token, transport=transport.name
         )
 
-        respuesta = JSONResponse(_cuerpo(tokens, transport).model_dump(exclude_none=True))
+        respuesta = JSONResponse(
+            session_response_body(tokens, transport).model_dump(exclude_none=True)
+        )
         emit_tokens(respuesta, tokens, transport, contenedor.config)
         return respuesta
 

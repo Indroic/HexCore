@@ -81,6 +81,40 @@ import pytest
     # El lifespan lo importa el arranque de la app; no puede exigir crypto para existir.
     ("joserfc", "hexcore.darwin.infrastructure.lifespan"),
     ("argon2", "hexcore.darwin.infrastructure.lifespan"),
+    # ── Fase 8: los plugins ───────────────────────────────────────────────────
+    # El contrato de plugin y el registro son stdlib puro, y tienen que serlo: los importa el
+    # `HookMiddleware`, que corre en el pipeline de cualquier proceso — incluido un worker sin
+    # `[api]` ni `[darwin]`.
+    ("sqlalchemy", "hexcore.darwin.domain.plugins"),
+    ("fastapi", "hexcore.darwin.domain.plugins"),
+    ("joserfc", "hexcore.darwin.domain.plugins"),
+    ("argon2", "hexcore.darwin.domain.plugins"),
+    ("sqlalchemy", "hexcore.darwin.application.plugins"),
+    ("fastapi", "hexcore.darwin.application.plugins"),
+    ("joserfc", "hexcore.darwin.application.plugins"),
+    ("argon2", "hexcore.darwin.application.plugins"),
+    ("sqlalchemy", "hexcore.darwin.application.hooks"),
+    ("fastapi", "hexcore.darwin.application.hooks"),
+    ("joserfc", "hexcore.darwin.application.hooks"),
+    ("argon2", "hexcore.darwin.application.hooks"),
+    # El plugin de referencia declara sus comandos y su hook sin tocar ningún extra: el
+    # router y los repositorios los importa adentro de las funciones. Si esto se rompiera,
+    # nombrar un plugin en la config arrastraría medio framework.
+    ("sqlalchemy", "hexcore.darwin.plugins.magic_link"),
+    ("fastapi", "hexcore.darwin.plugins.magic_link"),
+    ("joserfc", "hexcore.darwin.plugins.magic_link"),
+    ("argon2", "hexcore.darwin.plugins.magic_link"),
+    ("sqlalchemy", "hexcore.darwin.plugins.magic_link.commands"),
+    ("fastapi", "hexcore.darwin.plugins.magic_link.commands"),
+    ("joserfc", "hexcore.darwin.plugins.magic_link.commands"),
+    ("argon2", "hexcore.darwin.plugins.magic_link.commands"),
+    # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
+    # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
+    # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.
+    ("sqlalchemy", "hexcore.darwin.infrastructure.cli"),
+    ("fastapi", "hexcore.darwin.infrastructure.cli"),
+    ("joserfc", "hexcore.darwin.infrastructure.cli"),
+    ("argon2", "hexcore.darwin.infrastructure.cli"),
 ])
 def test_optional_dependencies_do_not_crash_imports(module_to_hide, module_to_import):
     """

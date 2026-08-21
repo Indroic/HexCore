@@ -1156,17 +1156,113 @@ global del proceso. Una suite que pega en la ruta de login tiene que resetearlo 
 los primeros pasan y del sexto en adelante todo da 429 — con el síntoma desconcertante de que
 cada test pasa aislado y falla en la suite.
 
-### Fase 8 — Plugins + el de referencia
+### Fase 8 — Plugins + el de referencia ✅
 
-`HookMiddleware`, el registro, y `magic_link` como plugin de referencia.
-Modifica `cli.py` con `app.add_typer(darwin_cli, name="identity")` — el primer `add_typer` del
-repo. ⚠️ `hexcore/__init__.py` importa `cli` **eagerly**, así que ese módulo puede importar
-sólo `typer` + stdlib en el top level; todo import pesado va adentro del cuerpo del comando.
+`domain/plugins.py` (el contrato), `application/plugins.py` (el registro),
+`application/hooks.py` (`HookMiddleware`), `plugins/magic_link/` (el de referencia) e
+`infrastructure/cli.py` (la sub-app de Typer).
 
-Tests: nombre duplicado / `requires` faltante / ciclo / conflicto de tabla → cada uno su
-error al construir, nombrando al culpable. Hooks: mutación de `payload` llega al handler;
-`ShortCircuit` en `before` saltea el handler **y** los `before` restantes; una excepción que
-no es `ShortCircuit` propaga (falla cerrando).
+**El contrato es una clase abstracta con un solo miembro obligatorio: `name`.** Los siete
+métodos de aporte —`tables()`, `hooks()`, `middlewares()`, `http_middlewares()`, `routers()`,
+`startup_steps()`, `register_handlers()`— son **concretos** y devuelven vacío. Así un plugin
+declara nada más lo que aporta, y agregar un punto de extensión nuevo más adelante no rompe a
+ninguno existente. Con métodos abstractos, cada punto de extensión nuevo sería un cambio
+rompedor para todos los plugins del ecosistema.
+
+**El registro valida al cablear, no en el primer request.** Cuatro errores, cada uno nombrando
+al culpable: nombre vacío o ausente, nombre duplicado, `requires` que apunta a un plugin que
+no está, y ciclo de dependencias (con el ciclo impreso, `a -> b -> c -> a`). Más el conflicto
+de mixins: dos plugins que aportan el mismo nombre de tabla se rechazan, porque si no el
+consumidor no puede saber cuál está componiendo y el diff de su migración dependería del orden
+de importación. `configure_identity` llama a `validate()`, igual que valida el modelo de
+usuario.
+
+**El orden de ejecución es topológico y determinista**: por `requires`, con
+`(priority, orden de registro)` como desempate. Si dependiera del hash de un set, el mismo
+cableado daría cadenas de hooks distintas entre corridas — y un bug que aparece una vez de cada
+tres no se diagnostica.
+
+**Los hooks son `(action, phase, handler, priority)` con comodines de `fnmatch`**, y los
+específicos corren **antes** que los de comodín: un hook de auditoría con `"*"` quiere ver el
+payload final, no el que llegó antes de que los específicos lo ajustaran. La acción sale de
+`@identity_action("user.sign_in")` o, si no está declarada, del nombre de la clase pasado a
+snake_case. Se declara explícitamente en todo lo que shippea Darwin porque derivarla ata el
+hook al nombre de la clase: renombrar el comando rompería en silencio los hooks de todos los
+plugins. `hooks_for(action, phase)` está memoizado — corre en cada mensaje, y sin cache cada
+uno pagaría un `fnmatch` por hook registrado.
+
+**Los hooks no mutan un `ctx` compartido: encadenan el payload.** Los mensajes son `frozen`,
+así que un hook que quiere cambiar algo devuelve una instancia nueva y el resultado alimenta al
+siguiente. Es el desvío deliberado de Better Auth, donde los hooks mutan un contexto y el orden
+se vuelve parte del contrato sin estar escrito en ningún lado.
+
+**`ShortCircuit` es el mecanismo de control de flujo**: en `before` saltea el handler **y los
+`before` que quedaban** (correrlos sería trabajo sobre una decisión ya tomada), y su `.result`
+se devuelve como resultado. Es con lo que un plugin responde por su cuenta: 2FA que exige el
+segundo factor, un bloqueo por país, una cuota agotada. En `after` el handler **ya corrió**, así
+que cortocircuitar reemplaza el resultado y no cancela el efecto — un plugin que quiera impedir
+la operación tiene que hacerlo en `before`.
+
+⚠️ **Cualquier otra excepción propaga, envuelta con el nombre del plugin, la fase y la acción.
+Falla cerrando.** Tragarla dejaría que un hook de autorización que explota se lea como uno que
+autorizó, que es el peor modo de falla posible para un sistema de plugins de auth.
+
+**`magic_link`, el de referencia.** Reusa la tabla `verification` con `purpose="magic_link"` en
+vez de aportar una propia: un magic link **es** un token de un solo uso con vencimiento,
+`attempts` y `consumed_at`, y una tabla equivalente le dejaría al consumidor dos migraciones y
+dos reapers para el mismo concepto. Canjearlo crea una sesión normal, así que revocación,
+rotación, transporte y CSRF funcionan sin saber que hubo un magic link. `POST /request`
+responde igual exista o no la cuenta —la diferencia va en si manda el mail— porque al revés
+sería un oráculo de enumeración en una ruta pública sin autenticación. El canje es **atómico**
+(`UPDATE ... WHERE consumed_at IS NULL RETURNING`), así que de dos clicks simultáneos
+exactamente uno gana; con un SELECT seguido de un UPDATE, "de un solo uso" sería falso
+justamente bajo concurrencia. Pedir uno nuevo invalida los pendientes: sin eso, cinco clicks en
+"reenviar" dejan cinco links válidos. TTL de 15 min, no 24 h: es una credencial de portador que
+queda en el buzón, en los logs del proveedor y en el historial del cliente. Y verifica el mail
+como efecto — quien probó que controla la casilla ya demostró lo que la verificación prueba.
+
+`session_response_body` (antes `_cuerpo`) **se hizo pública** por esto: el router del plugin
+devuelve la misma forma que `/auth/sign-in`, y que cada plugin armara su propio cuerpo dejaría
+que uno filtre los tokens en el cuerpo estando en modo cookie. Lo señaló pyright con
+`reportPrivateUsage`, que es exactamente para lo que sirve.
+
+**`hexcore/darwin/plugins/__init__.py` está vacío a propósito**: no hay discovery. Un plugin se
+registra escribiéndolo en el `PluginRegistry`, porque un plugin de auth que se activa solo por
+estar instalado es una superficie de ataque de cadena de suministro.
+
+**La sub-app de Typer** — el primer `add_typer` del repo: `identity_cli` con `generate-secret`,
+`generate-keys`, `create-tables`, `check-schema` (sale con 1, para poner en un pre-commit) y
+`plugins <módulo>` (imprime el orden resuelto, que es la única forma de confirmar que un plugin
+corre donde uno cree).
+
+⚠️ **`hexcore/__init__.py` importa `hexcore.infrastructure.cli` eagerly, y ese módulo hace
+`add_typer(identity_cli)`.** O sea que todo lo que `hexcore/darwin/infrastructure/cli.py`
+importe en el nivel superior se carga con cada `import hexcore`, en cualquier proceso, tenga o
+no los extras. Por eso ese módulo importa **sólo `typer` + stdlib** arriba y cada comando
+importa lo que necesita adentro de su cuerpo. Es el contrato más frágil de la fase, y lo
+custodian dos tests: uno lee el AST del módulo y otro cuenta los `hexcore.darwin.*` de
+`sys.modules` en un subproceso limpio.
+
+Tests (`test_darwin_plugins.py` 38, `test_darwin_magic_link.py` 27, `test_darwin_cli.py` 12):
+las cuatro validaciones del registro, cada una nombrando al culpable; orden topológico,
+transitividad, y los dos desempates; el registro vacío es *truthy* (sin `__bool__` explícito,
+un `if registro:` lo descartaría — el mismo defecto que `InMemoryTaskEnqueuer` documenta);
+comodines con `fnmatchcase` (`"User.*"` **no** matchea `user.sign_in`); específico antes que
+comodín aunque el comodín tenga prioridad menor; memoización de `hooks_for` aserteada contando
+llamadas, e invalidación al registrar; los cinco comportamientos de `ShortCircuit` y de la
+excepción que propaga; `HookMiddleware` compuesto en un `MiddlewarePipeline` real. De
+`magic_link`: el flujo completo contra SQLite; el token guardado como hash y no en claro
+(leyendo la fila por SQL, porque el repositorio no expone un `find` y no debería); **ocho
+canjes concurrentes del mismo token, exactamente uno gana**; reemitir invalida el anterior;
+vencido y justo-antes-de-vencer; el mail queda verificado; una cuenta bloqueada no entra por el
+link; y el borde HTTP con las dos respuestas indistinguibles y el rate limit frenando el cuarto
+pedido.
+
+Encontrado por los tests, no por la revisión: `generate-keys` llamaba
+`clave.model_dump(mode="json")` sobre un `SigningKey`, que **no es un modelo pydantic** —a
+propósito, para que un `model_dump()` accidental no volque la privada. El comando estaba roto
+en el único camino que importa. Ahora emite los dos JWK parseados, con el aviso por stderr para
+no ensuciar lo que se redirige al secret manager.
 
 ### Fase 9 — El resto de los plugins
 

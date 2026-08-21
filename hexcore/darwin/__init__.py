@@ -301,6 +301,16 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "hexcore.darwin.infrastructure.envelope",
         "auth_envelope_provider",
     ),
+    # ── Sistema de plugins (Fase 8) ──────────────────────────────────────────
+    "DarwinPlugin": ("hexcore.darwin.domain.plugins", "DarwinPlugin"),
+    "HookBinding": ("hexcore.darwin.domain.plugins", "HookBinding"),
+    "HookPhase": ("hexcore.darwin.domain.plugins", "HookPhase"),
+    "ShortCircuit": ("hexcore.darwin.domain.plugins", "ShortCircuit"),
+    "identity_action": ("hexcore.darwin.domain.plugins", "identity_action"),
+    "action_of": ("hexcore.darwin.domain.plugins", "action_of"),
+    "PluginRegistry": ("hexcore.darwin.application.plugins", "PluginRegistry"),
+    "PluginError": ("hexcore.darwin.application.plugins", "PluginError"),
+    "HookMiddleware": ("hexcore.darwin.application.hooks", "HookMiddleware"),
     # ── Borde HTTP (Fase 7 — requiere el extra [api]) ────────────────────────
     "TRANSPORT_HEADER": ("hexcore.darwin.infrastructure.transports", "TRANSPORT_HEADER"),
     "AbstractTransport": (
@@ -363,6 +373,10 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "build_identity_router",
     ),
     "emit_tokens": ("hexcore.darwin.infrastructure.api.routers", "emit_tokens"),
+    "session_response_body": (
+        "hexcore.darwin.infrastructure.api.routers",
+        "session_response_body",
+    ),
     "resolve_transport": (
         "hexcore.darwin.infrastructure.api.routers",
         "resolve_transport",

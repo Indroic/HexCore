@@ -9,7 +9,7 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 179 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 189 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
@@ -39,6 +39,9 @@ from hexcore.darwin.application.container import provide_identity as provide_ide
 from hexcore.darwin.application.container import provide_identity_config as provide_identity_config
 from hexcore.darwin.application.container import provide_session_service as provide_session_service
 from hexcore.darwin.application.container import reset_identity as reset_identity
+from hexcore.darwin.application.hooks import HookMiddleware as HookMiddleware
+from hexcore.darwin.application.plugins import PluginError as PluginError
+from hexcore.darwin.application.plugins import PluginRegistry as PluginRegistry
 from hexcore.darwin.application.services import IdentityService as IdentityService
 from hexcore.darwin.application.services import SessionService as SessionService
 from hexcore.darwin.domain.context import AUTH_CONTEXT as AUTH_CONTEXT
@@ -94,6 +97,12 @@ from hexcore.darwin.domain.permissions import Role as Role
 from hexcore.darwin.domain.permissions import RoleRegistry as RoleRegistry
 from hexcore.darwin.domain.permissions import default_registry as default_registry
 from hexcore.darwin.domain.permissions import reset_default_registry as reset_default_registry
+from hexcore.darwin.domain.plugins import DarwinPlugin as DarwinPlugin
+from hexcore.darwin.domain.plugins import HookBinding as HookBinding
+from hexcore.darwin.domain.plugins import HookPhase as HookPhase
+from hexcore.darwin.domain.plugins import ShortCircuit as ShortCircuit
+from hexcore.darwin.domain.plugins import action_of as action_of
+from hexcore.darwin.domain.plugins import identity_action as identity_action
 from hexcore.darwin.domain.ports import AbstractAccountRepository as AbstractAccountRepository
 from hexcore.darwin.domain.ports import AbstractAuditSink as AbstractAuditSink
 from hexcore.darwin.domain.ports import AbstractClock as AbstractClock
@@ -127,6 +136,7 @@ from hexcore.darwin.infrastructure.api.routers import VerifyEmailRequest as Veri
 from hexcore.darwin.infrastructure.api.routers import build_identity_router as build_identity_router
 from hexcore.darwin.infrastructure.api.routers import emit_tokens as emit_tokens
 from hexcore.darwin.infrastructure.api.routers import resolve_transport as resolve_transport
+from hexcore.darwin.infrastructure.api.routers import session_response_body as session_response_body
 from hexcore.darwin.infrastructure.clock import FixedClock as FixedClock
 from hexcore.darwin.infrastructure.clock import SystemClock as SystemClock
 from hexcore.darwin.infrastructure.envelope import AuthEnvelopeCodec as AuthEnvelopeCodec
@@ -237,6 +247,7 @@ __all__ = [
     "DEFAULT_SESSION_TABLE",
     "DEFAULT_USER_TABLE",
     "DEFAULT_VERIFICATION_TABLE",
+    "DarwinPlugin",
     "ENVELOPE_KEY",
     "ENVELOPE_VERSION",
     "Email",
@@ -244,6 +255,9 @@ __all__ = [
     "EmailNotVerifiedError",
     "FixedClock",
     "GenerationGuard",
+    "HookBinding",
+    "HookMiddleware",
+    "HookPhase",
     "IDENTITY_EXCEPTION_STATUS_MAP",
     "IDENTITY_MODELS",
     "IdentityConfig",
@@ -270,6 +284,8 @@ __all__ = [
     "PasswordPolicy",
     "Permission",
     "PermissionCycleError",
+    "PluginError",
+    "PluginRegistry",
     "Principal",
     "RefreshResult",
     "RefreshSession",
@@ -286,6 +302,7 @@ __all__ = [
     "SessionReuseDetectedEvent",
     "SessionRevokedEvent",
     "SessionService",
+    "ShortCircuit",
     "SignIn",
     "SignInRequest",
     "SignInResult",
@@ -334,6 +351,7 @@ __all__ = [
     "VerifyEmailRequest",
     "WWW_AUTHENTICATE",
     "WorkerContextIntegrityError",
+    "action_of",
     "audience_for",
     "auth_envelope_provider",
     "auth_from_request",
@@ -353,6 +371,7 @@ __all__ = [
     "generate_token",
     "get_identity_container",
     "hash_token",
+    "identity_action",
     "identity_exception_headers",
     "identity_startup_steps",
     "identity_tables",
@@ -371,6 +390,7 @@ __all__ = [
     "reset_default_registry",
     "reset_identity",
     "resolve_transport",
+    "session_response_body",
     "system_context",
     "validate_user_model",
 ]

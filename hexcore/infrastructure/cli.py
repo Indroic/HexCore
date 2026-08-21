@@ -8,6 +8,15 @@ app = typer.Typer(
     help="CLI para ayudar con tareas de desarrollo en el proyecto Euphoria."
 )
 
+# El primer `add_typer` del repo. La sub-app de Darwin sólo puede importar `typer` y stdlib en
+# su nivel superior: `hexcore/__init__.py` importa este módulo **eagerly**, así que todo lo que
+# esa sub-app cargue arriba se carga con `import hexcore` — en cualquier proceso, tenga o no
+# los extras. Sus comandos importan lo que necesitan dentro del cuerpo, igual que
+# `make_migrations` y `test` ya hacen con `subprocess`.
+from hexcore.darwin.infrastructure.cli import identity_cli  # noqa: E402
+
+app.add_typer(identity_cli, name="identity")
+
 # Las rutas se resuelven al ejecutar el comando, no al importar el módulo: `hexcore/__init__.py`
 # importa este módulo, así que una constante a nivel de módulo resolvía la configuración
 # en import time — antes de que la aplicación pudiera llamar a

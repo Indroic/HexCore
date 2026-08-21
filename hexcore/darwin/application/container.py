@@ -24,6 +24,7 @@ import typing as t
 
 if t.TYPE_CHECKING:
     from hexcore.darwin.application.config import IdentityConfig
+    from hexcore.darwin.application.plugins import PluginRegistry
     from hexcore.darwin.application.services import IdentityService, SessionService
     from hexcore.darwin.domain.ports import (
         AbstractAccountRepository,
@@ -98,6 +99,7 @@ class IdentityContainer:
         revocations: "AbstractRevocationList | None" = None,
         audit: "AbstractAuditSink | None" = None,
         events: "EventBus | None" = None,
+        plugins: "PluginRegistry | None" = None,
     ) -> None:
         self._config = config
         self._lock = threading.RLock()
@@ -113,6 +115,7 @@ class IdentityContainer:
         self._revocations = revocations
         self._audit = audit
         self._events = events
+        self._plugins = plugins
 
         # Cacheados.
         self._issuer: "JoserfcTokenIssuer | None" = None
@@ -125,6 +128,21 @@ class IdentityContainer:
     @property
     def config(self) -> "IdentityConfig":
         return self._config
+
+    @property
+    def plugins(self) -> "PluginRegistry":
+        """
+        Los plugins de este despliegue. Vacío si no se cableó ninguno.
+
+        Devuelve un registro vacío y no `None`: así el llamador no tiene que ramificar, y
+        `contenedor.plugins.routers()` funciona igual con cero plugins que con diez.
+        """
+        with self._lock:
+            if self._plugins is None:
+                from hexcore.darwin.application.plugins import PluginRegistry
+
+                self._plugins = PluginRegistry()
+            return self._plugins
 
     # ── Puertos ───────────────────────────────────────────────────────────────
     def clock(self) -> "AbstractClock":
@@ -397,6 +415,13 @@ def configure_identity(
     # `CQRSFactory._assert_enqueuer_for_background_commands`.
     if config.user_model is not None:
         validate_user_model(config.user_model)
+
+    # Los plugins se validan **al cablear**, igual que el modelo de usuario: nombre duplicado,
+    # `requires` inexistente, ciclo y conflicto de tablas son errores de cableado, y descubrir
+    # cualquiera de ellos en el primer request de producción ya llegó tarde.
+    registro = componentes.get("plugins")
+    if registro is not None:
+        registro.validate()
 
     with _container_lock:
         _container = IdentityContainer(config, **componentes)
