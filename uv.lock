@@ -643,6 +643,7 @@ all = [
     { name = "beanie" },
     { name = "celery" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "joserfc" },
     { name = "pika" },
     { name = "procrastinate" },
@@ -661,6 +662,9 @@ darwin = [
     { name = "fastapi" },
     { name = "joserfc" },
     { name = "sqlalchemy" },
+]
+darwin-oauth = [
+    { name = "httpx" },
 ]
 mongo = [
     { name = "beanie" },
@@ -715,6 +719,8 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'all'", specifier = ">=0.116.1" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.116.1" },
     { name = "fastapi", marker = "extra == 'darwin'", specifier = ">=0.116.1" },
+    { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27.0" },
+    { name = "httpx", marker = "extra == 'darwin-oauth'", specifier = ">=0.27.0" },
     { name = "joserfc", marker = "extra == 'all'", specifier = ">=1.0.0" },
     { name = "joserfc", marker = "extra == 'darwin'", specifier = ">=1.0.0" },
     { name = "pika", marker = "extra == 'all'", specifier = ">=1.3.2" },
@@ -729,7 +735,7 @@ requires-dist = [
     { name = "sqlalchemy", marker = "extra == 'sql'", specifier = ">=2.0.43" },
     { name = "typer", specifier = ">=0.17.3" },
 ]
-provides-extras = ["api", "redis", "mongo", "sql", "rabbitmq", "procrastinate", "celery", "darwin", "all"]
+provides-extras = ["api", "redis", "mongo", "sql", "rabbitmq", "procrastinate", "celery", "darwin", "darwin-oauth", "all"]
 
 [package.metadata.requires-dev]
 dev = [

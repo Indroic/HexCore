@@ -45,6 +45,11 @@ darwin = [
     "joserfc>=1.0.0",
     "argon2-cffi>=23.1.0",
 ]
+# `[darwin-oauth]` suma httpx: el flujo de Authorization Code necesita hablarle al endpoint
+# de token del proveedor. Va aparte de `[darwin]` porque un despliegue con sólo contraseña o
+# magic link no lo necesita, y el cliente HTTP esta detras de un puerto (asi que los tests del
+# flujo tampoco).
+darwin-oauth = ["httpx>=0.27.0"]
 all = [
     "fastapi>=0.116.1",
     "redis>=6.4.0",
@@ -58,7 +63,8 @@ all = [
     "procrastinate>=3.0.0",
     "celery>=5.4.0",
     "joserfc>=1.0.0",
-    "argon2-cffi>=23.1.0"
+    "argon2-cffi>=23.1.0",
+    "httpx>=0.27.0"
 ]
 
 

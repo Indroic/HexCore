@@ -1266,7 +1266,7 @@ no ensuciar lo que se redirige al secret manager.
 
 ### Fase 9 — El resto de los plugins
 
-Orden: `two_factor` ✅ → `oauth` → `impersonate` (**depende de la Fase 6**; techo de 60 min no
+Orden: `two_factor` ✅ → `oauth` ✅ → `impersonate` (**depende de la Fase 6**; techo de 60 min no
 renovable; refresh → 403; toda acción auditada con los dos principales) → `passkey` →
 `organization`.
 
@@ -1385,6 +1385,128 @@ intentos; desactivar exige código. Del borde: el 401 sin cookies, el flujo comp
 `exception_status_map()`, y el rate limit frenando el canje número once. Y dos tests de que el
 punto de extensión **no es de `two_factor`**: un bloqueo por país corta el sign-in igual, y un
 hook con un bug no deja entrar a nadie.
+
+#### `oauth` ✅ — Authorization Code + PKCE, y la vinculación que no se hace sola
+
+Reusa la tabla `account` del núcleo, que ya está diseñada para esto: `provider_id` +
+`account_id` con `UNIQUE`, más las seis columnas de tokens. Aporta una tabla propia sólo para el
+`state` en vuelo.
+
+⚠️ **La decisión que más importa: por default NO se vincula por coincidencia de mail.** Es la toma
+de cuentas más común de OAuth. Si Ana tiene cuenta local con `ana@ejemplo.com` y el flujo trae una
+identidad de proveedor con ese mail, vincularlas automáticamente deja que cualquiera que consiga
+registrar `ana@ejemplo.com` en *cualquier* IdP configurado entre a su cuenta — y hay IdPs que no
+verifican el mail, u otros donde se puede cambiar sin re-verificar. El default es
+`LinkPolicy.NEVER`, y la coincidencia produce un 409 que le dice al usuario que inicie sesión con
+su método actual y vincule desde los ajustes. La vinculación explícita es la única segura.
+
+`VERIFIED_EMAIL` existe para despliegues con un único IdP corporativo, y exige **las dos**
+verificaciones —la del proveedor y la de la cuenta local— porque cada una sola deja una mitad del
+agujero abierta. `ANY_EMAIL` es la insegura, disponible sólo para migraciones desde sistemas que
+ya lo hacían, con la advertencia puesta en el código.
+
+**PKCE es obligatorio y `S256`, nunca `plain`.** `plain` manda el verificador en la URL de
+autorización, o sea que cualquiera que vea esa URL —historial, log de proxy, `Referer`— puede
+canjear el código. La RFC 7636 permite `plain` sólo para clientes que no pueden hacer SHA-256, que
+en Python no existen.
+
+**Por qué el `state` tiene tabla propia y no reusa `verification`.** Necesita guardar el
+`code_verifier` de PKCE, el `redirect_uri` con el que se inició, y a qué usuario se vincula;
+`verification` tiene un `value_hash` y nada más. Y el verificador **no puede** viajar en el
+`state` —que es lo que permitiría meterlo en la tabla genérica— porque el `state` va en la URL:
+un verificador en la URL anula PKCE por completo. Guardarlo del lado del servidor es toda la
+protección.
+
+El `state` se guarda **hasheado** (viaja por la URL y queda en logs del proveedor), es de un solo
+uso vía `UPDATE ... WHERE consumed_at IS NULL RETURNING`, está atado al `provider_id` —un `state`
+de Google no se canjea en el callback de GitHub— y **se consume antes de hablar con el
+proveedor**, así que un `state` inválido no gasta una llamada de red contra un tercero. Un canje
+fallido **igual lo consume**: es un vale de un solo uso para *intentar*, y dejarlo vivo permitiría
+reintentar indefinidamente.
+
+**El `redirect_uri` se valida dos veces**: contra una allowlist al iniciar, y contra el guardado
+en el callback. El proveedor ya valida el suyo, pero eso no cubre dos URIs ambas registradas: sin
+el segundo chequeo, un flujo iniciado para una se puede completar en la otra. Con la allowlist
+vacía no se valida —deliberado, para desarrollo— y un `StartupStep` lo avisa por log en el
+arranque en vez de fallar.
+
+**El perfil sale del `userinfo`, no del `id_token`.** Verificar un `id_token` bien exige traer y
+cachear el JWKS de cada proveedor y validar `iss`/`aud`/firma; usarlo sin verificar es peor que no
+usarlo, porque viene del mismo canal que un atacante controlaría. El `userinfo` da lo mismo sobre
+un canal ya autenticado con un access token que el proveedor emitió recién.
+
+**`email_verified` por default es `False`**, y un proveedor que no lo informa se trata como no
+verificado. GitHub lo marca `False` **siempre**, porque `/user` no informa el campo: asumirlo
+sería tomar la palabra de algo que el proveedor no dice. Un usuario creado por OAuth copia el
+valor del proveedor y no asume `True`: esa afirmación después la usan otros flujos, como el reset
+de contraseña.
+
+**Los tokens del proveedor se guardan cifrados** con `SecretBox` (JWE `dir` + `A256GCM`, AEAD,
+clave derivada por etiqueta). Son credenciales de otro sistema: un dump que las entregue en claro
+es un incidente en la API del tercero además del propio, y el usuario ni se enteraría de que su
+cuenta de Google quedó expuesta por una base nuestra. El cifrado se **factorizó** de
+`two_factor`: `SecretBox` con `label` es la pieza reusable, y `TotpSecretCipher` quedó como una
+subclase de cuatro líneas que fija su etiqueta. Cada propósito tiene su etiqueta y por lo tanto su
+clave.
+
+**Desvincular se niega a dejar la cuenta sin ningún método de acceso.** Desvincular el único
+proveedor de un usuario que no tiene contraseña lo deja afuera de su propia cuenta, y ese botón
+está a un click en cualquier pantalla de ajustes. Y una identidad ya vinculada a otra cuenta **no
+se mueve**: moverla dejaría a la primera sin su método de acceso.
+
+**A quién se vincula sale del `state`**, fijado al iniciar el flujo, y no del callback — que lo
+controla en parte quien maneja el navegador. Ni vincular ni desvincular se permiten estando
+impersonado: sería tomarle la cuenta a la persona que estás impersonando.
+
+Los proveedores son **datos y una función**: tres URLs, el client, los scopes y cómo se lee el
+`userinfo`. No hay una clase por proveedor con métodos sobreescribibles, porque lo único que varía
+de verdad es la forma del JSON. Vienen preconfigurados Google, GitHub, Microsoft, GitLab y
+Discord, como **funciones** —necesitan `client_id` y `client_secret`, y una constante con los
+campos vacíos invita a olvidarse de llenar uno—. Las URLs se exigen HTTPS (por HTTP viajarían en
+claro el `code` y el `client_secret`), con `localhost` permitido para desarrollo. Google pide
+`access_type=offline` por default: sin eso **no devuelve refresh token**, y el access token
+guardado deja de servir en una hora sin forma de renovarlo — el detalle que hace que la
+integración parezca funcionar en el test y falle al día siguiente. No hay descubrimiento por
+`.well-known`: sería una llamada de red en el arranque contra un tercero, y las URLs de los
+proveedores grandes no cambian.
+
+El cliente HTTP está detrás de un puerto (`AbstractOAuthHttpClient`) con un adaptador de `httpx`
+en el extra nuevo **`[darwin-oauth]`**. El puerto no es ceremonia: los 69 tests ejercitan el flujo
+completo con un doble que puede *mentir* —devolver un mail que no verificó, un `account_id`
+distinto, un 400— sin levantar un servidor ni necesitar el extra. El adaptador pone timeout
+explícito (sin él `httpx` espera indefinidamente y un proveedor colgado ocupa workers),
+`follow_redirects=False` (un `token_url` que redirige mandaría el `client_secret` a otro host),
+`Accept: application/json` (GitHub responde form-urlencoded si no se le pide), y **no propaga el
+cuerpo de error del proveedor** al usuario: puede traer el `client_id` o un fragmento del secreto.
+
+⚠️ **El callback devuelve JSON, no un redirect al frontend.** Un redirect con los tokens en el
+fragmento o en la query los deja en el historial del navegador y en el `Referer` de la página
+siguiente.
+
+El puerto y la entidad del `state` viven en `domain.py` y no en `repository.py`, y eso lo
+descubrió `tests/test_optional_dependencies.py`: `repository.py` importa sqlalchemy en el nivel
+superior, así que tenerlos ahí hacía que importar el servicio exigiera el extra `[sql]`.
+
+Tests (`test_darwin_oauth.py`, 69): PKCE en el rango de la RFC, el desafío no revela el
+verificador, `S256` fijo. De los proveedores: los cinco preconfigurados se arman, el secreto no
+aparece en el `repr`, HTTP se rechaza y `localhost` se permite, `email_verified` normaliza el
+string `"true"`, GitHub nunca lo marca verificado, dos proveedores con el mismo `id` se rechazan.
+Del inicio: la URL lleva los ocho parámetros de la spec, **el verificador no está en la URL** y el
+desafío de la URL corresponde al verificador guardado, el `state` va hasheado, un
+`redirect_uri` fuera de la allowlist se rechaza. Del callback: crea la primera vez y entra la
+segunda, el canje recibe el verificador y el secreto, el perfil sale del `userinfo` con el access
+token, `email_verified` se respeta. Del `state`: un solo uso, inventado, **no se llama al
+proveedor con un `state` malo**, vencido, `redirect_uri` que no coincide, y **ocho callbacks
+concurrentes donde gana uno**. De la vinculación: **el test de la toma de cuentas** (Ana tiene
+cuenta, el atacante trae su mail, no entra) y que el rechazo no deja nada vinculado a medias; las
+dos verificaciones de `VERIFIED_EMAIL` por separado; `ANY_EMAIL` documentada como lo que es; a
+quién se vincula sale del `state` (probado con dos usuarios); una identidad ajena no se mueve. De
+los tokens: se guardan cifrados, se descifran para llamar a la API, el vencimiento sale del
+`expires_in`, y sin refresh token no explota. De desvincular: no deja la cuenta sin acceso, con
+contraseña sí se puede. Del borde: las siete rutas, el 404 del proveedor no configurado, el 409
+del mail coincidente llegando por `exception_status_map()`, y el flujo de vinculación completo por
+HTTP. Más un test de que `oauth` y `two_factor` conviven en el mismo registro sin chocar tablas ni
+mapas.
 
 ### Fase 10 — Kit de testing, docs, deprecaciones
 

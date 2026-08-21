@@ -140,6 +140,42 @@ import pytest
     ("fastapi", "hexcore.darwin.plugins.two_factor.commands"),
     ("joserfc", "hexcore.darwin.plugins.two_factor.commands"),
     ("argon2", "hexcore.darwin.plugins.two_factor.commands"),
+    # La caja de cifrado usa joserfc **adentro de los métodos**: nombrar la clase no lo
+    # arrastra. Es lo que permite importarla desde un módulo de dominio.
+    ("sqlalchemy", "hexcore.darwin.infrastructure.secretbox"),
+    ("fastapi", "hexcore.darwin.infrastructure.secretbox"),
+    ("argon2", "hexcore.darwin.infrastructure.secretbox"),
+    # ── Fase 9: oauth ─────────────────────────────────────────────────────────
+    # PKCE es `hashlib` + `secrets`, y el puerto HTTP es una ABC: nada de esto depende de
+    # httpx, que va en `[darwin-oauth]`. Es lo que permite que el borde HTTP importe el mapa
+    # de excepciones sin el extra, y que un test del flujo no necesite red.
+    ("httpx", "hexcore.darwin.plugins.oauth.domain"),
+    ("sqlalchemy", "hexcore.darwin.plugins.oauth.domain"),
+    ("fastapi", "hexcore.darwin.plugins.oauth.domain"),
+    ("joserfc", "hexcore.darwin.plugins.oauth.domain"),
+    ("argon2", "hexcore.darwin.plugins.oauth.domain"),
+    # Los descriptores de proveedor son pydantic y `urllib`.
+    ("httpx", "hexcore.darwin.plugins.oauth.providers"),
+    ("sqlalchemy", "hexcore.darwin.plugins.oauth.providers"),
+    ("fastapi", "hexcore.darwin.plugins.oauth.providers"),
+    ("joserfc", "hexcore.darwin.plugins.oauth.providers"),
+    # El plugin y su servicio resuelven todo perezosamente. `httpx` en particular: un
+    # despliegue que cablea el plugin con su propio cliente HTTP no tiene por qué instalarlo.
+    ("httpx", "hexcore.darwin.plugins.oauth"),
+    ("sqlalchemy", "hexcore.darwin.plugins.oauth"),
+    ("fastapi", "hexcore.darwin.plugins.oauth"),
+    ("joserfc", "hexcore.darwin.plugins.oauth"),
+    ("argon2", "hexcore.darwin.plugins.oauth"),
+    ("httpx", "hexcore.darwin.plugins.oauth.service"),
+    ("sqlalchemy", "hexcore.darwin.plugins.oauth.service"),
+    ("fastapi", "hexcore.darwin.plugins.oauth.service"),
+    ("joserfc", "hexcore.darwin.plugins.oauth.service"),
+    # El adaptador de httpx: importarlo no lo exige, porque el `import httpx` está adentro de
+    # `_abrir`. Es lo que hace que el error sea el mensaje con `pip install` y no un
+    # `ModuleNotFoundError` en el arranque.
+    ("httpx", "hexcore.darwin.plugins.oauth.http"),
+    ("sqlalchemy", "hexcore.darwin.plugins.oauth.http"),
+    ("fastapi", "hexcore.darwin.plugins.oauth.http"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.
