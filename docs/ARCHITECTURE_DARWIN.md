@@ -1266,9 +1266,7 @@ no ensuciar lo que se redirige al secret manager.
 
 ### Fase 9 — El resto de los plugins
 
-Orden: `two_factor` ✅ → `oauth` ✅ → `impersonate` (**depende de la Fase 6**; techo de 60 min no
-renovable; refresh → 403; toda acción auditada con los dos principales) → `passkey` →
-`organization`.
+Orden: `two_factor` ✅ → `oauth` ✅ → `impersonate` ✅ → `passkey` → `organization`.
 
 #### `two_factor` ✅ — TOTP, y el punto de extensión del sign-in
 
@@ -1507,6 +1505,94 @@ contraseña sí se puede. Del borde: las siete rutas, el 404 del proveedor no co
 del mail coincidente llegando por `exception_status_map()`, y el flujo de vinculación completo por
 HTTP. Más un test de que `oauth` y `two_factor` conviven en el mismo registro sin chocar tablas ni
 mapas.
+
+#### `impersonate` ✅ — el plugin que justifica los dos principales
+
+Es el plugin que existe para probar que la decisión central de Darwin era la correcta: que
+`AuthContext` tenga **dos** principales —`actor`, quien ejecuta, y `subject`, a quién afecta— en
+vez de un `user_id` con un flag al costado. Con eso, una impersonación es una sesión normal con los
+dos campos distintos, y todo el resto —revocación, transporte, CSRF, auditoría, el sobre que cruza
+la cola— funciona sin saber que hay una impersonación en curso.
+
+**No aporta ninguna tabla.** La fila de `session` ya lleva `actor_user_id`, `subject_user_id`,
+`impersonation_reason`, `impersonation_granted_by` e `impersonation_expires_at` desde la Fase 3,
+justamente para que este plugin no tuviera que inventar nada. Lo que agrega es la **autorización**
+y los tres endpoints.
+
+**La política es un puerto, no una lista de scopes.** Un scope alcanza para "¿puede impersonar?" y
+no para "¿puede impersonar *a esta persona*?", que es la pregunta que importa: un agente de soporte
+que puede entrar como cualquier cliente no debería poder entrar como el CTO. El default
+—`ScopeImpersonationPolicy`— cubre el caso común y cierra las cuatro puertas, en este orden:
+
+1. **No hay cadenas.** Si A impersona a B y desde ahí impersona a C, la auditoría de la segunda
+   dice que el actor es B — que nunca hizo nada. Es la forma más barata de borrar la traza, y por
+   eso se corta antes que cualquier otro chequeo.
+2. **No se impersona a uno mismo.** No es peligroso, pero produciría una sesión con
+   `actor == subject` marcada como impersonada, que es exactamente el estado que el validador de
+   `AuthContext` prohíbe.
+3. **El actor necesita el scope**, consultado del actor y nunca del subject.
+4. **El sujeto puede estar protegido**: por tener él mismo el permiso de impersonar (escalada
+   lateral con la traza borrada, protegido por default) o por tener un scope de la lista de
+   protegidos.
+
+⚠️ **Una sesión impersonada NO se puede refrescar, y ese es el mecanismo que hace real el techo de
+60 minutos.** El chequeo está en `SessionService.refresh` —es una propiedad del núcleo, porque la
+fila ya sabe si es impersonada— y va **antes** de `consume_for_rotation`: consumir la fila y
+después rechazar dejaría la sesión inutilizable por lo que le queda de hora. Sin este rechazo, el
+techo sería "60 minutos por rotación", o sea ninguno: el operador extendería la sesión
+indefinidamente sin volver a pedir permiso ni dejar un segundo registro de auditoría.
+`IMPERSONATION_CAP` pasó a ser una constante nombrada, con el porqué del número en su comentario.
+
+**Impersonar no presta permisos.** Los scopes del token impersonado son los del **actor**: el
+operador ve lo que el otro ve y puede hacer lo que él mismo puede hacer. Si fueran los del subject,
+impersonar a un admin daría los permisos del admin, y la política que protege a los admins sería
+la única defensa — una capa donde tendría que haber dos.
+
+**La sesión del operador no se toca.** Empezar no la revoca, así que terminar es descartar el token
+de impersonación: no hay que reconstruir nada, y si el operador cierra la pestaña la impersonación
+muere sola con su techo. Sin esta propiedad, "volver" sería un segundo intercambio que puede fallar
+a mitad de camino.
+
+**La política decide antes de que exista cualquier sesión.** Si autorizara después de crearla, un
+rechazo dejaría una sesión impersonada huérfana que hay que revocar — y el camino de limpieza es
+el que falla. Hay un test que cuenta las filas de `session` antes y después de un rechazo.
+
+**Un principal de sistema no puede impersonar**: `"cron:cerrar-registros"` no es una persona, no
+tiene fila en `user`, y no hay a quién responsabilizar del acceso.
+
+Los comandos **no llevan `actor_id`**: sale del contexto ambiental. Un campo que el llamador
+rellena es un campo que el llamador puede mentir, y acá mentirlo sería impersonar en nombre de
+otro. Que el contexto llegue al worker lo resuelve el sobre firmado de la Fase 6 — y hay un test
+que lo comprueba de punta a punta, incluido que re-adjuntar el sobre a otro mensaje no verifica.
+
+`describe()` **lee la fila de `session`**, y es la segunda excepción deliberada al "cero DB en el
+camino caliente" después de `/auth/me`. El motivo y el vencimiento real no viajan en el token: el
+motivo es texto de largo arbitrario, y el vencimiento del techo sería un claim más pagado en cada
+petición para un caso raro. Es una lectura por carga de página, no por request.
+
+El `StartupStep` del plugin **avisa si no hay sink de auditoría**. Avisa y no falla —la auditoría
+es opcional en el resto de Darwin, y hacerla obligatoria acá rompería un despliegue que
+funciona— pero una impersonación sin auditoría es exactamente lo que este plugin promete que no
+pasa, así que el aviso va en el arranque y no en un docstring.
+
+Tests (`test_darwin_impersonate.py`, 48): las cuatro puertas de la política, cada una por
+separado; la protección de impersonadores apagable, con el test documentando qué se pierde; una
+política propia; un `extra` mal formado que no da 500 ni pase libre. De los requisitos: sin
+contexto, motivo vacío en tres formas, sujeto inexistente con el error genérico, principal de
+sistema. De la sesión: los dos principales en la fila, el techo de una hora, `act`/`sub`/`imp` en
+el token, **impersonar no presta permisos**, el contexto reconstruido consulta al actor, y la
+sesión del operador sobrevive. Del refresh: se rechaza, **el rechazo no consume la fila** ni
+dispara la detección de reuso, y una sesión normal sí se rota. De la auditoría: inicio y fin con
+los dos principales, el `operator_session_id` para poder correlacionar, y que un rechazo no deja
+sesión. Del sobre: el contexto impersonado cruza la cola con los dos principales, sale con
+`transport="worker"`, y no verifica re-adjuntado a otro mensaje. Del borde: el flujo completo, 403
+sin el scope, 401 sin sesión, 422 con motivo vacío, 409 al impersonarse a sí mismo, 409 al
+terminar una sesión normal, y **403 al refrescar impersonando**.
+
+Encontrado por un test, no por la revisión: `/{user_id}` estaba declarado **antes** de `/stop`, y
+FastAPI resuelve las rutas en orden de registro — así que `POST /auth/impersonate/stop` matcheaba
+la ruta paramétrica e intentaba parsear `"stop"` como UUID, devolviendo 422 en vez de terminar la
+impersonación.
 
 ### Fase 10 — Kit de testing, docs, deprecaciones
 

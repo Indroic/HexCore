@@ -176,6 +176,26 @@ import pytest
     ("httpx", "hexcore.darwin.plugins.oauth.http"),
     ("sqlalchemy", "hexcore.darwin.plugins.oauth.http"),
     ("fastapi", "hexcore.darwin.plugins.oauth.http"),
+    # ── Fase 9: impersonate ───────────────────────────────────────────────────
+    # No aporta tabla —la impersonación está modelada en `session` desde la Fase 3— y su
+    # dominio es la política más las excepciones. El borde HTTP importa el mapa de status, así
+    # que nada de esto puede exigir un extra.
+    ("sqlalchemy", "hexcore.darwin.plugins.impersonate.domain"),
+    ("fastapi", "hexcore.darwin.plugins.impersonate.domain"),
+    ("joserfc", "hexcore.darwin.plugins.impersonate.domain"),
+    ("argon2", "hexcore.darwin.plugins.impersonate.domain"),
+    ("sqlalchemy", "hexcore.darwin.plugins.impersonate"),
+    ("fastapi", "hexcore.darwin.plugins.impersonate"),
+    ("joserfc", "hexcore.darwin.plugins.impersonate"),
+    ("argon2", "hexcore.darwin.plugins.impersonate"),
+    ("sqlalchemy", "hexcore.darwin.plugins.impersonate.service"),
+    ("fastapi", "hexcore.darwin.plugins.impersonate.service"),
+    ("joserfc", "hexcore.darwin.plugins.impersonate.service"),
+    ("argon2", "hexcore.darwin.plugins.impersonate.service"),
+    ("sqlalchemy", "hexcore.darwin.plugins.impersonate.commands"),
+    ("fastapi", "hexcore.darwin.plugins.impersonate.commands"),
+    ("joserfc", "hexcore.darwin.plugins.impersonate.commands"),
+    ("argon2", "hexcore.darwin.plugins.impersonate.commands"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.

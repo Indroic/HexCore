@@ -45,6 +45,7 @@ from hexcore.darwin.domain.exceptions import (
     AccountLockedError,
     EmailAlreadyRegisteredError,
     EmailNotVerifiedError,
+    ImpersonationNotPermittedError,
     InvalidCredentialsError,
     TokenExpiredError,
     TokenMalformedError,
@@ -72,7 +73,12 @@ if t.TYPE_CHECKING:
     )
     from hexcore.domain.events import EventBus
 
-__all__ = ["SessionService", "IdentityService", "SIGN_IN_AUTHENTICATED"]
+__all__ = [
+    "SessionService",
+    "IdentityService",
+    "SIGN_IN_AUTHENTICATED",
+    "IMPERSONATION_CAP",
+]
 
 #: El punto de extensión del sign-in: la contraseña ya se validó y la sesión **todavía no
 #: existe**.
@@ -89,6 +95,14 @@ SIGN_IN_AUTHENTICATED = "user.sign_in.authenticated"
 #: red, dispara "reuso de token" y se auto-desloguea de todos lados. Es el falso positivo más
 #: común de la detección de reuso, y el que hace que los equipos la terminen desactivando.
 GRACE_WINDOW = timedelta(seconds=10)
+
+#: Techo de vida de una sesión impersonada, **no renovable**.
+#:
+#: 60 minutos: alcanza para atender un caso de soporte y no alcanza para que la sesión quede
+#: abierta en una pestaña olvidada. Y es un techo duro y no un TTL renovable porque una
+#: impersonación que se renueva sola es una cuenta compartida con pasos extra: el operador entra
+#: una vez y se queda, y la auditoría dice "una impersonación" donde hubo tres días de acceso.
+IMPERSONATION_CAP = timedelta(minutes=60)
 
 
 class SessionService:
@@ -175,7 +189,7 @@ class SessionService:
             impersonation_reason=impersonation_reason,
             impersonation_granted_by=impersonation_granted_by,
             impersonation_expires_at=(
-                ahora + timedelta(minutes=60) if es_impersonacion else None
+                ahora + IMPERSONATION_CAP if es_impersonacion else None
             ),
         )
         sesion = await self._sessions.add(sesion)
@@ -315,6 +329,19 @@ class SessionService:
 
         if anterior.revoked_at is not None:
             raise TokenRevokedError("La sesión fue revocada.")
+
+        # ⚠️ Una sesión impersonada **no se rota**, y ese es el mecanismo que hace que el techo
+        # de 60 minutos sea real. Si se pudiera refrescar, el operador extendería la sesión
+        # indefinidamente sin volver a pedir permiso ni dejar un segundo registro de auditoría:
+        # el techo pasaría a ser "60 minutos por refresh", o sea ninguno.
+        #
+        # Se chequea **antes** de `consume_for_rotation` a propósito: consumir la fila y después
+        # rechazar dejaría la sesión inutilizable por lo que queda de su hora.
+        if anterior.is_impersonated:
+            raise ImpersonationNotPermittedError(
+                "Una sesión impersonada no se puede refrescar. Su techo de vida es duro: "
+                "cuando vence, hay que volver a pedir la impersonación."
+            )
 
         consumida = await self._sessions.consume_for_rotation(claims.sid, at=ahora)
         if consumida is None:
