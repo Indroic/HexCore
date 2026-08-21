@@ -223,6 +223,22 @@ import pytest
     ("webauthn", "hexcore.darwin.plugins.passkey.webauthn_adapter"),
     ("sqlalchemy", "hexcore.darwin.plugins.passkey.webauthn_adapter"),
     ("fastapi", "hexcore.darwin.plugins.passkey.webauthn_adapter"),
+    # ── Fase 9: organization ──────────────────────────────────────────────────
+    # No agrega dependencias. El dominio son las entidades, los roles, los tres puertos y las
+    # excepciones: lo importa el borde HTTP para mapear los status.
+    ("sqlalchemy", "hexcore.darwin.plugins.organization.domain"),
+    ("fastapi", "hexcore.darwin.plugins.organization.domain"),
+    ("joserfc", "hexcore.darwin.plugins.organization.domain"),
+    ("argon2", "hexcore.darwin.plugins.organization.domain"),
+    # El plugin y su servicio resuelven todo perezosamente, incluidos los tres mixins.
+    ("sqlalchemy", "hexcore.darwin.plugins.organization"),
+    ("fastapi", "hexcore.darwin.plugins.organization"),
+    ("joserfc", "hexcore.darwin.plugins.organization"),
+    ("argon2", "hexcore.darwin.plugins.organization"),
+    ("sqlalchemy", "hexcore.darwin.plugins.organization.service"),
+    ("fastapi", "hexcore.darwin.plugins.organization.service"),
+    ("joserfc", "hexcore.darwin.plugins.organization.service"),
+    ("argon2", "hexcore.darwin.plugins.organization.service"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.

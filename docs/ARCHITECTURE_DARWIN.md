@@ -1264,9 +1264,10 @@ propósito, para que un `model_dump()` accidental no volque la privada. El coman
 en el único camino que importa. Ahora emite los dos JWK parseados, con el aviso por stderr para
 no ensuciar lo que se redirige al secret manager.
 
-### Fase 9 — El resto de los plugins
+### Fase 9 — El resto de los plugins ✅
 
-Orden: `two_factor` ✅ → `oauth` ✅ → `impersonate` ✅ → `passkey` ✅ → `organization`.
+Los cinco: `two_factor` ✅, `oauth` ✅, `impersonate` ✅, `passkey` ✅, `organization` ✅.
+Con `magic_link` de la Fase 8, Darwin shippea **seis** plugins.
 
 #### `two_factor` ✅ — TOTP, y el punto de extensión del sign-in
 
@@ -1693,6 +1694,89 @@ el error genérico. Del borde: el flujo completo por HTTP, el resumen sin la cre
 desconocido indistinguible, 401 sin sesión, **401 con contador clonado**, 409 al borrar la última,
 404 con una inexistente. Más un test de que los cuatro plugins conviven en un registro con sus
 cinco mixins sin chocar.
+
+#### `organization` ✅ — multi-tenancy, y las invariantes que casi nadie sostiene
+
+Tres tablas —`organization`, `member`, `invitation`— y una jerarquía de tres roles: `owner` >
+`admin` > `member`. **No hay un sistema de permisos por organización**, y es deliberado: HexCore ya
+tiene `RoleRegistry` para que el consumidor declare su modelo de autorización, y un segundo sistema
+adentro del plugin le daría dos lugares donde mirar cuando algo no autoriza. Lo que el plugin
+garantiza es **quién puede administrar a quién**; qué puede hacer un `member` en tu producto es
+tuyo.
+
+`OrgRole.rank` existe porque el orden alfabético de `admin` < `member` < `owner` es exactamente el
+equivocado: un `>` sobre los nombres pasaría los tests por casualidad en algunos pares. Y
+`outranks` es **estricto**: un par no administra a un par.
+
+⚠️ **Invariante 1: una organización nunca queda sin `owner`.** Sacar o degradar al último la vuelve
+inadministrable —nadie puede invitar, nadie puede cambiar roles— y salir de ahí requiere un `UPDATE`
+a mano en producción.
+
+La primera implementación contaba los owners en la base y después actualizaba, con un comentario que
+decía que contar en la base era lo que hacía la operación segura. **Eso era falso, y lo demostró un
+test**: contar y después escribir sigue siendo check-then-act, y dos degradaciones concurrentes
+—cada una viendo "hay 2 owners"— dejaron la organización con **cero**. La corrección es meter la
+condición adentro del `WHERE` del `UPDATE`/`DELETE`, como subconsulta correlacionada `EXISTS`: una
+sola sentencia, y la decisión la toma la base. Es el mismo patrón que `consume_for_rotation` y
+`consume_step`, y el episodio deja claro que "la consulta va a la base" no es lo mismo que "la
+operación es atómica". `count_by_role` sigue existiendo pero quedó marcado como **informativo**:
+sirve para mostrarle al usuario "sos el único owner" antes de que apriete el botón, no para decidir.
+
+⚠️ **Invariante 2: nadie asciende a alguien por encima de sí mismo, ni actúa sobre un par o un
+superior.** Tres chequeos, cada uno cerrando una escalada: no se invita con un rol mayor al propio
+(un `admin` que invita un cómplice como `owner` es la escalada más barata del modelo, y pasa por un
+endpoint que suena inofensivo), no se asciende uno mismo, y no se degrada ni se saca a un par ni a
+un superior.
+
+⚠️ **Invariante 3: la invitación está atada al mail, y el mail tiene que estar verificado.**
+Reenviar el link de invitación es exactamente lo que la gente hace; sin el chequeo, quien lo reciba
+entra con el rol que se le había dado a otro. Y sin exigir la verificación, alguien registra una
+cuenta con el mail del invitado y le roba la invitación **sin acceso a la casilla**. El mail se
+chequea **antes** de consumir la invitación: consumirla primero y rechazar después la gastaría, y el
+invitado legítimo tendría que pedir otra por un intento que no era suyo.
+
+El token de invitación se guarda **hasheado** —el link viaja por mail y queda en el buzón, en los
+logs del proveedor y en el historial del cliente— y se canjea con un `UPDATE ... WHERE status =
+'pending' RETURNING`: sin eso, dos aceptaciones concurrentes crearían dos membresías y el `UNIQUE`
+rechazaría la segunda con un error de base en vez de con un mensaje. Revocar **marca** la fila y no
+la borra: una invitación revocada es información de auditoría — dice que alguien invitó y después se
+arrepintió, y `invited_by` dice quién.
+
+**`require_role` es una lectura por operación con alcance de organización, y no va en el token.** Un
+`org_role` en el access token queda obsoleto cuando alguien degrada a un `admin`, y seguiría
+valiendo hasta que el token venza — que es exactamente lo que no se quiere de un cambio de permisos.
+
+**El `owner` se crea en el mismo flujo que la organización**, no en un paso aparte: una organización
+sin `owner` es inadministrable desde el segundo cero, y dos pasos separados garantizan que alguna
+vez uno falle en el medio. **El slug no se puede cambiar**: rompe cada link guardado, cada bookmark
+y cada integración que lo tenga fijo, así que el campo no está en el cuerpo del `PATCH`.
+
+**Irse uno mismo no requiere ningún rol** —salvo ser el último `owner`—: nadie tiene que pedir
+permiso para dejar de trabajar en un lugar. Y **la lista de miembros exige ser miembro**: un
+endpoint que la devuelve sin chequear es una fuente de datos para prospección y para ingeniería
+social. Aceptar una invitación **no se permite impersonando**: metería a la persona impersonada en
+una organización sin que se enterara.
+
+Tests (`test_darwin_organization.py`, 80): el orden de los roles, y un test que documenta que el
+alfabético sería el equivocado; nueve casos de `slugify` y que nunca deja caracteres de URL. De
+crear: el creador queda `owner`, slug propio, slug repetido, metadata, y que el slug no se mueve al
+actualizar. De autorización: no-miembro, `member` que no llega a `admin`, `owner` que llega a todo,
+la lista de miembros que no es pública. De invitar: el flujo completo, **el token hasheado**, un
+`member` que no puede invitar, **un `admin` que no puede invitar como `owner`**, hasta su propio
+nivel sí, miembro existente, normalización del mail, techo de miembros. De aceptar: **reenviar el
+link no sirve**, el rechazo no gasta la invitación, **un mail sin verificar no acepta**, un solo
+uso, vencida, token inventado, y **ocho aceptaciones concurrentes donde gana una**. De revocar:
+invalida, deja rastro con `invited_by`, dos veces falla, la de otra organización da el mismo error
+que "no existe". Del último owner: no se degrada, no se saca, con dos uno se puede ir, **dos
+degradaciones concurrentes dejan al menos uno**, borrar la organización entera sí se permite. De la
+jerarquía: un `admin` no se asciende, no degrada a un par, no degrada al `owner`, sí administra a un
+`member`, no saca a otro `admin`. De irse: solo sí, no-miembro no, un `member` no saca a otro,
+sacar y volver a invitar funciona. De multi-tenancy: la misma persona con roles distintos en dos
+organizaciones. Del borde: el flujo completo por HTTP, **que `/organizations/invitations/accept` no
+choque con la ruta paramétrica** (tienen la misma cantidad de segmentos), 401 sin sesión, 403 de
+no-miembro, 409 de slug repetido, 409 al degradar al último owner, las pendientes sin el token, y
+que el `PATCH` ignore un slug mandado. Más un test de que **los seis plugins conviven** en un
+registro con sus siete mixins y sus 29 excepciones mapeadas.
 
 ### Fase 10 — Kit de testing, docs, deprecaciones
 
