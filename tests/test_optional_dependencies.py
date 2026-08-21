@@ -196,6 +196,33 @@ import pytest
     ("fastapi", "hexcore.darwin.plugins.impersonate.commands"),
     ("joserfc", "hexcore.darwin.plugins.impersonate.commands"),
     ("argon2", "hexcore.darwin.plugins.impersonate.commands"),
+    # ── Fase 9: passkey ───────────────────────────────────────────────────────
+    # El dominio son las entidades, los tres puertos y las excepciones: nada de webauthn ni de
+    # sqlalchemy. Lo importa el borde HTTP para mapear los status, y un test del flujo lo usa
+    # con un doble del verificador.
+    ("webauthn", "hexcore.darwin.plugins.passkey.domain"),
+    ("sqlalchemy", "hexcore.darwin.plugins.passkey.domain"),
+    ("fastapi", "hexcore.darwin.plugins.passkey.domain"),
+    ("joserfc", "hexcore.darwin.plugins.passkey.domain"),
+    ("argon2", "hexcore.darwin.plugins.passkey.domain"),
+    # El plugin y su servicio resuelven todo perezosamente, incluidos los dos mixins —que están
+    # en `__all__` y los sirve un `__getattr__` de módulo, porque importarlos arrastra
+    # sqlalchemy.
+    ("webauthn", "hexcore.darwin.plugins.passkey"),
+    ("sqlalchemy", "hexcore.darwin.plugins.passkey"),
+    ("fastapi", "hexcore.darwin.plugins.passkey"),
+    ("joserfc", "hexcore.darwin.plugins.passkey"),
+    ("argon2", "hexcore.darwin.plugins.passkey"),
+    ("webauthn", "hexcore.darwin.plugins.passkey.service"),
+    ("sqlalchemy", "hexcore.darwin.plugins.passkey.service"),
+    ("fastapi", "hexcore.darwin.plugins.passkey.service"),
+    ("joserfc", "hexcore.darwin.plugins.passkey.service"),
+    # El adaptador de py_webauthn: importarlo no lo exige, porque los `import webauthn` están
+    # adentro de los métodos. Es lo que hace que un despliegue con su propio verificador no
+    # necesite el extra.
+    ("webauthn", "hexcore.darwin.plugins.passkey.webauthn_adapter"),
+    ("sqlalchemy", "hexcore.darwin.plugins.passkey.webauthn_adapter"),
+    ("fastapi", "hexcore.darwin.plugins.passkey.webauthn_adapter"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.

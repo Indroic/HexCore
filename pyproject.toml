@@ -50,6 +50,12 @@ darwin = [
 # magic link no lo necesita, y el cliente HTTP esta detras de un puerto (asi que los tests del
 # flujo tampoco).
 darwin-oauth = ["httpx>=0.27.0"]
+# `[darwin-passkey]` suma py_webauthn. Es la unica dependencia criptografica que el modulo
+# agrega mas alla de joserfc/argon2, y se justifica: WebAuthn no son treinta lineas como el
+# TOTP — hay CBOR, claves COSE, formatos de attestation y un contador de firmas. Escribir eso
+# a mano seria criptografia propia en el camino de autenticacion. El verificador esta detras
+# de un puerto, asi que los tests del flujo corren sin el extra.
+darwin-passkey = ["webauthn>=2.0.0"]
 all = [
     "fastapi>=0.116.1",
     "redis>=6.4.0",
@@ -64,7 +70,8 @@ all = [
     "celery>=5.4.0",
     "joserfc>=1.0.0",
     "argon2-cffi>=23.1.0",
-    "httpx>=0.27.0"
+    "httpx>=0.27.0",
+    "webauthn>=2.0.0"
 ]
 
 

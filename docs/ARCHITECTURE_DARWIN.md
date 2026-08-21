@@ -924,7 +924,7 @@ exactamente la carrera que `rate_limit` tenía y que se corrigió en la Fase 0.
 | Hash de contraseñas | **`argon2-cffi`** | Argon2id es el ganador del PHC y la recomendación de OWASP. Verifica hashes de bcrypt legados vía `passlib` sólo si hace falta migrar. |
 
 Extra nuevo: `[darwin]` = `fastapi`, `sqlalchemy`, `alembic`, `joserfc`, `argon2-cffi`.
-Se agrega a `all`. `[darwin-passkey]` suma `webauthn`.
+Se agrega a `all`. `[darwin-passkey]` suma `webauthn` (hecho, Fase 9).
 
 **No se agrega `freezegun` ni `time-machine`:** el reloj es un puerto `Clock` inyectado, así
 que los tests de TTL no necesitan parchear el tiempo global.
@@ -1266,7 +1266,7 @@ no ensuciar lo que se redirige al secret manager.
 
 ### Fase 9 — El resto de los plugins
 
-Orden: `two_factor` ✅ → `oauth` ✅ → `impersonate` ✅ → `passkey` → `organization`.
+Orden: `two_factor` ✅ → `oauth` ✅ → `impersonate` ✅ → `passkey` ✅ → `organization`.
 
 #### `two_factor` ✅ — TOTP, y el punto de extensión del sign-in
 
@@ -1593,6 +1593,106 @@ Encontrado por un test, no por la revisión: `/{user_id}` estaba declarado **ant
 FastAPI resuelve las rutas en orden de registro — así que `POST /auth/impersonate/stop` matcheaba
 la ruta paramétrica e intentaba parsear `"stop"` como UUID, devolviendo 422 en vez de terminar la
 impersonación.
+
+#### `passkey` ✅ — WebAuthn, y lo único que se guarda es público
+
+Es el plugin con la mejor propiedad de seguridad del módulo, y la propiedad es esta: **lo que se
+guarda es público**. No hay nada en `darwin_passkey` que un atacante con un dump de la base pueda
+usar para autenticarse, ni acá ni en otro sitio.
+
+| Método | Qué se guarda | Un dump sirve para… |
+| :-- | :-- | :-- |
+| Contraseña | hash de Argon2id | atacar por diccionario, offline |
+| TOTP | secreto compartido, cifrado | generar códigos, si además tenés la clave de la app |
+| **Passkey** | **clave pública** | **nada** |
+
+Y encima el navegador la ata al origen, así que un sitio clonado no puede reenviar la aserción. Es
+la razón por la que este plugin es el único de Darwin que no tiene ningún secreto que proteger.
+
+**Por qué acá hay una dependencia y en `two_factor` no.** El TOTP son treinta líneas de `hmac` y
+aritmética: una librería no compra corrección, compra superficie de cadena de suministro. WebAuthn
+es lo contrario —CBOR, claves COSE, cuatro formatos de attestation, cadenas de certificados, un
+contador de firmas— y escribirlo a mano sería criptografía propia en el camino de autenticación. Va
+`py_webauthn` en el extra nuevo **`[darwin-passkey]`**, detrás de un puerto.
+
+⚠️ **El contador de firmas es la única señal de compromiso que WebAuthn da**, y el puerto existe
+sobre todo para poder probarla: con hardware real, un contador que no avanza es imposible de
+reproducir. Muchas implementaciones lo descartan porque "algunos autenticadores no lo incrementan";
+acá se distingue el autenticador que **nunca** lo usa (contador 0 siempre, se acepta) del que lo
+usaba y dejó de avanzar (se rechaza y no se abre la sesión). El chequeo es sobre la **regresión**,
+no sobre que el número sea mayor que cero. Y el contador **no sube si la firma no valida**: subirlo
+antes de verificar dejaría que una firma inválida desincronice al autenticador legítimo — negación
+de servicio contra una cuenta, gratis.
+
+**El desafío se guarda en claro, y a diferencia del resto de Darwin eso es lo correcto.** Un
+desafío WebAuthn es un nonce público: viaja al navegador y vuelve, y conocerlo no permite
+autenticarse porque hace falta la clave privada del autenticador. No es un token de sesión. Hubo
+una primera versión que lo hasheaba —copiando el patrón de `verification`— y tenía un defecto de
+diseño: con el desafío hasheado, el `expected_challenge` que el verificador compara tiene que salir
+del `clientDataJSON` del propio cliente (el hash sólo sirve para *encontrar* la fila), así que la
+comparación queda entre un valor y sí mismo. Sigue siendo sólida —el hash coincidió, o sea que el
+valor es el que el servidor emitió— pero es circular de leer, y un chequeo de seguridad que hay que
+razonar dos veces para ver que sirve es un chequeo que alguien va a "simplificar". Guardándolo en
+claro, el `expected_challenge` sale de la fila y la comparación es la que el protocolo pide.
+
+Dos tablas y no una: las credenciales viven para siempre y los desafíos viven treinta segundos.
+Juntas darían una tabla donde el 99% de las filas son basura de un minuto atrás.
+
+**El `user_id` sale del desafío, nunca del cuerpo del request.** Aceptarlo del cliente dejaría
+registrar una credencial propia en la cuenta de otro — toma de cuenta directa, en un endpoint que
+parece administrativo. Y si el desafío se emitió para un usuario concreto, la credencial tiene que
+ser suya: sin ese chequeo, alguien pide un desafío "para Ana" y lo completa con su propia
+credencial, y la firma valida.
+
+`excludeCredentials` va siempre con lo que el usuario ya tiene: sin eso el navegador le ofrece
+registrar de nuevo una credencial existente y el flujo falla al guardar, con un error de base en
+vez de un mensaje. Una credencial ya registrada **no se mueve** de cuenta: si es de otro, moverla le
+saca un método de acceso; si es del mismo, sobreescribir el contador reiniciaría la detección de
+clonado.
+
+**Borrar la última credencial se rechaza si no hay otro método de acceso** —contraseña o proveedor
+vinculado, consultado en `account`, el mismo chequeo que hace `oauth.unlink`. El botón está a un
+click en cualquier pantalla de ajustes y el usuario que lo aprieta no tiene forma de volver.
+Borrar la de otro devuelve el **mismo** error que "no existe": un 403 distinto le confirmaría a
+quien prueba ids que la credencial existe.
+
+Del adaptador: **`origins` es obligatorio** —es el chequeo anti-phishing, y se exige al construir,
+no al primer login—; `attestation="none"` por default (pedir attestation obliga a mantener cadenas
+de certificados de fabricante y rechaza autenticadores de plataforma válidos);
+`residentKey="preferred"` (`required` rechazaría llaves que sirven como segundo factor, y
+`preferred` habilita igual el login sin usuario declarado en las que pueden); y el detalle del
+error **va al log, no a la respuesta** — `py_webauthn` dice exactamente qué chequeo falló, y
+devolverlo es darle a quien prueba el camino para el siguiente intento.
+
+`POST /auth/passkey/authenticate/options` **no revela si la cuenta existe**: un mail desconocido
+devuelve opciones sin `allowCredentials`, la misma forma exacta que el flujo sin mail. El resumen
+que sale al cliente **no lleva `credential_id` ni `public_key`**: no son secretos, pero no le
+sirven a la interfaz, y menos respuesta es menos superficie. Registrar y borrar **no se permiten
+estando impersonado**: registrar una credencial propia en la cuenta de la persona que estás
+impersonando es tomarle la cuenta, y de forma permanente.
+
+Un `StartupStep` avisa si el `rp_id` es `localhost`: es lo correcto en desarrollo —el único host
+que los navegadores aceptan sin HTTPS— y shippearlo a producción deja el login roto para todos, con
+un error del navegador que no dice qué está mal.
+
+Tests (`test_darwin_passkey.py`, 65): base64url en las tres direcciones. Del registro: el flujo
+completo, **el `user_id` sale del desafío**, `excludeCredentials`, credencial ya registrada,
+credencial de otro que no se mueve, verificación fallida que no guarda. Del desafío: se guarda en
+claro con el valor exacto, **el `expected_challenge` sale de la fila** (lo asevera el autenticador
+falso, así que si el servicio le pasara el del cliente el test falla), un solo uso, registro↔login
+en los dos sentidos, vencido, inventado, seis respuestas corruptas que dan 401 y no 500, y **ocho
+logins concurrentes donde gana uno**. Del contador: avanza, **no avanza → corta**, retrocede →
+corta, el que nunca lo usa se acepta tres veces seguidas, el que lo usaba y volvió a 0 se rechaza,
+y no sube si la firma no valida. De la autenticación: abre la sesión, con usuario limita las
+credenciales ofrecidas, sin usuario descubre quién es, la credencial de otro no completa un desafío
+dirigido, una desconocida no entra, una sin id se rechaza. Del ciclo de vida: listar por usuario,
+borrar con contraseña, **no borrar la última sin otro método**, con dos sí, la de otro da
+not-found. Del adaptador real: sin `origins` no se construye, sin `rp_id` tampoco, las opciones son
+válidas y el desafío de la URL corresponde, dos desafíos no se repiten, y una respuesta basura da
+el error genérico. Del borde: el flujo completo por HTTP, el resumen sin la credencial, el mail
+desconocido indistinguible, 401 sin sesión, **401 con contador clonado**, 409 al borrar la última,
+404 con una inexistente. Más un test de que los cuatro plugins conviven en un registro con sus
+cinco mixins sin chocar.
 
 ### Fase 10 — Kit de testing, docs, deprecaciones
 
