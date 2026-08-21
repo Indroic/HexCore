@@ -108,6 +108,38 @@ import pytest
     ("fastapi", "hexcore.darwin.plugins.magic_link.commands"),
     ("joserfc", "hexcore.darwin.plugins.magic_link.commands"),
     ("argon2", "hexcore.darwin.plugins.magic_link.commands"),
+    # ── Fase 9: two_factor ────────────────────────────────────────────────────
+    # El TOTP es `hmac` de la stdlib: no depende de ningún extra, ni siquiera del de crypto.
+    # Es lo que permite que un worker sin `[darwin]` importe el módulo para generar un código
+    # en un script.
+    ("sqlalchemy", "hexcore.darwin.plugins.two_factor.totp"),
+    ("fastapi", "hexcore.darwin.plugins.two_factor.totp"),
+    ("joserfc", "hexcore.darwin.plugins.two_factor.totp"),
+    ("argon2", "hexcore.darwin.plugins.two_factor.totp"),
+    # El dominio del plugin: entidad, puerto y excepciones. Lo importa el borde HTTP para
+    # mapear los status, así que no puede exigir sqlalchemy.
+    ("sqlalchemy", "hexcore.darwin.plugins.two_factor.domain"),
+    ("fastapi", "hexcore.darwin.plugins.two_factor.domain"),
+    ("joserfc", "hexcore.darwin.plugins.two_factor.domain"),
+    ("argon2", "hexcore.darwin.plugins.two_factor.domain"),
+    # El cifrado del secreto usa joserfc **adentro de los métodos**: nombrar la clase no lo
+    # arrastra, que es lo que permite importar el plugin en un proceso sin el extra.
+    ("sqlalchemy", "hexcore.darwin.plugins.two_factor.crypto"),
+    ("fastapi", "hexcore.darwin.plugins.two_factor.crypto"),
+    ("argon2", "hexcore.darwin.plugins.two_factor.crypto"),
+    # El plugin y su servicio resuelven todo perezosamente.
+    ("sqlalchemy", "hexcore.darwin.plugins.two_factor"),
+    ("fastapi", "hexcore.darwin.plugins.two_factor"),
+    ("joserfc", "hexcore.darwin.plugins.two_factor"),
+    ("argon2", "hexcore.darwin.plugins.two_factor"),
+    ("sqlalchemy", "hexcore.darwin.plugins.two_factor.service"),
+    ("fastapi", "hexcore.darwin.plugins.two_factor.service"),
+    ("joserfc", "hexcore.darwin.plugins.two_factor.service"),
+    ("argon2", "hexcore.darwin.plugins.two_factor.service"),
+    ("sqlalchemy", "hexcore.darwin.plugins.two_factor.commands"),
+    ("fastapi", "hexcore.darwin.plugins.two_factor.commands"),
+    ("joserfc", "hexcore.darwin.plugins.two_factor.commands"),
+    ("argon2", "hexcore.darwin.plugins.two_factor.commands"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.

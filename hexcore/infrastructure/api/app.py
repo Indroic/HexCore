@@ -215,7 +215,11 @@ def _con_darwin(
         identity_exception_headers,
     )
 
-    combinado = {**IDENTITY_EXCEPTION_STATUS_MAP, **(mapping or {})}
+    combinado = {
+        **IDENTITY_EXCEPTION_STATUS_MAP,
+        **_mapa_de_plugins(),
+        **(mapping or {}),
+    }
 
     if headers_for is None:
         return combinado, identity_exception_headers
@@ -225,6 +229,25 @@ def _con_darwin(
         return {**identity_exception_headers(exc), **headers_for(exc)}
 
     return combinado, combinar
+
+
+def _mapa_de_plugins() -> dict[type[Exception], int]:
+    """
+    Las excepciones de los plugins de Darwin, si el módulo está cableado.
+
+    Se consulta el contenedor y no un registro global: los plugins son de un despliegue, no
+    del proceso. Si Darwin todavía no se configuró —`create_app` antes de
+    `configure_identity`— devuelve vacío en vez de lanzar: el orden de cableado es del
+    consumidor, y hacer que el orden importe convertiría un detalle en un error de arranque.
+    """
+    from hexcore.darwin.application.container import get_identity_container
+
+    try:
+        contenedor = get_identity_container()
+    except Exception:
+        return {}
+
+    return contenedor.plugins.exception_status_map()
 
 
 def _fastapi_defaults(config: t.Any) -> dict[str, t.Any]:

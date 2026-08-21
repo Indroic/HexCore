@@ -9,7 +9,7 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 189 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 191 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
@@ -40,9 +40,11 @@ from hexcore.darwin.application.container import provide_identity_config as prov
 from hexcore.darwin.application.container import provide_session_service as provide_session_service
 from hexcore.darwin.application.container import reset_identity as reset_identity
 from hexcore.darwin.application.hooks import HookMiddleware as HookMiddleware
+from hexcore.darwin.application.hooks import run_hooks as run_hooks
 from hexcore.darwin.application.plugins import PluginError as PluginError
 from hexcore.darwin.application.plugins import PluginRegistry as PluginRegistry
 from hexcore.darwin.application.services import IdentityService as IdentityService
+from hexcore.darwin.application.services import SIGN_IN_AUTHENTICATED as SIGN_IN_AUTHENTICATED
 from hexcore.darwin.application.services import SessionService as SessionService
 from hexcore.darwin.domain.context import AUTH_CONTEXT as AUTH_CONTEXT
 from hexcore.darwin.domain.context import AuthContext as AuthContext
@@ -293,6 +295,7 @@ __all__ = [
     "Role",
     "RoleRegistry",
     "SECRET_KEY_ENV",
+    "SIGN_IN_AUTHENTICATED",
     "SessionCreatedEvent",
     "SessionMixin",
     "SessionModel",
@@ -390,6 +393,7 @@ __all__ = [
     "reset_default_registry",
     "reset_identity",
     "resolve_transport",
+    "run_hooks",
     "session_response_body",
     "system_context",
     "validate_user_model",

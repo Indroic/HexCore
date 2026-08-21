@@ -47,8 +47,17 @@ TokenType = t.Literal["at+jwt", "rt+jwt"]
 #: Para qué se emitió un token de verificación. Es parte de la clave única junto con el
 #: identificador, así que un código de "resetear contraseña" no se puede canjear en el flujo
 #: de "verificar mail".
+#:
+#: Los propósitos de los plugins se enumeran acá igual que los del núcleo, y no porque el
+#: núcleo los conozca: es el tipo de una columna, y un `Literal` no se puede extender desde
+#: afuera. La alternativa —tipar la columna como `str`— perdería la garantía justo donde
+#: importa, porque el propósito es parte de la clave de canje.
 VerificationPurpose = t.Literal[
-    "email_verification", "password_reset", "magic_link", "otp"
+    "email_verification",
+    "password_reset",
+    "magic_link",
+    "otp",
+    "two_factor",
 ]
 
 

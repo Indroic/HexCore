@@ -1266,9 +1266,125 @@ no ensuciar lo que se redirige al secret manager.
 
 ### Fase 9 — El resto de los plugins
 
-`two_factor` → `oauth` → `impersonate` (**depende de la Fase 6**; techo de 60 min no
+Orden: `two_factor` ✅ → `oauth` → `impersonate` (**depende de la Fase 6**; techo de 60 min no
 renovable; refresh → 403; toda acción auditada con los dos principales) → `passkey` →
 `organization`.
+
+#### `two_factor` ✅ — TOTP, y el punto de extensión del sign-in
+
+Es el primer plugin que **intercepta** un flujo del núcleo en vez de agregar uno al costado, y
+por eso es el que descubrió que el sistema de la Fase 8 tenía un hueco.
+
+⚠️ **El hueco: el router de identidad llama a los servicios directo, no despacha comandos.** Un
+plugin enganchado sólo al `HookMiddleware` —que es un middleware del bus— **no vería nunca un
+sign-in por HTTP**. Se cerró extrayendo el runner de hooks a `run_hooks(plugins, action, phase,
+payload)`, que ahora usan los dos caminos: el middleware para lo que pasa por el bus, y los
+servicios en sus puntos de extensión declarados.
+
+El punto de extensión es `SIGN_IN_AUTHENTICATED = "user.sign_in.authenticated"`, y corre en el
+único lugar donde un segundo factor puede exigirse: **la contraseña ya se validó y la sesión
+todavía no existe**. Antes no se sabe quién es el usuario; después ya hay un par de tokens
+emitido que habría que revocar — y el que se olvida de revocarlo dejó el 2FA en decorativo. Es
+una acción y no un evento porque un hook acá puede **abortar**: un evento se publica después del
+hecho y no tiene forma de impedirlo.
+
+`run_hooks` deja pasar los `IdentityError` **sin envolverlos**, y eso es lo que hace todo el
+mecanismo posible: el hook lanza `TwoFactorRequiredError` y el borde lo mapea a su status.
+Envolverlo en el `RuntimeError` de "el hook falló" convertiría el desafío en un 500. Cualquier
+otra excepción sí se envuelve y propaga: falla cerrando.
+
+**Punto de extensión nuevo en el contrato de plugin: `exception_status_map()`.** Las excepciones
+del plugin viven en el plugin —el núcleo no tiene por qué conocer los modos de falla del 2FA— y
+`create_app` mergea el mapa de los plugins entre el de identidad y el del consumidor. Sin esto,
+la excepción de un plugin saldría como un 500 con el traceback, o el consumidor tendría que
+mapearla a mano, que es pedirle que sepa los internos del plugin.
+
+**El sign-in se parte en dos, y el primer paso no emite nada.** La alternativa que se ve seguido
+—emitir una sesión "parcial" con scope reducido— pone en manos del cliente un token real que
+después hay que acordarse de restringir en cada endpoint, y el endpoint que se olvida es el que
+convierte el 2FA en decorativo. Acá el primer paso devuelve un 401 con un desafío y **cero**
+tokens, cero cookies, cero filas en `session`.
+
+**El desafío vive en `verification` con `purpose="two_factor"`**, no en un JWT: la tabla ya tiene
+el canje atómico, así que el desafío es de un solo uso y revocable sin escribir nada nuevo. Un
+desafío stateless sería replayeable durante todo su TTL. Lleva el `user_id` adelante separado por
+un punto (`{uuid}.{token}`) para poder canjearlo con `consume(identifier, purpose, hash)` sin
+agregarle al puerto un `consume_by_hash` que sacaría el identificador de la clave de canje. TTL
+de 5 minutos: lo que tarda alguien en buscar el teléfono.
+
+⚠️ **El desafío se consume ANTES de verificar el código.** Al revés, quien tenga el desafío podría
+probar códigos indefinidamente sobre el mismo; así, cada intento cuesta un desafío nuevo — o sea
+la contraseña.
+
+**TOTP en stdlib, sin `pyotp`.** El algoritmo son treinta líneas —contador de 8 bytes big-endian,
+HMAC-SHA1, truncado dinámico, módulo— y el HMAC lo hace la stdlib: una dependencia acá no compra
+corrección, compra superficie de cadena de suministro en el camino de autenticación. Mismo
+criterio que el códec del sobre firmado. SHA-1 **no es un desvío**: es lo que especifica la RFC
+4226 y lo único que implementan Google Authenticator, Authy y 1Password — y el uso de HMAC no
+depende de la resistencia a colisiones, que es lo único que SHA-1 tiene roto. Emitir con SHA-256
+daría códigos que la app del usuario no puede generar. El test del apéndice D de la RFC 4226 es
+el único que prueba que la implementación es correcta y no sólo autoconsistente.
+
+**Ventana de ±1 paso, y `verify_totp` devuelve el paso con el que matcheó, no un booleano.**
+Devolverlo es lo que permite persistirlo, y sin eso no hay defensa de replay: un código vale
+hasta 90 segundos, así que quien lo lee por encima del hombro o lo saca de un formulario de
+phishing lo puede volver a usar. `last_used_step` convierte "es válido" en "es válido y no se
+usó". El bucle recorre la ventana entera y **no corta al primer match**: salir temprano haría que
+el tiempo de respuesta diga qué paso acertó, o sea cuánto deriva el reloj del usuario.
+
+**El secreto TOTP no se puede hashear** —para verificar un código hay que recalcularlo— así que se
+cifra: **JWE compacto `dir` + `A256GCM` de `joserfc`**, que ya es dependencia del extra porque
+firma los tokens. Es AEAD, así que el texto cifrado está autenticado: alguien con escritura en la
+base no puede sustituir el secreto de un usuario por uno que él conoce sin que el descifrado
+falle. Un XOR con una clave derivada dejaría esa puerta abierta, y `cryptography` sería una
+dependencia nueva para algo que la que ya está resuelve. La clave se **deriva** de `secret_key`
+con una etiqueta propia: reusar el mismo material para cifrar secretos TOTP, firmar sobres y
+derivar valores anti-CSRF hace que romper uno rompa los tres.
+
+**Inscribir no activa.** `confirmed_at IS NULL` = inscripto e inactivo. Si inscribir activara el
+factor, el usuario que guardó mal el QR queda afuera en el siguiente login y sólo lo saca de ahí
+una intervención humana. **Desactivar exige un código válido**, y es la operación que más
+protección necesita, no menos: sin eso, quien roba una sesión con el 2FA ya pasado apaga el
+segundo factor y se queda con la cuenta. Y no se puede desactivar impersonando: sería la escalada
+más barata del sistema.
+
+`UNIQUE` sobre `user_id`, y no es cosmético: dos filas dejarían que el secreto de una inscripción
+abandonada siga sirviendo para entrar, y ningún flujo lo borraría nunca. `upsert` borra e inserta
+en vez de hacer `ON CONFLICT DO UPDATE` porque una re-inscripción **es** un factor nuevo:
+arrastrar el `last_used_step` o los `failed_attempts` del anterior dejaría al usuario nuevo
+bloqueado por los intentos del viejo.
+
+`MAX_FAILED_ATTEMPTS = 5`: un OTP de 6 dígitos con ventana ±1 deja 3 códigos válidos de 10⁶, o sea
+3 en un millón por intento — con 20 intentos por ventana y reintentos indefinidos el ataque cierra
+en horas. 5 y no 3 porque un usuario con el reloj corrido falla dos veces legítimamente. El techo
+se chequea **antes de calcular nada**: seguir verificando regala intentos, y calcular el HMAC
+igual haría que el tiempo diga si la fila existe.
+
+Lo que el plugin **no** hace, a propósito: no aporta códigos de respaldo. Un código de respaldo es
+una credencial de un solo uso y alta entropía, o sea exactamente lo que `verification` ya modela,
+así que va como un plugin aparte que dependa de este.
+
+`VerificationPurpose` gana `"two_factor"`. Los propósitos de los plugins se enumeran en el núcleo
+igual que `"magic_link"`, y no porque el núcleo los conozca: es el tipo de una columna y un
+`Literal` no se extiende desde afuera. Tiparla `str` perdería la garantía justo donde importa,
+porque el propósito es parte de la clave de canje.
+
+Tests (`test_darwin_two_factor.py`, 71): el vector de la RFC 4226; estabilidad dentro del paso y
+cambio al siguiente; la ventana de ±1 y el rechazo a dos pasos; `after_step`; basura de todos los
+largos; tolerancia a espacios y guiones; el `issuer` dos veces en la URI. Del cifrado: ida y
+vuelta, el secreto ausente del texto cifrado, nonce distinto por llamada, otra clave no descifra,
+y **alterar un byte hace fallar el descifrado** (la propiedad AEAD). De los flujos: inscribir no
+activa y el sign-in sigue en un paso; confirmar activa; el primer paso **no deja ninguna fila en
+`session`**; contraseña mala sigue dando `InvalidCredentialsError` (el hook corre después);
+desafío de un solo uso; el desafío se consume aunque el código sea malo; reemitir invalida el
+anterior; vencido; el desafío de otro no sirve; seis desafíos malformados dan 401 y no 500;
+**el mismo código no sirve dos veces**; **ocho canjes concurrentes, gana uno**; el paso siguiente
+sí sirve; el techo de intentos bloquea incluso al código correcto; un código válido resetea los
+intentos; desactivar exige código. Del borde: el 401 sin cookies, el flujo completo por HTTP
+(login → estado → inscribir → confirmar → login parcial → canje), 409 del plugin llegando por
+`exception_status_map()`, y el rate limit frenando el canje número once. Y dos tests de que el
+punto de extensión **no es de `two_factor`**: un bloqueo por país corta el sign-in igual, y un
+hook con un bug no deja entrar a nadie.
 
 ### Fase 10 — Kit de testing, docs, deprecaciones
 

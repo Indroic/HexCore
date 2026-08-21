@@ -199,6 +199,18 @@ class PluginRegistry:
     def startup_steps(self) -> list[t.Any]:
         return [s for plugin in self.plugins for s in plugin.startup_steps()]
 
+    def exception_status_map(self) -> dict[type[Exception], int]:
+        """
+        El mapa de excepciones combinado. El del último plugin gana sobre el del primero.
+
+        Que gane el último es lo consistente con el resto: `create_app` mergea el de identidad
+        debajo de éste, y el del consumidor arriba de todo.
+        """
+        acumulado: dict[type[Exception], int] = {}
+        for plugin in self.plugins:
+            acumulado.update(plugin.exception_status_map())
+        return acumulado
+
     def register_handlers(self, registry: t.Any) -> t.Any:
         for plugin in self.plugins:
             plugin.register_handlers(registry)

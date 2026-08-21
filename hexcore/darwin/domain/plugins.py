@@ -140,7 +140,7 @@ class DarwinPlugin(abc.ABC):
     Sólo `name` es obligatorio. Todo lo demás son métodos **concretos** que devuelven vacío,
     así que un plugin declara nada más lo que aporta — y agregar un punto de extensión nuevo
     en una versión futura no rompe a ningún plugin existente. Con métodos abstractos, cada
-    plugin tendría que implementar siete cosas para aportar una.
+    plugin tendría que implementar ocho cosas para aportar una.
 
     Uso::
 
@@ -197,6 +197,20 @@ class DarwinPlugin(abc.ABC):
     def startup_steps(self) -> t.Sequence[t.Any]:
         """Pasos de arranque (`StartupStep`) para `build_lifespan`."""
         return ()
+
+    def exception_status_map(self) -> t.Mapping[type[Exception], int]:
+        """
+        Las excepciones del plugin y su status HTTP.
+
+        Las excepciones viven en el plugin y no en `domain/exceptions.py`: el núcleo no tiene
+        por qué conocer los modos de falla de `two_factor`. `create_app` mergea este mapa
+        debajo del de identidad, que a su vez va debajo del del consumidor.
+
+        Sin este punto de extensión, la excepción de un plugin saldría como un 500 con el
+        traceback — o el consumidor tendría que mapearla a mano, que es pedirle que sepa los
+        internos del plugin.
+        """
+        return {}
 
     def register_handlers(self, registry: t.Any) -> None:
         """

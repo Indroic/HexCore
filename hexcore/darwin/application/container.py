@@ -360,6 +360,9 @@ class IdentityContainer:
                     clock=self.clock(),
                     config=self._config,
                     events=self.events(),
+                    # El registro, no `None`: es lo que hace que un plugin pueda engancharse
+                    # al sign-in por HTTP, que no pasa por el bus de comandos.
+                    plugins=self.plugins,
                 )
             return self._identity_service
 

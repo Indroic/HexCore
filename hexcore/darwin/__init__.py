@@ -311,6 +311,11 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "PluginRegistry": ("hexcore.darwin.application.plugins", "PluginRegistry"),
     "PluginError": ("hexcore.darwin.application.plugins", "PluginError"),
     "HookMiddleware": ("hexcore.darwin.application.hooks", "HookMiddleware"),
+    "run_hooks": ("hexcore.darwin.application.hooks", "run_hooks"),
+    "SIGN_IN_AUTHENTICATED": (
+        "hexcore.darwin.application.services",
+        "SIGN_IN_AUTHENTICATED",
+    ),
     # ── Borde HTTP (Fase 7 — requiere el extra [api]) ────────────────────────
     "TRANSPORT_HEADER": ("hexcore.darwin.infrastructure.transports", "TRANSPORT_HEADER"),
     "AbstractTransport": (

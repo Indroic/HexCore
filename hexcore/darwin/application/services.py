@@ -50,10 +50,12 @@ from hexcore.darwin.domain.exceptions import (
     TokenMalformedError,
     TokenRevokedError,
 )
+from hexcore.darwin.application.hooks import run_hooks
 from hexcore.darwin.domain.value_objects import Email, TokenPair, VerificationPurpose
 
 if t.TYPE_CHECKING:
     from hexcore.darwin.application.config import IdentityConfig
+    from hexcore.darwin.application.plugins import PluginRegistry
     from hexcore.darwin.domain.ports import (
         AbstractAccountRepository,
         AbstractAuditSink,
@@ -70,7 +72,15 @@ if t.TYPE_CHECKING:
     )
     from hexcore.domain.events import EventBus
 
-__all__ = ["SessionService", "IdentityService"]
+__all__ = ["SessionService", "IdentityService", "SIGN_IN_AUTHENTICATED"]
+
+#: El punto de extensión del sign-in: la contraseña ya se validó y la sesión **todavía no
+#: existe**.
+#:
+#: Es una acción y no un evento porque un hook acá puede **abortar** el sign-in: `two_factor`
+#: lanza `TwoFactorRequiredError` y no se emite ningún token. Un evento se publica después del
+#: hecho y no tiene forma de impedirlo.
+SIGN_IN_AUTHENTICATED = "user.sign_in.authenticated"
 
 #: Ventana de gracia para un refresh rotado. Dentro de ella, presentar el token ya consumido
 #: devuelve el **mismo** par nuevo en vez de disparar la detección de reuso.
@@ -527,6 +537,7 @@ class IdentityService:
         clock: "AbstractClock",
         config: "IdentityConfig",
         events: "EventBus | None" = None,
+        plugins: "PluginRegistry | None" = None,
     ) -> None:
         self._users = users
         self._accounts = accounts
@@ -536,6 +547,7 @@ class IdentityService:
         self._clock = clock
         self._config = config
         self._events = events
+        self._plugins = plugins
 
     # ── Registro ──────────────────────────────────────────────────────────────
     async def sign_up(
@@ -705,6 +717,16 @@ class IdentityService:
             await self._accounts.update(
                 credencial.model_copy(update={"password": self._hasher.hash(password)})
             )
+
+        # ── El punto de extensión del sign-in ─────────────────────────────────
+        # Acá la contraseña ya se validó y la sesión **todavía no existe**, que es el único
+        # lugar donde un segundo factor puede exigirse: antes no se sabe quién es el usuario,
+        # y después ya hay un par de tokens emitido que habría que revocar.
+        #
+        # Corre acá y no en el `HookMiddleware` porque el router llama a este servicio
+        # **directo**, sin pasar por el bus: un plugin enganchado sólo al bus no vería nunca
+        # un sign-in por HTTP.
+        await run_hooks(self._plugins, SIGN_IN_AUTHENTICATED, "before", usuario)
 
         sesion, par = await self._sessions.create(
             actor=usuario,
