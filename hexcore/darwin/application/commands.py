@@ -25,7 +25,7 @@ import typing as t
 from uuid import UUID
 
 from hexcore.darwin.domain.context import Transport
-from hexcore.darwin.domain.value_objects import TokenPair, VerificationPurpose
+from hexcore.darwin.domain.value_objects import CoreVerificationPurpose, TokenPair
 from hexcore.domain.cqrs.commands import Command
 from hexcore.domain.cqrs.handlers import AbstractCommandHandler
 from hexcore.domain.cqrs.queries import Query
@@ -130,10 +130,17 @@ class ChangePassword(Command):
 
 
 class IssueVerificationCode(Command):
-    """Emite un código nuevo, invalidando los pendientes del mismo propósito."""
+    """
+    Emite un código nuevo, invalidando los pendientes del mismo propósito.
+
+    `purpose` es `CoreVerificationPurpose` y no el `VerificationPurpose` abierto de la tabla: el
+    valor llega de un cuerpo HTTP, y aceptar cualquier string dejaría pedir un código con
+    `purpose="magic_link"` por acá para después canjearlo en el flujo del plugin. Un plugin que
+    emite códigos propios expone su propio comando.
+    """
 
     email: str
-    purpose: VerificationPurpose = "email_verification"
+    purpose: CoreVerificationPurpose = "email_verification"
 
 
 # ── Queries ───────────────────────────────────────────────────────────────────

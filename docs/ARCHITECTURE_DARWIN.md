@@ -1896,6 +1896,110 @@ corre los bloques `Uso::`.
 
 ---
 
+### Fase 11 — El empaquetado: un extra por decisión ✅
+
+**Objetivo.** Que instalar Darwin no obligue a instalar lo que el despliegue no usa, y que la
+frontera sea verificada en vez de convenida.
+
+**Nueve extras, y el criterio es uno solo:** si el consumidor puede decidir no tenerlo, es un
+extra.
+
+| Extra | Qué trae | Paquetes que suma |
+| :-- | :-- | :-- |
+| `[darwin]` | El núcleo. Dominio, servicios, tokens, transportes, sistema de plugins. **Sin almacenamiento.** | `fastapi`, `joserfc`, `argon2-cffi` |
+| `[darwin-sqlalchemy]` | El almacenamiento en SQL, con las migraciones. | `sqlalchemy`, `alembic`, `asyncpg`, `aiosqlite` |
+| `[darwin-beanie]` | El almacenamiento en MongoDB. | `beanie` (arrastra `pymongo`) |
+| `[darwin-magic-link]` | Login por link de un solo uso. | — |
+| `[darwin-two-factor]` | TOTP (RFC 6238). | — |
+| `[darwin-oauth]` | Authorization Code + PKCE. | `httpx` |
+| `[darwin-impersonate]` | "Entrar como", auditado y con techo de vida. | — |
+| `[darwin-passkey]` | WebAuthn. | `webauthn` |
+| `[darwin-organization]` | Organizaciones, miembros e invitaciones. | — |
+
+**Por qué el almacenamiento va separado y no un solo extra con los dos.** Un despliegue elige
+**un** backend. El que elige Mongo no tiene por qué instalar SQLAlchemy, Alembic y asyncpg: son
+~15 MB y una superficie de cadena de suministro que no usa. Y al revés igual.
+
+**Por qué cada plugin tiene extra propio incluso cuando no suma paquetes.** Cuatro de los seis
+—`magic-link`, `two-factor`, `impersonate`, `organization`— corren con la stdlib más el núcleo,
+así que hoy declaran cero dependencias nuevas. El extra igual gana su lugar, y ninguna de las tres
+razones es cosmética:
+
+1. Es el nombre estable donde una dependencia futura entra sin cambiarle el comando de instalación
+   al consumidor. `[darwin-passkey]` no tenía `webauthn` hasta que lo tuvo.
+2. Hace que `pip install 'hexcore[darwin-two-factor]'` **funcione**. Cada extra de plugin arrastra
+   `hexcore[darwin]`; sin esa autorreferencia, ese comando instalaba el paquete sin `joserfc` ni
+   `argon2` y el primer import del plugin explotaba.
+3. Documenta la superficie en el único lugar que el consumidor lee antes de instalar. Un plugin
+   ausente de esa lista es un plugin que nadie encuentra.
+
+**Lo que el extra deliberadamente no hace es exigir un backend.** Los cinco plugins que guardan
+algo necesitan uno de los dos, y "uno de dos" no se expresa en metadata de empaquetado: un extra
+con los dos instalaría SQLAlchemy al que eligió Mongo, que es justo lo que la separación evita. La
+elección es del consumidor y se resuelve en runtime, con un error que nombra el extra que falta.
+
+#### La selección del backend: explícita primero, detectada después, y con dos se niega
+
+`hexcore/darwin/infrastructure/orms/selection.py` es el único módulo que sabe que los dos backends
+existen. `resolve_storage_backend(preferido)` toma `IdentityConfig.storage` —o
+`HEXCORE_DARWIN_STORAGE`—; si no hay preferencia, detecta con `importlib.util.find_spec`.
+
+Con **los dos instalados y sin preferencia declarada, se niega a elegir.** Elegir por una regla
+implícita —orden alfabético, orden de instalación— hace que el backend dependa de qué más haya en
+el entorno, y el síntoma es una app que arranca contra una base vacía en vez de fallar.
+
+El contenedor importa el módulo de repositorios recién cuando se lo piden, y busca **nombres
+neutros**: `UserRepository`, `SessionRepository`, `AccountRepository`, `VerificationRepository`,
+`AuditSink`. Cada backend los expone como alias al final de su módulo. Los plugins usan el mismo
+mecanismo por `plugin_repositories(nombre)`, que distingue "este plugin no tiene ese backend" de
+"el paquete no está instalado" — dos errores con arreglos distintos.
+
+#### El acoplamiento que quedaba: `VerificationPurpose`
+
+`verification` es la tabla que los plugins reusan en vez de aportar una propia, y su `purpose` era
+un `t.Literal` que enumeraba `"magic_link"` y `"two_factor"`. Eso metía dos nombres de plugin en el
+dominio del núcleo, y el comentario que lo acompañaba defendía la decisión: un `Literal` no se
+puede extender desde afuera, así que abrirlo a `str` parecía perder la garantía justo donde
+importa.
+
+Era falso, y vale la pena ser explícito sobre por qué: **el `Literal` nunca fue lo que daba la
+garantía.** Lo que impide canjear un código de reset en el flujo de verificar mail es que el
+`purpose` va en el `WHERE` del `consume` —una condición de la consulta, verificada en cada canje—
+y no una anotación que existe sólo antes de compilar. El tipo cerrado era una réplica de la
+garantía real, no la garantía.
+
+Así que `VerificationPurpose` es `str`, y cada plugin declara su constante (`MAGIC_LINK_PURPOSE`,
+`TWO_FACTOR_PURPOSE`). Donde el valor **sí** entra desde afuera el tipo sigue cerrado:
+`IssueVerificationCode.purpose` es `CoreVerificationPurpose`, un `Literal` con los tres propósitos
+del núcleo, porque ahí el valor llega de un cuerpo HTTP y aceptar cualquier string dejaría pedir un
+código con `purpose="password_reset"` por el endpoint de verificar mail para canjearlo después en
+el flujo de reset. Un plugin que emite códigos propios expone su propio comando.
+
+#### Testing
+
+[`tests/test_darwin_storage_selection.py`](../tests/test_darwin_storage_selection.py) y
+[`tests/test_darwin_plugin_decoupling.py`](../tests/test_darwin_plugin_decoupling.py).
+
+La frontera se prueba **bloqueando**, con un `MockFinder` en `sys.meta_path` de un subproceso —la
+técnica de [`tests/test_optional_dependencies.py`](../tests/test_optional_dependencies.py)— y no
+mirando `sys.modules`. La razón es que `import hexcore` arrastra sqlalchemy por su cuenta
+(`hexcore/__init__.py` importa `BaseSQLAlchemyRepository` eager), así que preguntar quién está
+cargado no distingue "Darwin lo importó" de "ya estaba". Bloquear responde la pregunta que importa:
+¿el núcleo es instalable sin esto?
+
+Lo que queda fijado: que el núcleo importa con los dos backends bloqueados y con los seis plugins
+bloqueados; que cada plugin importa con los otros cinco bloqueados; que cada backend expone los
+cinco nombres neutros —al que le falta uno, falla recién cuando alguien usa ese repositorio, que
+puede ser meses después—; que las ocho combinaciones de `(preferencia, instalados)` resuelven o
+fallan como corresponde; que ningún módulo del núcleo importa un plugin y ningún plugin importa a
+otro, leído del texto porque un import diferido dentro de un método no se ejecuta al importar el
+módulo; que la correspondencia plugin ↔ extra es total **en las dos direcciones**, porque un plugin
+sin extra es un plugin que nadie encuentra y un extra sin plugin es un comando de instalación que
+miente; y que `[all]` contiene las dependencias de los nueve, porque `[all]` es lo que corre en CI
+y lo que le falte no se testea.
+
+---
+
 ## 9. Cambios en archivos existentes
 
 | Archivo | Cambio | Fase | Tipo |

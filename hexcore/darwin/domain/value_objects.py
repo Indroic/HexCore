@@ -37,6 +37,7 @@ __all__ = [
     "AccessTokenClaims",
     "TokenPair",
     "VerificationPurpose",
+    "CoreVerificationPurpose",
 ]
 
 #: `at+jwt` / `rt+jwt` son los media types registrados (RFC 9068 para el access token).
@@ -48,16 +49,29 @@ TokenType = t.Literal["at+jwt", "rt+jwt"]
 #: identificador, así que un código de "resetear contraseña" no se puede canjear en el flujo
 #: de "verificar mail".
 #:
-#: Los propósitos de los plugins se enumeran acá igual que los del núcleo, y no porque el
-#: núcleo los conozca: es el tipo de una columna, y un `Literal` no se puede extender desde
-#: afuera. La alternativa —tipar la columna como `str`— perdería la garantía justo donde
-#: importa, porque el propósito es parte de la clave de canje.
-VerificationPurpose = t.Literal[
+#: Es **abierto** —`str` y no un `Literal`— porque `verification` es la tabla que los plugins
+#: reusan en vez de aportar una propia, y un `Literal` no se puede extender desde afuera:
+#: enumerar acá `"magic_link"` y `"two_factor"` obligaba al núcleo a conocer por nombre a dos
+#: plugins que puede no tener instalados. Cada plugin declara su constante (`MAGIC_LINK_PURPOSE`,
+#: `TWO_FACTOR_PURPOSE`) y el núcleo sólo la transporta.
+#:
+#: Abrirlo no aflojó nada, porque el `Literal` nunca fue lo que daba la garantía: el propósito es
+#: parte de la clave de canje, y lo que impide cruzar flujos es que va en el `WHERE` del
+#: `consume` —una condición de la consulta, verificada en cada canje— y no una anotación que
+#: existe sólo antes de compilar. Donde el valor **sí** entra desde afuera, el tipo sigue
+#: cerrado: ver `CoreVerificationPurpose`.
+VerificationPurpose = str
+
+#: Los propósitos que el núcleo emite por su cuenta, cerrados.
+#:
+#: Se usa en la superficie pública —el campo de `IssueVerificationCode`, que llega de un cuerpo
+#: HTTP— donde aceptar un `str` cualquiera dejaría pedir un código con `purpose="password_reset"`
+#: por el endpoint de verificar mail y canjearlo después en el flujo de reset. Un plugin que
+#: emite sus propios códigos expone su propio comando con su propio propósito, y no reusa este.
+CoreVerificationPurpose = t.Literal[
     "email_verification",
     "password_reset",
-    "magic_link",
     "otp",
-    "two_factor",
 ]
 
 

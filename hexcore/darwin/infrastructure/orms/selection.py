@@ -1,8 +1,9 @@
 """
 Cuál backend de almacenamiento usa Darwin, y cómo se resuelve.
 
-Darwin se parte en tres piezas instalables — `[darwin]`, `[darwin-sqlalchemy]`,
-`[darwin-beanie]` — y este módulo es el único que sabe que existen las dos últimas. El
+Darwin se parte en un extra por unidad de decisión del consumidor, y tres de esos son de
+almacenamiento — `[darwin]`, `[darwin-sqlalchemy]`, `[darwin-beanie]` — de los cuales este
+módulo es el único que sabe que existen las dos últimas. El
 contenedor le pregunta acá y no importa ningún backend directo: así el núcleo no depende de
 ninguno, que es lo que hace que la separación sea real y no una convención.
 

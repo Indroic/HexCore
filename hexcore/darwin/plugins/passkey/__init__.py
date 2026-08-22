@@ -75,7 +75,7 @@ from hexcore.darwin.plugins.passkey.domain import (
 
 if t.TYPE_CHECKING:
     # Sólo para el checker: en runtime los resuelve el `__getattr__` de abajo, porque importarlos
-    # arrastra sqlalchemy y nombrar el plugin no puede exigir el extra `[sql]`.
+    # arrastra sqlalchemy y nombrar el plugin no puede exigir el extra `[darwin-sqlalchemy]`.
     from hexcore.darwin.plugins.passkey.orms.sqlalchemy.models_mixins import (
         PasskeyChallengeMixin as PasskeyChallengeMixin,
         PasskeyMixin as PasskeyMixin,
@@ -306,7 +306,7 @@ def __getattr__(name: str) -> t.Any:
     Los dos mixins, perezosos: importarlos arrastra sqlalchemy.
 
     Están en `__all__` porque son parte de la API pública —el consumidor los compone en su paquete
-    ``models/``— pero nombrar el plugin no puede exigir el extra `[sql]`. Es el mismo patrón que la
+    ``models/``— pero nombrar el plugin no puede exigir el extra `[darwin-sqlalchemy]`. Es el mismo patrón que la
     fachada de Darwin y que el plugin de OAuth.
     """
     if name in ("PasskeyMixin", "PasskeyChallengeMixin"):

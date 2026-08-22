@@ -148,7 +148,7 @@ class AbstractOAuthStateRepository(abc.ABC):
 
     Vive en el dominio y no en `repository.py` porque el servicio lo necesita, y `repository.py`
     importa sqlalchemy en el nivel superior: dejarlo ahí haría que importar el servicio exija el
-    extra `[sql]`, y hay un test que lo verifica.
+    extra `[darwin-sqlalchemy]`, y hay un test que lo verifica.
     """
 
     @abc.abstractmethod

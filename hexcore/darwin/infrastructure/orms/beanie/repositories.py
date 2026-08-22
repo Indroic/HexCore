@@ -551,7 +551,7 @@ def _a_verificacion(doc: t.Any) -> Verification:
         id=doc.entity_id,
         identifier=doc.identifier,
         value_hash=doc.value_hash,
-        purpose=t.cast(VerificationPurpose, doc.purpose),
+        purpose=doc.purpose,
         expires_at=to_utc(doc.expires_at) or datetime.now(UTC),
         consumed_at=to_utc(doc.consumed_at),
         attempts=doc.attempts,

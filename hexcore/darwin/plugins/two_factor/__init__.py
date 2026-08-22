@@ -20,7 +20,8 @@ Lo que **no** hace, a propósito: no aporta códigos de respaldo. Un código de 
 credencial de un solo uso y alta entropía, o sea exactamente lo que `verification` ya modela —
 así que va como un plugin aparte que dependa de este, no como una tabla nueva acá.
 
-Requiere el extra `[darwin]`. No agrega dependencias: el TOTP es `hmac` de la stdlib y el
+Requiere el extra `[darwin-two-factor]`, que no agrega paquetes sobre `[darwin]`: el TOTP
+es `hmac` de la stdlib y el
 cifrado del secreto reusa el JWE de `joserfc`, que ya está.
 
 Uso::

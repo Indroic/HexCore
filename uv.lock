@@ -703,19 +703,51 @@ darwin = [
     { name = "joserfc" },
 ]
 darwin-beanie = [
+    { name = "argon2-cffi" },
     { name = "beanie" },
+    { name = "fastapi" },
+    { name = "joserfc" },
+]
+darwin-impersonate = [
+    { name = "argon2-cffi" },
+    { name = "fastapi" },
+    { name = "joserfc" },
+]
+darwin-magic-link = [
+    { name = "argon2-cffi" },
+    { name = "fastapi" },
+    { name = "joserfc" },
 ]
 darwin-oauth = [
+    { name = "argon2-cffi" },
+    { name = "fastapi" },
     { name = "httpx" },
+    { name = "joserfc" },
+]
+darwin-organization = [
+    { name = "argon2-cffi" },
+    { name = "fastapi" },
+    { name = "joserfc" },
 ]
 darwin-passkey = [
+    { name = "argon2-cffi" },
+    { name = "fastapi" },
+    { name = "joserfc" },
     { name = "webauthn" },
 ]
 darwin-sqlalchemy = [
     { name = "aiosqlite" },
     { name = "alembic" },
+    { name = "argon2-cffi" },
     { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "joserfc" },
     { name = "sqlalchemy" },
+]
+darwin-two-factor = [
+    { name = "argon2-cffi" },
+    { name = "fastapi" },
+    { name = "joserfc" },
 ]
 mongo = [
     { name = "beanie" },
@@ -773,6 +805,14 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'all'", specifier = ">=0.116.1" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.116.1" },
     { name = "fastapi", marker = "extra == 'darwin'", specifier = ">=0.116.1" },
+    { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-beanie'" },
+    { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-impersonate'" },
+    { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-magic-link'" },
+    { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-oauth'" },
+    { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-organization'" },
+    { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-passkey'" },
+    { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-sqlalchemy'" },
+    { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-two-factor'" },
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27.0" },
     { name = "httpx", marker = "extra == 'darwin-oauth'", specifier = ">=0.27.0" },
     { name = "joserfc", marker = "extra == 'all'", specifier = ">=1.0.0" },
@@ -791,7 +831,7 @@ requires-dist = [
     { name = "webauthn", marker = "extra == 'all'", specifier = ">=2.0.0" },
     { name = "webauthn", marker = "extra == 'darwin-passkey'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["api", "redis", "mongo", "sql", "rabbitmq", "procrastinate", "celery", "darwin", "darwin-sqlalchemy", "darwin-beanie", "darwin-oauth", "darwin-passkey", "all"]
+provides-extras = ["api", "redis", "mongo", "sql", "rabbitmq", "procrastinate", "celery", "darwin", "darwin-sqlalchemy", "darwin-beanie", "darwin-magic-link", "darwin-two-factor", "darwin-oauth", "darwin-impersonate", "darwin-passkey", "darwin-organization", "all"]
 
 [package.metadata.requires-dev]
 dev = [

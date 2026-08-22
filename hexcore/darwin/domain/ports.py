@@ -237,7 +237,12 @@ class AbstractAccountRepository(abc.ABC):
 
 
 class AbstractVerificationRepository(abc.ABC):
-    """Tokens de un solo uso: verificación de mail, reset de contraseña, magic link, OTP."""
+    """
+    Tokens de un solo uso: verificación de mail, reset de contraseña, OTP.
+
+    Es también la tabla que reusan los plugins que necesitan un token efímero en vez de aportar
+    una propia, y por eso `purpose` es abierto. Ver `VerificationPurpose`.
+    """
 
     @abc.abstractmethod
     async def add(self, verification: "Verification") -> "Verification":

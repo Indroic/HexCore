@@ -67,7 +67,7 @@ from hexcore.darwin.plugins.oauth.service import LinkPolicy
 
 if t.TYPE_CHECKING:
     # Se importa sólo para el checker: en runtime lo resuelve el `__getattr__` de abajo, porque
-    # importarlo arrastra sqlalchemy y nombrar el plugin no puede exigir el extra `[sql]`.
+    # importarlo arrastra sqlalchemy y nombrar el plugin no puede exigir el extra `[darwin-sqlalchemy]`.
     from hexcore.darwin.plugins.oauth.orms.sqlalchemy.models_mixins import OAuthStateMixin as OAuthStateMixin
     from hexcore.darwin.plugins.oauth.service import OAuthService
 
@@ -307,7 +307,7 @@ def __getattr__(name: str) -> t.Any:
     `OAuthStateMixin` perezoso: importarlo arrastra sqlalchemy.
 
     Está en `__all__` porque es parte de la API pública —el consumidor lo compone en su paquete
-    ``models/``— pero nombrar el plugin no puede exigir el extra `[sql]`. Es el mismo patrón que
+    ``models/``— pero nombrar el plugin no puede exigir el extra `[darwin-sqlalchemy]`. Es el mismo patrón que
     la fachada de Darwin.
     """
     if name == "OAuthStateMixin":

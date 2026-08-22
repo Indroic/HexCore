@@ -67,7 +67,7 @@ from hexcore.darwin.plugins.organization.service import slugify
 
 if t.TYPE_CHECKING:
     # Sólo para el checker: en runtime los resuelve el `__getattr__` de abajo, porque importarlos
-    # arrastra sqlalchemy y nombrar el plugin no puede exigir el extra `[sql]`.
+    # arrastra sqlalchemy y nombrar el plugin no puede exigir el extra `[darwin-sqlalchemy]`.
     from hexcore.darwin.plugins.organization.orms.sqlalchemy.models_mixins import (
         InvitationMixin as InvitationMixin,
         MemberMixin as MemberMixin,
@@ -234,7 +234,7 @@ def __getattr__(name: str) -> t.Any:
     Los tres mixins, perezosos: importarlos arrastra sqlalchemy.
 
     Están en `__all__` porque son parte de la API pública —el consumidor los compone en su paquete
-    ``models/``— pero nombrar el plugin no puede exigir el extra `[sql]`. Es el mismo patrón que la
+    ``models/``— pero nombrar el plugin no puede exigir el extra `[darwin-sqlalchemy]`. Es el mismo patrón que la
     fachada de Darwin y que los plugins de OAuth y passkey.
     """
     if name in ("OrganizationMixin", "MemberMixin", "InvitationMixin"):

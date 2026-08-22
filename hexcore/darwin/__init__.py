@@ -54,6 +54,10 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "hexcore.darwin.domain.value_objects",
         "VerificationPurpose",
     ),
+    "CoreVerificationPurpose": (
+        "hexcore.darwin.domain.value_objects",
+        "CoreVerificationPurpose",
+    ),
     # ── Entidades ─────────────────────────────────────────────────────────────
     "User": ("hexcore.darwin.domain.entities", "User"),
     "IdentitySession": ("hexcore.darwin.domain.entities", "IdentitySession"),
