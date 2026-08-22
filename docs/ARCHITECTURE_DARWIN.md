@@ -2104,6 +2104,113 @@ delató el problema.
 
 ---
 
+### Fase 13 — Ningún plugin fuerza un backend ✅
+
+**Objetivo.** Que usar un plugin no obligue a instalar SQLAlchemy. La separación en extras
+declaraba eso; el código no lo cumplía, y por dos causas que no tenían nada que ver entre sí.
+
+#### Causa 1: `validate()` importaba mixins de SQLAlchemy
+
+`PluginRegistry.validate()` llamaba a `plugin.tables()` para detectar dos plugins que aportan un
+mixin homónimo. `tables()` devuelve mixins de SQLAlchemy, y `validate()` corre en **todo**
+`configure_identity`. El resultado, verificado bloqueando el paquete:
+
+```
+configure_identity(cfg, plugins=PluginRegistry([TwoFactorPlugin()]))
+  -> _validar_tablas()
+  -> plugin.tables()
+  -> ImportError: bloqueado: sqlalchemy
+```
+
+Un despliegue en Mongo no podía **registrar** `two_factor`. Y no había forma de esquivarlo: la
+validación es del registro y vale para los dos backends, así que no puede depender de uno.
+
+La observación que resuelve el problema es que el chequeo necesita **nombres**, no objetos. Así que
+`DarwinPlugin` gana `contributed_tables`: una tupla de `ClassVar` con los mismos nombres que
+devuelve `tables()`, declarada sin importar nada. Es el mismo criterio que `name`, `requires` y
+`priority` — metadata que describe al plugin sin cargar su implementación.
+
+`tables()` queda como lo que siempre fue: **el punto de extensión del backend de SQL**. Llamarlo
+importa sqlalchemy a propósito, y lo llama el consumidor que está declarando sus modelos concretos,
+que por definición ya tiene el extra. Lo que no puede pasar es que lo llame el framework.
+
+En Mongo no hay contraparte que el plugin declare: sus documentos son concretos, y
+`identity_documents(plugins=[...])` los junta por `PLUGIN_DOCUMENTS` (Fase 12).
+
+#### El fallback, que lo destapó un test preexistente
+
+`contributed_tables` duplica las claves de `tables()`, así que puede desincronizarse — hay un test
+que verifica que coincidan en los seis. Pero el problema serio es otro, y lo encontró
+`test_dos_plugins_con_el_mismo_mixin_se_rechazan` al ponerse rojo: **es opcional**, y un plugin de
+terceros escrito antes de que existiera sólo implementa `tables()`. Saltearlo lo dejaba fuera del
+chequeo de homónimos en silencio, que es peor que el import — porque el conflicto que el chequeo
+existe para encontrar volvía a aparecer como un error dentro del framework.
+
+Así que `_nombres_de_tablas` prefiere la declaración y **cae a `tables()`** cuando no hay,
+envuelto en `try/ImportError`. Las tres ramas tienen la propiedad correcta:
+
+| Plugin | Backend instalado | Qué pasa |
+| :-- | :-- | :-- |
+| Declara | cualquiera | Validado, sin importar nada |
+| No declara | sí | Validado leyendo `tables()` |
+| No declara | no | Se saltea |
+
+La última rama es la única salida honesta: no se pueden leer los nombres de un módulo que no está,
+y hacer fallar el arranque por no poder correr una validación es peor que no correrla.
+
+#### Causa 2: `api/__init__.py` arrastraba sqlalchemy a todo el borde HTTP
+
+Preexistente y del framework, no de Darwin, pero es la que rompía más:
+
+```
+from hexcore.infrastructure.api.rate_limit import rate_limit
+  -> ejecuta hexcore/infrastructure/api/__init__.py
+  -> from .utils import build_query_endpoint
+  -> from sqlalchemy.ext.asyncio import AsyncSession
+  -> ImportError
+```
+
+El import de `utils` es legítimo: construye endpoints de query sobre SQL. El problema es que
+importar **cualquier** submódulo del paquete ejecuta su `__init__`, que es semántica de Python y no
+algo que se pueda esquivar desde afuera. Y los routers de los seis plugins usan `rate_limit`, así
+que un despliegue en Mongo no podía montar un magic link.
+
+De los diez submódulos de `api`, sólo `utils` importa sqlalchemy en el nivel superior — `health` y
+`lifespan` ya lo hacían adentro de sus funciones. Así que los dos nombres de `utils` pasan a
+resolverse por `__getattr__` de módulo (PEP 562), memoizado en `globals()`, con un bloque
+`if t.TYPE_CHECKING` que mantiene el tipado: pyright los resuelve contra la definición real y en
+runtime el módulo es perezoso. `__all__` no cambia, y un typo sigue dando `AttributeError` y no
+`ImportError`.
+
+#### Un tercer hallazgo: detectar no puede lanzar
+
+`installed_backends()` usaba `importlib.util.find_spec` sin envolver, y `find_spec` **puede lanzar**
+en vez de devolver `None` — la documentación lo dice para el paquete padre ausente, y también pasa
+con un finder en `sys.meta_path` que levanta `ImportError`, que es justo la técnica con la que los
+tests de frontera simulan un paquete no instalado. Una función cuya única pregunta es "¿está?" no
+puede tener una tercera respuesta: si no se puede determinar, no está.
+
+#### Testing
+
+[`tests/test_darwin_backend_neutrality.py`](../tests/test_darwin_backend_neutrality.py).
+
+Con SQLAlchemy bloqueado: los seis plugins se instancian y responden a los seis puntos de extensión
+neutros; el registro valida y devuelve los siete nombres de mixins; los seis routers se construyen;
+`configure_identity` resuelve el backend a `beanie` **solo**, cablea los cuatro repositorios, los
+dos servicios y el repositorio de `two_factor`; y el borde HTTP se importa.
+
+Y con Beanie bloqueado, lo mismo sobre SQLAlchemy — incluido que `tables()` **sí** funcione ahí,
+que es el backend que lo soporta. La simetría no es adorno: un test que sólo bloqueara sqlalchemy
+pasaría igual si todo el módulo hubiera pasado a depender de Mongo, y "desacoplado" no puede
+significar "acoplado al otro".
+
+Nota sobre la técnica: los bloques de código del subproceso se dedentan **uno por uno**. Un literal
+indentado dentro de un método y un fragmento generado a columna cero no comparten prefijo, así que
+un solo `dedent` sobre la concatenación no saca nada y el subproceso muere con `IndentationError` —
+que es exactamente lo que pasó al escribirlo.
+
+---
+
 ## 9. Cambios en archivos existentes
 
 | Archivo | Cambio | Fase | Tipo |

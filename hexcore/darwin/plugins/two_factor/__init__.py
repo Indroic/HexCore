@@ -93,6 +93,9 @@ class TwoFactorPlugin(DarwinPlugin):
     """
 
     name = "two_factor"
+    #: Los nombres que devuelve `tables()`, para que el registro valide el conflicto
+    #: de homónimos sin importar sqlalchemy. Un test verifica que coincidan.
+    contributed_tables = ("TwoFactorMixin",)
 
     #: Corre temprano entre los hooks del sign-in: si falta el segundo factor, no tiene sentido
     #: que otros plugins hagan trabajo sobre un login que no va a completarse.

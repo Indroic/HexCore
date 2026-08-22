@@ -7,7 +7,7 @@ diseño del módulo, y la razón de que `DarwinPlugin` no traiga ningún concept
 ===============================  ==========================================================
 Aporta                           Se compone con
 ===============================  ==========================================================
-`tables()`                       Mixins que **el consumidor** declara sobre `Base`
+`tables()`                       Mixins que **el consumidor** declara sobre `Base` (sólo SQL)
 `routers()`                      `MountableRouter` + `mount_routers`
 `hooks()`                        La cadena `AbstractMiddleware`, vía `HookMiddleware`
 `middlewares()`                  `MiddlewarePipeline` de CQRS
@@ -164,13 +164,38 @@ class DarwinPlugin(abc.ABC):
     #: Desempate del orden entre plugins sin relación de dependencia. Menor corre primero.
     priority: t.ClassVar[int] = 100
 
+    #: Los nombres de los mixins que `tables()` devuelve, **declarados sin importarlos**.
+    #:
+    #: Existe porque el registro necesita los nombres para detectar el conflicto de dos plugins
+    #: que aportan un mixin homónimo, y llamar a `tables()` para eso importaba sqlalchemy: un
+    #: despliegue en Mongo no podía ni registrar `two_factor`. La validación es del registro y
+    #: vale para los dos backends, así que no puede depender de uno.
+    #:
+    #: Es una duplicación deliberada de las claves de `tables()`, y por eso hay un test que
+    #: verifica que coincidan.
+    #:
+    #: Declararlo es opcional: sin declaración el registro cae a `tables()`, que es lo que
+    #: mantiene validado a un plugin de terceros escrito antes de que esto existiera. Lo que se
+    #: gana declarándolo es que la validación no importe el backend — o sea, que el plugin sirva
+    #: en Mongo.
+    contributed_tables: t.ClassVar[tuple[str, ...]] = ()
+
     def tables(self) -> t.Mapping[str, type]:
         """
-        Los **mixins** que el plugin aporta, por nombre.
+        Los **mixins de SQLAlchemy** que el plugin aporta, por nombre.
 
         Mixins y no clases mapeadas: ver el docstring del módulo. El consumidor los compone
         con `Base` en su paquete ``models/``, que es lo que hace que `import_all_models` los
         vea y que `--autogenerate` no los dropee.
+
+        ⚠️ **Es el punto de extensión del backend de SQL, y sólo de ése.** Llamarlo importa
+        sqlalchemy, así que el framework no lo llama nunca por su cuenta: lo llama el consumidor
+        que está declarando sus modelos, que por definición ya tiene el extra. Para la
+        validación —que corre en los dos backends— está `contributed_tables`, que son los mismos
+        nombres sin el import.
+
+        En Mongo no hay contraparte que el plugin tenga que declarar: sus documentos son
+        concretos, y `identity_documents(plugins=[...])` los junta por `PLUGIN_DOCUMENTS`.
         """
         return {}
 

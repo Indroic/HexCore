@@ -44,18 +44,30 @@ BACKENDS: dict[str, str] = {
 }
 
 
-def installed_backends() -> tuple[str, ...]:
+def _esta_instalado(paquete: str) -> bool:
     """
-    Los backends cuyo paquete está instalado, en orden estable.
+    Si el paquete se puede importar, sin importarlo.
 
     Con `importlib.util.find_spec` y no con un `try: import`: importar `sqlalchemy` para
     averiguar si está cuesta ~200 ms y deja el módulo cargado en un proceso que quizá no lo
     necesitaba. `find_spec` sólo mira el `sys.path`.
+
+    El `try` no es defensivo de más. `find_spec` **puede** lanzar en vez de devolver `None`: la
+    documentación lo dice para el caso del paquete padre ausente, y también pasa cuando hay un
+    finder en `sys.meta_path` que levanta `ImportError` — que es exactamente la técnica con la
+    que los tests de frontera simulan un paquete no instalado. Una función cuya única pregunta
+    es "¿está?" no puede tener una tercera respuesta: si no se puede determinar, no está.
     """
+    try:
+        return importlib.util.find_spec(paquete) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def installed_backends() -> tuple[str, ...]:
+    """Los backends cuyo paquete está instalado, en orden estable."""
     return tuple(
-        nombre
-        for nombre, paquete in BACKENDS.items()
-        if importlib.util.find_spec(paquete) is not None
+        nombre for nombre, paquete in BACKENDS.items() if _esta_instalado(paquete)
     )
 
 

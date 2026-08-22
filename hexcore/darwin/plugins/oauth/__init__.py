@@ -117,6 +117,9 @@ class OAuthPlugin(DarwinPlugin):
     """
 
     name = "oauth"
+    #: Los nombres que devuelve `tables()`, para que el registro valide el conflicto
+    #: de homónimos sin importar sqlalchemy. Un test verifica que coincidan.
+    contributed_tables = ("OAuthStateMixin",)
 
     #: Después de `two_factor` (20): si un usuario que entra por OAuth tiene segundo factor, el
     #: hook del sign-in no aplica igual —OAuth no pasa por `sign_in`— pero el orden deja claro

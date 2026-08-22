@@ -165,10 +165,38 @@ class PluginRegistry:
 
         return tuple(orden)
 
+    def _nombres_de_tablas(self, plugin: DarwinPlugin) -> tuple[str, ...]:
+        """
+        Los nombres de los mixins de un plugin, sin importar un backend si se puede evitar.
+
+        Prefiere `contributed_tables`, que son los mismos nombres declarados sin imports. La
+        validación corre en todo `configure_identity`, así que leerlos de `tables()` hacía que
+        registrar `two_factor` en un despliegue de Mongo explotara con un `ImportError` sobre un
+        paquete que ese despliegue eligió no instalar.
+
+        Cae a `tables()` cuando el plugin **no** declara, y eso no es indulgencia: un plugin de
+        terceros escrito antes de que `contributed_tables` existiera seguiría implementando sólo
+        `tables()`, y saltearlo lo dejaría fuera del chequeo de homónimos **en silencio** — que es
+        peor que el import, porque el conflicto que el chequeo existe para encontrar volvería a
+        aparecer como un error dentro del framework.
+
+        Si ese `tables()` no se puede importar, se saltea. Es la única salida honesta: no se
+        pueden leer los nombres de un módulo que no está, y hacer fallar el arranque por no poder
+        correr una validación es peor que no correrla.
+        """
+        declarados = type(plugin).contributed_tables
+        if declarados:
+            return tuple(declarados)
+        try:
+            return tuple(plugin.tables())
+        except ImportError:
+            return ()
+
     def _validar_tablas(self) -> None:
+        """Detecta dos plugins que aportan un mixin homónimo. Ver `_nombres_de_tablas`."""
         vistos: dict[str, str] = {}
         for plugin in self.plugins:
-            for nombre_tabla in plugin.tables():
+            for nombre_tabla in self._nombres_de_tablas(plugin):
                 dueno = vistos.get(nombre_tabla)
                 if dueno is not None:
                     raise PluginError(
@@ -179,8 +207,28 @@ class PluginRegistry:
                 vistos[nombre_tabla] = type(plugin).name
 
     # ── Agregación de aportes ─────────────────────────────────────────────────
+    def table_names(self) -> tuple[str, ...]:
+        """
+        Los nombres de los mixins aportados, sin importar ningún backend.
+
+        Es lo que se puede preguntar en cualquier despliegue. `tables()` da los objetos, y para
+        eso hace falta sqlalchemy.
+        """
+        self._validar_tablas()
+        return tuple(
+            nombre
+            for plugin in self.plugins
+            for nombre in self._nombres_de_tablas(plugin)
+        )
+
     def tables(self) -> dict[str, type]:
-        """Todos los mixins aportados, en orden de plugin."""
+        """
+        Todos los mixins aportados, en orden de plugin.
+
+        ⚠️ **Requiere `[darwin-sqlalchemy]`**: los mixins son de SQLAlchemy. Lo llama el consumidor
+        que está declarando sus modelos concretos, no el framework — ver `DarwinPlugin.tables`.
+        Para los nombres solos, `table_names()`.
+        """
         self._validar_tablas()
         acumulado: dict[str, type] = {}
         for plugin in self.plugins:

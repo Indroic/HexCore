@@ -115,6 +115,9 @@ class OrganizationPlugin(DarwinPlugin):
     """
 
     name = "organization"
+    #: Los nombres que devuelve `tables()`, para que el registro valide el conflicto
+    #: de homónimos sin importar sqlalchemy. Un test verifica que coincidan.
+    contributed_tables = ("OrganizationMixin", "MemberMixin", "InvitationMixin")
 
     #: El último de la cadena: las organizaciones se construyen **sobre** una identidad ya
     #: establecida, así que su lugar es después de todo lo que autentica y de `impersonate` (60).

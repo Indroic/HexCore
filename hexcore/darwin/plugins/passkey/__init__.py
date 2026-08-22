@@ -124,6 +124,9 @@ class PasskeyPlugin(DarwinPlugin):
     """
 
     name = "passkey"
+    #: Los nombres que devuelve `tables()`, para que el registro valide el conflicto
+    #: de homónimos sin importar sqlalchemy. Un test verifica que coincidan.
+    contributed_tables = ("PasskeyMixin", "PasskeyChallengeMixin")
 
     #: Con `two_factor` (20) y `oauth` (30): es un método de autenticación primaria, así que su
     #: lugar es entre los que autentican y antes de `impersonate` (60).
