@@ -41,6 +41,7 @@ from hexcore.darwin.domain.ports import (
 from hexcore.darwin.domain.value_objects import VerificationPurpose
 
 __all__ = [
+    "to_utc",
     "BeanieUserRepository",
     "BeanieSessionRepository",
     "BeanieAccountRepository",
@@ -54,9 +55,13 @@ __all__ = [
 ]
 
 
-def _aware(valor: datetime | None) -> datetime | None:
+def to_utc(valor: datetime | None) -> datetime | None:
     """
-    Normaliza a UTC-aware.
+    Normaliza a UTC-aware. **Público**: lo usan los repositorios de los plugins.
+
+    Empezó como `_aware`, privado, y pyright lo señaló con `reportPrivateUsage` en los cinco
+    módulos que lo importaban. Tenía razón: un helper que cruza módulos es parte de la API interna
+    del backend, y llamarlo privado sólo hacía que cada uso pareciera una violación.
 
     Mongo guarda los `datetime` como BSON UTC y los devuelve **naive**, así que comparar con un
     `datetime.now(UTC)` levanta `TypeError`. Es el mismo problema que SQLite en el otro backend, y
@@ -475,11 +480,11 @@ def _a_usuario(doc: t.Any) -> User:
         name=doc.name,
         image=doc.image,
         token_generation=doc.token_generation,
-        locked_until=_aware(doc.locked_until),
+        locked_until=to_utc(doc.locked_until),
         is_active=doc.is_active,
         extra=dict(doc.extra or {}),
-        created_at=_aware(doc.created_at) or datetime.now(UTC),
-        updated_at=_aware(doc.updated_at) or datetime.now(UTC),
+        created_at=to_utc(doc.created_at) or datetime.now(UTC),
+        updated_at=to_utc(doc.updated_at) or datetime.now(UTC),
     )
 
 
@@ -491,17 +496,17 @@ def _a_sesion(doc: t.Any) -> IdentitySession:
         token_hash=doc.token_hash,
         family_id=doc.family_id,
         transport=doc.transport,
-        expires_at=_aware(doc.expires_at) or datetime.now(UTC),
-        revoked_at=_aware(doc.revoked_at),
-        consumed_at=_aware(doc.consumed_at),
+        expires_at=to_utc(doc.expires_at) or datetime.now(UTC),
+        revoked_at=to_utc(doc.revoked_at),
+        consumed_at=to_utc(doc.consumed_at),
         ip_address=doc.ip_address,
         user_agent=doc.user_agent,
         impersonation_reason=doc.impersonation_reason,
         impersonation_granted_by=doc.impersonation_granted_by,
-        impersonation_expires_at=_aware(doc.impersonation_expires_at),
+        impersonation_expires_at=to_utc(doc.impersonation_expires_at),
         is_active=doc.is_active,
-        created_at=_aware(doc.created_at) or datetime.now(UTC),
-        updated_at=_aware(doc.updated_at) or datetime.now(UTC),
+        created_at=to_utc(doc.created_at) or datetime.now(UTC),
+        updated_at=to_utc(doc.updated_at) or datetime.now(UTC),
     )
 
 
@@ -533,11 +538,11 @@ def _a_cuenta(doc: t.Any) -> Account:
         refresh_token=doc.refresh_token,
         id_token=doc.id_token,
         scope=doc.scope,
-        access_token_expires_at=_aware(doc.access_token_expires_at),
-        refresh_token_expires_at=_aware(doc.refresh_token_expires_at),
+        access_token_expires_at=to_utc(doc.access_token_expires_at),
+        refresh_token_expires_at=to_utc(doc.refresh_token_expires_at),
         is_active=doc.is_active,
-        created_at=_aware(doc.created_at) or datetime.now(UTC),
-        updated_at=_aware(doc.updated_at) or datetime.now(UTC),
+        created_at=to_utc(doc.created_at) or datetime.now(UTC),
+        updated_at=to_utc(doc.updated_at) or datetime.now(UTC),
     )
 
 
@@ -547,12 +552,12 @@ def _a_verificacion(doc: t.Any) -> Verification:
         identifier=doc.identifier,
         value_hash=doc.value_hash,
         purpose=t.cast(VerificationPurpose, doc.purpose),
-        expires_at=_aware(doc.expires_at) or datetime.now(UTC),
-        consumed_at=_aware(doc.consumed_at),
+        expires_at=to_utc(doc.expires_at) or datetime.now(UTC),
+        consumed_at=to_utc(doc.consumed_at),
         attempts=doc.attempts,
         is_active=doc.is_active,
-        created_at=_aware(doc.created_at) or datetime.now(UTC),
-        updated_at=_aware(doc.updated_at) or datetime.now(UTC),
+        created_at=to_utc(doc.created_at) or datetime.now(UTC),
+        updated_at=to_utc(doc.updated_at) or datetime.now(UTC),
     )
 
 

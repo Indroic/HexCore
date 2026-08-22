@@ -427,20 +427,20 @@ class TestMapeo:
         `datetime.now(UTC)` levanta `TypeError`. Es el mismo problema que SQLite en el otro
         backend, y se resuelve igual: normalizando al hidratar.
         """
-        from hexcore.darwin.infrastructure.orms.beanie.repositories import _aware
+        from hexcore.darwin.infrastructure.orms.beanie.repositories import to_utc
 
         naive = datetime(2026, 1, 1, 12, 0)
 
-        normalizado = _aware(naive)
+        normalizado = to_utc(naive)
 
         assert normalizado is not None
         assert normalizado.tzinfo is UTC
-        assert _aware(None) is None
+        assert to_utc(None) is None
 
     def test_no_toca_los_que_ya_son_aware(self):
-        from hexcore.darwin.infrastructure.orms.beanie.repositories import _aware
+        from hexcore.darwin.infrastructure.orms.beanie.repositories import to_utc
 
-        assert _aware(AHORA) == AHORA
+        assert to_utc(AHORA) == AHORA
 
     def test_la_entidad_sale_completa(self):
         """

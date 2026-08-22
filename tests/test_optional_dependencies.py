@@ -290,6 +290,14 @@ import pytest
     ("beanie", "hexcore.darwin.infrastructure.orms.sqlalchemy.models"),
     ("beanie", "hexcore.darwin.infrastructure.orms.sqlalchemy.repositories"),
     ("beanie", "hexcore.darwin.infrastructure.orms.sqlalchemy.schema"),
+    ("beanie", "hexcore.darwin.plugins.two_factor.orms.sqlalchemy.repository"),
+    ("sqlalchemy", "hexcore.darwin.plugins.two_factor.orms.beanie.repository"),
+    ("beanie", "hexcore.darwin.plugins.oauth.orms.sqlalchemy.repository"),
+    ("sqlalchemy", "hexcore.darwin.plugins.oauth.orms.beanie.repository"),
+    ("beanie", "hexcore.darwin.plugins.passkey.orms.sqlalchemy.repository"),
+    ("sqlalchemy", "hexcore.darwin.plugins.passkey.orms.beanie.repository"),
+    ("beanie", "hexcore.darwin.plugins.organization.orms.sqlalchemy.repository"),
+    ("sqlalchemy", "hexcore.darwin.plugins.organization.orms.beanie.repository"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.

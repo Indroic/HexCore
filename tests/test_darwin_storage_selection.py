@@ -56,6 +56,29 @@ def _sin_backends(cuerpo: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def _bloqueando(paquete: str, cuerpo: str) -> subprocess.CompletedProcess[str]:
+    """
+    Corre `cuerpo` en un subproceso con **un** paquete bloqueado.
+
+    La versión de un solo paquete de `_sin_backends`, para los tests de simetría: se bloquea el
+    backend que no se está probando.
+    """
+    codigo = (
+        "import sys\n"
+        "class MockFinder:\n"
+        "    @classmethod\n"
+        "    def find_spec(cls, fullname, path, target=None):\n"
+        f"        if fullname.split('.')[0] == {paquete!r}:\n"
+        "            raise ImportError('bloqueado: ' + fullname)\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, MockFinder)\n"
+        + cuerpo
+    )
+    return subprocess.run(
+        [sys.executable, "-c", codigo], capture_output=True, text=True
+    )
+
+
 #: Los cinco nombres que todo backend del núcleo tiene que exponer.
 CONTRATO_NUCLEO = (
     "UserRepository",
@@ -201,33 +224,76 @@ class TestConfig:
 
 
 # ── El contrato de cada backend ───────────────────────────────────────────────
+#: Los dos backends que Darwin shippea. El test corre sobre **los dos**, que es lo que atrapa el
+#: backend nuevo al que le falta un nombre — la falla que aparece meses después, cuando alguien usa
+#: ese repositorio.
+BACKENDS_A_PROBAR = ("sqlalchemy", "beanie")
+
+
 class TestContratoDelBackend:
-    def test_sqlalchemy_expone_los_cinco_nombres_del_nucleo(self):
+    @pytest.mark.parametrize("backend", BACKENDS_A_PROBAR)
+    def test_expone_los_cinco_nombres_del_nucleo(self, backend):
         """
         ⚠️ Un backend al que le falta uno falla recién cuando alguien usa ese repositorio, que
         puede ser meses después del despliegue.
         """
-        pytest.importorskip("sqlalchemy")
+        pytest.importorskip(BACKENDS[backend])
         import importlib
 
         modulo = importlib.import_module(
-            "hexcore.darwin.infrastructure.orms.sqlalchemy.repositories"
+            f"hexcore.darwin.infrastructure.orms.{backend}.repositories"
         )
 
         faltan = [n for n in CONTRATO_NUCLEO if not hasattr(modulo, n)]
-        assert not faltan, f"le faltan al backend sqlalchemy: {faltan}"
+        assert not faltan, f"le faltan al backend {backend}: {faltan}"
 
+    @pytest.mark.parametrize("backend", BACKENDS_A_PROBAR)
     @pytest.mark.parametrize("plugin", sorted(CONTRATO_PLUGINS))
-    def test_sqlalchemy_expone_los_nombres_de_cada_plugin(self, plugin):
-        pytest.importorskip("sqlalchemy")
+    def test_expone_los_nombres_de_cada_plugin(self, plugin, backend):
+        """Los cuatro plugins con almacenamiento, en los dos backends: ocho combinaciones."""
+        pytest.importorskip(BACKENDS[backend])
         import importlib
 
         modulo = importlib.import_module(
-            f"hexcore.darwin.plugins.{plugin}.orms.sqlalchemy.repository"
+            f"hexcore.darwin.plugins.{plugin}.orms.{backend}.repository"
         )
 
         faltan = [n for n in CONTRATO_PLUGINS[plugin] if not hasattr(modulo, n)]
-        assert not faltan, f"le faltan a {plugin}/sqlalchemy: {faltan}"
+        assert not faltan, f"le faltan a {plugin}/{backend}: {faltan}"
+
+    @pytest.mark.parametrize("backend", BACKENDS_A_PROBAR)
+    def test_los_dos_backends_implementan_los_mismos_puertos(self, backend):
+        """
+        Los repositorios de cada backend son subclases de los puertos `Abstract*`. Es lo que hace
+        que el contenedor pueda intercambiarlos sin saber cuál tiene.
+        """
+        pytest.importorskip(BACKENDS[backend])
+        import importlib
+
+        from hexcore.darwin.domain.ports import (
+            AbstractAccountRepository,
+            AbstractAuditSink,
+            AbstractSessionRepository,
+            AbstractUserRepository,
+            AbstractVerificationRepository,
+        )
+
+        modulo = importlib.import_module(
+            f"hexcore.darwin.infrastructure.orms.{backend}.repositories"
+        )
+        esperados = {
+            "UserRepository": AbstractUserRepository,
+            "SessionRepository": AbstractSessionRepository,
+            "AccountRepository": AbstractAccountRepository,
+            "VerificationRepository": AbstractVerificationRepository,
+            "AuditSink": AbstractAuditSink,
+        }
+
+        for nombre, puerto in esperados.items():
+            clase = getattr(modulo, nombre)
+            assert issubclass(clase, puerto), (
+                f"{backend}.{nombre} no implementa {puerto.__name__}"
+            )
 
     def test_los_alias_apuntan_a_las_clases_con_prefijo(self):
         """
@@ -235,10 +301,16 @@ class TestContratoDelBackend:
         instancia a mano— y el neutro es el nombre del rol, que es lo que el contenedor busca.
         """
         pytest.importorskip("sqlalchemy")
-        from hexcore.darwin.infrastructure.orms.sqlalchemy import repositories as r
+        from hexcore.darwin.infrastructure.orms.sqlalchemy import repositories as sa
 
-        assert r.UserRepository is r.SqlAlchemyUserRepository
-        assert r.AuditSink is r.SqlAlchemyAuditSink
+        assert sa.UserRepository is sa.SqlAlchemyUserRepository
+        assert sa.AuditSink is sa.SqlAlchemyAuditSink
+
+        pytest.importorskip("beanie")
+        from hexcore.darwin.infrastructure.orms.beanie import repositories as be
+
+        assert be.UserRepository is be.BeanieUserRepository
+        assert be.AuditSink is be.BeanieAuditSink
 
 
 # ── La frontera: el núcleo no arrastra ningún backend ─────────────────────────
@@ -287,6 +359,35 @@ class TestFrontera:
 
         assert resultado.returncode == 0, (
             f"el plugin {plugin} necesita un backend:\n"
+            + resultado.stdout
+            + resultado.stderr
+        )
+
+    @pytest.mark.parametrize(
+        "plugin", ["two_factor", "oauth", "passkey", "organization"]
+    )
+    @pytest.mark.parametrize(
+        "backend, bloqueado",
+        [("sqlalchemy", "beanie"), ("beanie", "sqlalchemy")],
+    )
+    def test_el_backend_de_un_plugin_no_exige_el_otro(
+        self, plugin, backend, bloqueado
+    ):
+        """
+        La simetría, en los dos sentidos y para los cuatro plugins: ocho combinaciones.
+
+        Cada backend exige **el suyo** y nada más. Si el de Mongo arrastrara sqlalchemy, un
+        despliegue con `[darwin,darwin-beanie]` no podría cablear el plugin — y el síntoma
+        aparecería al arrancar, con un `ModuleNotFoundError` que no explica por qué.
+        """
+        resultado = _bloqueando(
+            bloqueado,
+            f"import hexcore.darwin.plugins.{plugin}.orms.{backend}.repository\n"
+            "print('ok')\n",
+        )
+
+        assert resultado.returncode == 0, (
+            f"{plugin}/{backend} exige {bloqueado}:\n"
             + resultado.stdout
             + resultado.stderr
         )
@@ -425,11 +526,36 @@ class TestPluginStorage:
         finally:
             reset_identity()
 
+    @pytest.mark.parametrize("backend", ["sqlalchemy", "beanie"])
+    @pytest.mark.parametrize(
+        "plugin", ["two_factor", "oauth", "passkey", "organization"]
+    )
+    def test_los_cuatro_plugins_tienen_los_dos_backends(self, plugin, backend):
+        """
+        Las ocho combinaciones se resuelven. Si un plugin quedara con un solo backend, el
+        despliegue que use el otro fallaría al cablearlo.
+        """
+        pytest.importorskip(BACKENDS[backend])
+        from hexcore.darwin import IdentityConfig, configure_identity, reset_identity
+        from hexcore.darwin.plugins.storage import plugin_repositories
+
+        reset_identity()
+        configure_identity(IdentityConfig(storage=backend, secret_key="k" * 48))
+        try:
+            modulo = plugin_repositories(plugin)
+
+            assert modulo.__name__.endswith(f"orms.{backend}.repository")
+        finally:
+            reset_identity()
+
     def test_un_plugin_sin_ese_backend_da_un_error_util(self):
         """
         El caso real: un plugin de terceros puede shippear sólo SQL, y quien lo cablea con Mongo
         tiene que enterarse al arrancar y no con un `ModuleNotFoundError` sobre un submódulo que
         nunca nombró.
+
+        Se usa un nombre de plugin que no existe, porque los cuatro que shippea Darwin tienen los
+        dos backends — que es justamente lo que fija el test de arriba.
         """
         from hexcore.darwin import IdentityConfig, configure_identity, reset_identity
         from hexcore.darwin.plugins.storage import plugin_repositories
@@ -438,10 +564,10 @@ class TestPluginStorage:
         configure_identity(IdentityConfig(storage="beanie", secret_key="k" * 48))
         try:
             with pytest.raises(ImportError) as excinfo:
-                plugin_repositories("two_factor")
+                plugin_repositories("un_plugin_de_terceros")
 
             mensaje = str(excinfo.value)
             assert "no implementa el backend 'beanie'" in mensaje
-            assert "sqlalchemy" in mensaje, "tiene que decir qué sí implementa"
+            assert "repository=" in mensaje, "la remediación tiene que ser copiable"
         finally:
             reset_identity()
