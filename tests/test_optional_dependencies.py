@@ -277,6 +277,19 @@ import pytest
     ("beanie", "hexcore.darwin.application.services"),
     ("beanie", "hexcore.darwin.infrastructure.tokens"),
     ("beanie", "hexcore.darwin.testing"),
+    # El backend de Beanie: importarlo SI exige beanie —es el paquete del backend— pero no puede
+    # exigir sqlalchemy. Un despliegue con Mongo no instala el otro.
+    ("sqlalchemy", "hexcore.darwin.infrastructure.orms.beanie.documents"),
+    ("sqlalchemy", "hexcore.darwin.infrastructure.orms.beanie.repositories"),
+    ("sqlalchemy", "hexcore.darwin.infrastructure.orms.beanie.schema"),
+    ("fastapi", "hexcore.darwin.infrastructure.orms.beanie.documents"),
+    ("fastapi", "hexcore.darwin.infrastructure.orms.beanie.repositories"),
+    ("joserfc", "hexcore.darwin.infrastructure.orms.beanie.repositories"),
+    ("argon2", "hexcore.darwin.infrastructure.orms.beanie.repositories"),
+    # Y el de SQLAlchemy, la simetria: no puede exigir beanie.
+    ("beanie", "hexcore.darwin.infrastructure.orms.sqlalchemy.models"),
+    ("beanie", "hexcore.darwin.infrastructure.orms.sqlalchemy.repositories"),
+    ("beanie", "hexcore.darwin.infrastructure.orms.sqlalchemy.schema"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.

@@ -168,11 +168,17 @@ markers = [
     "anyio: mark test as an anyio test",
     "packaging: verifica la wheel construida (lento: construye de verdad)",
     "typing: invoca pyright (lento: ~10s por corrida)",
+    "mongo: necesita un MongoDB real en HEXCORE_TEST_MONGO_URI",
 ]
-# `packaging` construye la wheel y `typing` invoca pyright, así que ninguno corre en la
-# corrida normal. Se piden explícito: `pytest -m packaging`, `pytest -m typing`. El workflow
-# los corre en sus propios jobs.
-addopts = "-m 'not packaging and not typing'"
+# `packaging` construye la wheel, `typing` invoca pyright y `mongo` necesita un servidor, así
+# que ninguno corre en la corrida normal. Se piden explícito: `pytest -m packaging`,
+# `pytest -m typing`, `pytest -m mongo`. El workflow los corre en sus propios jobs.
+#
+# `mongo` está deselecccionado y no salteado a propósito: el gate de CI exige **cero SKIPPED**
+# en la corrida normal —un salteo ahí significa que un extra no llegó al entorno— así que un
+# test que se saltea por falta de servidor rompería esa señal. Deseleccionarlo lo saca de la
+# cuenta sin apagar el gate.
+addopts = "-m 'not packaging and not typing and not mongo'"
 # `tests/typing/` no se colecta: esos archivos no se ejecutan, los chequea pyright vía
 # `tests/test_typing_gate.py`.
 norecursedirs = ["tests/typing"]
