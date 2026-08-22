@@ -68,7 +68,7 @@ from hexcore.darwin.plugins.organization.service import slugify
 if t.TYPE_CHECKING:
     # Sólo para el checker: en runtime los resuelve el `__getattr__` de abajo, porque importarlos
     # arrastra sqlalchemy y nombrar el plugin no puede exigir el extra `[sql]`.
-    from hexcore.darwin.plugins.organization.models_mixins import (
+    from hexcore.darwin.plugins.organization.orms.sqlalchemy.models_mixins import (
         InvitationMixin as InvitationMixin,
         MemberMixin as MemberMixin,
         OrganizationMixin as OrganizationMixin,
@@ -151,22 +151,21 @@ class OrganizationPlugin(DarwinPlugin):
         with self._lock:
             if self._service is None:
                 from hexcore.darwin.application.container import get_identity_container
-                from hexcore.darwin.plugins.organization.repository import (
-                    SqlAlchemyInvitationRepository,
-                    SqlAlchemyMemberRepository,
-                    SqlAlchemyOrganizationRepository,
-                )
                 from hexcore.darwin.plugins.organization.service import (
                     DEFAULT_INVITATION_TTL,
                     OrganizationService,
                 )
+                from hexcore.darwin.plugins.storage import plugin_repositories
+
+                # Los tres repositorios del backend que resolvió el contenedor. Ver
+                # `plugins/storage.py`.
+                repos = plugin_repositories("organization")
 
                 contenedor = get_identity_container()
                 self._service = OrganizationService(
-                    organizations=self._orgs or SqlAlchemyOrganizationRepository(),
-                    members=self._members or SqlAlchemyMemberRepository(),
-                    invitations=self._invitations
-                    or SqlAlchemyInvitationRepository(),
+                    organizations=self._orgs or repos.OrganizationRepository(),
+                    members=self._members or repos.MemberRepository(),
+                    invitations=self._invitations or repos.InvitationRepository(),
                     users=contenedor.users(),
                     clock=contenedor.clock(),
                     invitation_ttl=self._ttl or DEFAULT_INVITATION_TTL,
@@ -181,7 +180,7 @@ class OrganizationPlugin(DarwinPlugin):
 
     # ── Lo que aporta ─────────────────────────────────────────────────────────
     def tables(self) -> t.Mapping[str, type]:
-        from hexcore.darwin.plugins.organization.models_mixins import (
+        from hexcore.darwin.plugins.organization.orms.sqlalchemy.models_mixins import (
             InvitationMixin,
             MemberMixin,
             OrganizationMixin,
@@ -239,7 +238,7 @@ def __getattr__(name: str) -> t.Any:
     fachada de Darwin y que los plugins de OAuth y passkey.
     """
     if name in ("OrganizationMixin", "MemberMixin", "InvitationMixin"):
-        from hexcore.darwin.plugins.organization import models_mixins
+        from hexcore.darwin.plugins.organization.orms.sqlalchemy import models_mixins
 
         return getattr(models_mixins, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -63,7 +63,7 @@ from hexcore.darwin.plugins.passkey import (  # noqa: E402
     VerifiedAssertion,
     get_passkey_service,
 )
-from hexcore.darwin.plugins.passkey.models import create_passkey_tables  # noqa: E402
+from hexcore.darwin.plugins.passkey.orms.sqlalchemy.models import create_passkey_tables  # noqa: E402
 from hexcore.darwin.plugins.passkey.webauthn_adapter import (  # noqa: E402
     b64url_decode,
     b64url_encode,
@@ -229,6 +229,7 @@ def contenedor(reloj, plugin):
     plugin.reset()
     contenedor = configure_identity(
         IdentityConfig(
+            storage="sqlalchemy",
             secret_key=CLAVE,
             tokens=TokenConfig(issuer="https://api.test"),
             require_verified_email=False,
@@ -392,7 +393,7 @@ class TestDesafio:
         """
         from sqlalchemy import select
 
-        from hexcore.darwin.plugins.passkey.models import PasskeyChallengeModel
+        from hexcore.darwin.plugins.passkey.orms.sqlalchemy.models import PasskeyChallengeModel
         from hexcore.infrastructure.uow.scopes import session_scope
 
         usuario = await _usuario(contenedor)
@@ -951,7 +952,7 @@ class TestPlugin:
     def test_el_servicio_sin_registrar_falla_con_remediacion(self, reloj):
         reset_identity()
         configure_identity(
-            IdentityConfig(secret_key=CLAVE),
+            IdentityConfig(storage="sqlalchemy", secret_key=CLAVE),
             clock=reloj,
             key_store=StaticKeyStore([generate_signing_key(kid="k1")]),
         )

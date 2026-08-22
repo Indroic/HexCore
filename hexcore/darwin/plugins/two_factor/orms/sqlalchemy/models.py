@@ -1,7 +1,7 @@
 """
 El modelo concreto de `two_factor`. **Importar este módulo SÍ registra `darwin_two_factor`.**
 
-Contraparte deliberada de `models_mixins`, igual que `hexcore.darwin.infrastructure.models` lo
+Contraparte deliberada de `models_mixins`, igual que `hexcore.darwin.infrastructure.orms.sqlalchemy.models` lo
 es de los mixins del núcleo. Importalo desde tu paquete ``models/`` si te alcanza el esquema por
 defecto; declarate tu propia clase concreta a partir del mixin si necesitás extenderlo.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import typing as t
 
-from hexcore.darwin.plugins.two_factor.models_mixins import (
+from hexcore.darwin.plugins.two_factor.orms.sqlalchemy.models_mixins import (
     DEFAULT_TWO_FACTOR_TABLE,
     TwoFactorMixin,
 )

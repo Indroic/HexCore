@@ -261,6 +261,22 @@ import pytest
     ("fastapi", "hexcore.darwin.testing.helpers"),
     ("joserfc", "hexcore.darwin.testing.helpers"),
     ("argon2", "hexcore.darwin.testing.helpers"),
+    # ── La separacion en tres piezas ──────────────────────────────────────────
+    # `[darwin]` es el nucleo sin almacenamiento, y estas filas son el contrato: ni el selector
+    # ni el resolvedor de plugins pueden exigir un backend, porque son justamente los que
+    # eligen cual usar.
+    ("sqlalchemy", "hexcore.darwin.infrastructure.orms.selection"),
+    ("beanie", "hexcore.darwin.infrastructure.orms.selection"),
+    ("sqlalchemy", "hexcore.darwin.infrastructure.orms"),
+    ("beanie", "hexcore.darwin.infrastructure.orms"),
+    ("sqlalchemy", "hexcore.darwin.plugins.storage"),
+    ("beanie", "hexcore.darwin.plugins.storage"),
+    # Y el nucleo entero sin ninguno de los dos: es lo que hace que la separacion sea real.
+    ("beanie", "hexcore.darwin"),
+    ("beanie", "hexcore.darwin.application.container"),
+    ("beanie", "hexcore.darwin.application.services"),
+    ("beanie", "hexcore.darwin.infrastructure.tokens"),
+    ("beanie", "hexcore.darwin.testing"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.

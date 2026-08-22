@@ -76,7 +76,7 @@ from hexcore.darwin.plugins.passkey.domain import (
 if t.TYPE_CHECKING:
     # Sólo para el checker: en runtime los resuelve el `__getattr__` de abajo, porque importarlos
     # arrastra sqlalchemy y nombrar el plugin no puede exigir el extra `[sql]`.
-    from hexcore.darwin.plugins.passkey.models_mixins import (
+    from hexcore.darwin.plugins.passkey.orms.sqlalchemy.models_mixins import (
         PasskeyChallengeMixin as PasskeyChallengeMixin,
         PasskeyMixin as PasskeyMixin,
     )
@@ -204,19 +204,16 @@ class PasskeyPlugin(DarwinPlugin):
 
     @staticmethod
     def _repositorio_por_defecto() -> AbstractPasskeyRepository:
-        from hexcore.darwin.plugins.passkey.repository import (
-            SqlAlchemyPasskeyRepository,
-        )
+        """El repositorio del backend que resolvió el contenedor. Ver `plugins/storage.py`."""
+        from hexcore.darwin.plugins.storage import plugin_repositories
 
-        return SqlAlchemyPasskeyRepository()
+        return plugin_repositories("passkey").PasskeyRepository()
 
     @staticmethod
     def _desafios_por_defecto() -> AbstractPasskeyChallengeRepository:
-        from hexcore.darwin.plugins.passkey.repository import (
-            SqlAlchemyPasskeyChallengeRepository,
-        )
+        from hexcore.darwin.plugins.storage import plugin_repositories
 
-        return SqlAlchemyPasskeyChallengeRepository()
+        return plugin_repositories("passkey").PasskeyChallengeRepository()
 
     def reset(self) -> None:
         """Descarta el servicio cacheado. Para los tests, que reconfiguran el contenedor."""
@@ -225,7 +222,7 @@ class PasskeyPlugin(DarwinPlugin):
 
     # ── Lo que aporta ─────────────────────────────────────────────────────────
     def tables(self) -> t.Mapping[str, type]:
-        from hexcore.darwin.plugins.passkey.models_mixins import (
+        from hexcore.darwin.plugins.passkey.orms.sqlalchemy.models_mixins import (
             PasskeyChallengeMixin,
             PasskeyMixin,
         )
@@ -313,7 +310,7 @@ def __getattr__(name: str) -> t.Any:
     fachada de Darwin y que el plugin de OAuth.
     """
     if name in ("PasskeyMixin", "PasskeyChallengeMixin"):
-        from hexcore.darwin.plugins.passkey import models_mixins
+        from hexcore.darwin.plugins.passkey.orms.sqlalchemy import models_mixins
 
         return getattr(models_mixins, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

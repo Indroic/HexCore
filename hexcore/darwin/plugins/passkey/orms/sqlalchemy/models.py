@@ -1,14 +1,14 @@
 """
 Los modelos concretos de `passkey`. **Importar este módulo SÍ registra las dos tablas.**
 
-Contraparte deliberada de `models_mixins`, igual que `hexcore.darwin.infrastructure.models` lo es
+Contraparte deliberada de `models_mixins`, igual que `hexcore.darwin.infrastructure.orms.sqlalchemy.models` lo es
 de los mixins del núcleo.
 """
 from __future__ import annotations
 
 import typing as t
 
-from hexcore.darwin.plugins.passkey.models_mixins import (
+from hexcore.darwin.plugins.passkey.orms.sqlalchemy.models_mixins import (
     DEFAULT_PASSKEY_CHALLENGE_TABLE,
     DEFAULT_PASSKEY_TABLE,
     PasskeyChallengeMixin,

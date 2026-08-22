@@ -32,7 +32,7 @@ from hexcore.darwin import (  # noqa: E402
     Verification,
     create_identity_tables,
 )
-from hexcore.darwin.infrastructure.repositories import (  # noqa: E402
+from hexcore.darwin.infrastructure.orms.sqlalchemy.repositories import (  # noqa: E402
     SqlAlchemyAccountRepository,
     SqlAlchemyAuditSink,
     SqlAlchemySessionRepository,
@@ -424,7 +424,7 @@ async def test_la_auditoria_se_escribe_en_la_transaccion_del_llamador(engine):
     """
     from sqlalchemy import func, select
 
-    from hexcore.darwin.infrastructure.models import AuditLogModel
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.models import AuditLogModel
     from hexcore.infrastructure.uow.scopes import session_scope
 
     async def contar() -> int:

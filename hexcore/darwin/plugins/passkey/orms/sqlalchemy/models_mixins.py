@@ -40,7 +40,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
-from hexcore.darwin.infrastructure.models_mixins import (
+from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import (
     DEFAULT_USER_TABLE,
     TimestampMixin,
 )

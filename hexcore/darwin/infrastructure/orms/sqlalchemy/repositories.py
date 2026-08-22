@@ -53,6 +53,12 @@ __all__ = [
     "SqlAlchemyAccountRepository",
     "SqlAlchemyVerificationRepository",
     "SqlAlchemyAuditSink",
+    # Los alias neutros: ver el bloque del final del archivo.
+    "UserRepository",
+    "SessionRepository",
+    "AccountRepository",
+    "VerificationRepository",
+    "AuditSink",
 ]
 
 SessionScope = t.Callable[[], t.AsyncContextManager["AsyncSession"]]
@@ -101,7 +107,7 @@ class SqlAlchemyUserRepository(_BaseIdentityRepository, AbstractUserRepository):
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.infrastructure.models import UserModel
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import UserModel
 
         return UserModel
 
@@ -166,7 +172,7 @@ class SqlAlchemySessionRepository(_BaseIdentityRepository, AbstractSessionReposi
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.infrastructure.models import SessionModel
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import SessionModel
 
         return SessionModel
 
@@ -274,7 +280,7 @@ class SqlAlchemyAccountRepository(_BaseIdentityRepository, AbstractAccountReposi
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.infrastructure.models import AccountModel
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import AccountModel
 
         return AccountModel
 
@@ -343,7 +349,7 @@ class SqlAlchemyVerificationRepository(
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.infrastructure.models import VerificationModel
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import VerificationModel
 
         return VerificationModel
 
@@ -456,7 +462,7 @@ class SqlAlchemyAuditSink(AbstractAuditSink):
     def __init__(self, *, session: "AsyncSession", model: type | None = None) -> None:
         self._session = session
         if model is None:
-            from hexcore.darwin.infrastructure.models import AuditLogModel
+            from hexcore.darwin.infrastructure.orms.sqlalchemy.models import AuditLogModel
 
             model = AuditLogModel
         self._model = model
@@ -653,3 +659,24 @@ def _a_verificacion(fila: t.Any) -> Verification:
         created_at=_aware(fila.created_at),
         updated_at=_aware(fila.updated_at),
     )
+
+
+# ── El contrato del backend ───────────────────────────────────────────────────
+#
+# Cinco alias con nombre neutro. Son lo que el contenedor busca: resuelve
+# `hexcore.darwin.infrastructure.orms.{backend}.repositories` y pide `UserRepository`,
+# `SessionRepository`, etc.
+#
+# Por qué alias y no renombrar las clases: `SqlAlchemyUserRepository` es el nombre honesto para
+# quien lo instancia a mano —dice en qué está implementado— y `UserRepository` es el nombre del
+# rol, que es lo que el contenedor necesita. Los dos sirven, y el que sobra en un `import` no
+# molesta.
+#
+# ⚠️ **Todo backend nuevo tiene que exponer estos cinco nombres.** Hay un test que lo verifica
+# sobre los dos que shippea Darwin, porque un backend al que le falta uno falla recién cuando
+# alguien usa ese repositorio — que puede ser meses después del despliegue.
+UserRepository = SqlAlchemyUserRepository
+SessionRepository = SqlAlchemySessionRepository
+AccountRepository = SqlAlchemyAccountRepository
+VerificationRepository = SqlAlchemyVerificationRepository
+AuditSink = SqlAlchemyAuditSink

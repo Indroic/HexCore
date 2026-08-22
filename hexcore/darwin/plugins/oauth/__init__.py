@@ -68,7 +68,7 @@ from hexcore.darwin.plugins.oauth.service import LinkPolicy
 if t.TYPE_CHECKING:
     # Se importa sólo para el checker: en runtime lo resuelve el `__getattr__` de abajo, porque
     # importarlo arrastra sqlalchemy y nombrar el plugin no puede exigir el extra `[sql]`.
-    from hexcore.darwin.plugins.oauth.models_mixins import OAuthStateMixin as OAuthStateMixin
+    from hexcore.darwin.plugins.oauth.orms.sqlalchemy.models_mixins import OAuthStateMixin as OAuthStateMixin
     from hexcore.darwin.plugins.oauth.service import OAuthService
 
 __all__ = [
@@ -198,11 +198,10 @@ class OAuthPlugin(DarwinPlugin):
 
     @staticmethod
     def _repositorio_por_defecto() -> AbstractOAuthStateRepository:
-        from hexcore.darwin.plugins.oauth.repository import (
-            SqlAlchemyOAuthStateRepository,
-        )
+        """El repositorio del backend que resolvió el contenedor. Ver `plugins/storage.py`."""
+        from hexcore.darwin.plugins.storage import plugin_repositories
 
-        return SqlAlchemyOAuthStateRepository()
+        return plugin_repositories("oauth").OAuthStateRepository()
 
     @staticmethod
     def _http_por_defecto() -> AbstractOAuthHttpClient:
@@ -217,7 +216,7 @@ class OAuthPlugin(DarwinPlugin):
 
     # ── Lo que aporta ─────────────────────────────────────────────────────────
     def tables(self) -> t.Mapping[str, type]:
-        from hexcore.darwin.plugins.oauth.models_mixins import OAuthStateMixin
+        from hexcore.darwin.plugins.oauth.orms.sqlalchemy.models_mixins import OAuthStateMixin
 
         return {"OAuthStateMixin": OAuthStateMixin}
 
@@ -312,7 +311,7 @@ def __getattr__(name: str) -> t.Any:
     la fachada de Darwin.
     """
     if name == "OAuthStateMixin":
-        from hexcore.darwin.plugins.oauth.models_mixins import OAuthStateMixin
+        from hexcore.darwin.plugins.oauth.orms.sqlalchemy.models_mixins import OAuthStateMixin
 
         return OAuthStateMixin
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

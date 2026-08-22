@@ -125,6 +125,7 @@ def contenedor(reloj, plugin, sink):
     plugin.reset()
     contenedor = configure_identity(
         IdentityConfig(
+            storage="sqlalchemy",
             secret_key=CLAVE,
             tokens=TokenConfig(issuer="https://api.test"),
             require_verified_email=False,
@@ -280,7 +281,7 @@ class TestPolitica:
         )
         reset_identity()
         cont = configure_identity(
-            IdentityConfig(secret_key=CLAVE, require_verified_email=False),
+            IdentityConfig(storage="sqlalchemy", secret_key=CLAVE, require_verified_email=False),
             clock=reloj,
             key_store=StaticKeyStore([generate_signing_key(kid="k1")]),
             audit=sink,
@@ -314,7 +315,7 @@ class TestPolitica:
         plugin = ImpersonatePlugin(policy=SoloDeMiEmpresa())
         reset_identity()
         cont = configure_identity(
-            IdentityConfig(secret_key=CLAVE, require_verified_email=False),
+            IdentityConfig(storage="sqlalchemy", secret_key=CLAVE, require_verified_email=False),
             clock=reloj,
             key_store=StaticKeyStore([generate_signing_key(kid="k1")]),
             audit=sink,
@@ -755,7 +756,7 @@ class TestAuditoria:
         """
         from sqlalchemy import func, select
 
-        from hexcore.darwin.infrastructure.models import SessionModel
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import SessionModel
         from hexcore.infrastructure.uow.scopes import session_scope
 
         operador = await _usuario(contenedor, OPERADOR)
@@ -911,7 +912,7 @@ class TestPlugin:
         plugin = ImpersonatePlugin()
         reset_identity()
         configure_identity(
-            IdentityConfig(secret_key=CLAVE),
+            IdentityConfig(storage="sqlalchemy", secret_key=CLAVE),
             clock=reloj,
             key_store=StaticKeyStore([generate_signing_key(kid="k1")]),
             plugins=PluginRegistry([plugin]),

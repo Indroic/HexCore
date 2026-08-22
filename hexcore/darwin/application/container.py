@@ -122,6 +122,11 @@ class IdentityContainer:
         self._verifier: "JoserfcTokenVerifier | None" = None
         self._session_service: "SessionService | None" = None
         self._identity_service: "IdentityService | None" = None
+
+        #: El backend resuelto y el módulo de sus repositorios. Se cachean: ver
+        #: `storage_backend` y `_repositorios`.
+        self._storage: str | None = None
+        self._repos_modulo: t.Any = None
         self._envelope_codec: "AuthEnvelopeCodec | None" = None
         self._envelope_restorer: "AuthEnvelopeRestorer | None" = None
 
@@ -192,44 +197,76 @@ class IdentityContainer:
                 self._revocations = CacheRevocationList(clock=self.clock())
             return self._revocations
 
+    # ── El backend de almacenamiento ──────────────────────────────────────────
+    @property
+    def storage_backend(self) -> str:
+        """
+        Cuál backend resolvió: `"sqlalchemy"` o `"beanie"`.
+
+        Se resuelve **una vez** y se cachea. Resolverlo en cada proveedor haría que un cambio en
+        el entorno a mitad del proceso —que no debería pasar, pero pasa en los tests— deje el
+        contenedor con la sesión en un backend y las cuentas en el otro.
+        """
+        with self._lock:
+            if self._storage is None:
+                from hexcore.darwin.infrastructure.orms.selection import (
+                    resolve_storage_backend,
+                )
+
+                self._storage = resolve_storage_backend(self._config.storage)
+            return self._storage
+
+    def _repositorios(self) -> t.Any:
+        """
+        El módulo de repositorios del backend resuelto.
+
+        **Es el único punto del núcleo que importa un backend**, y por eso está acá y no repetido
+        en los cuatro proveedores: con el import en cada uno, agregar un tercer backend sería
+        tocar cuatro lugares, y olvidarse de uno da un contenedor que mezcla dos bases.
+
+        El import es perezoso y adentro de la función a propósito: importarlo arriba haría que
+        `import hexcore.darwin` exija el extra, que es exactamente lo que la separación en tres
+        piezas existe para evitar.
+        """
+        with self._lock:
+            if self._repos_modulo is None:
+                import importlib
+
+                self._repos_modulo = importlib.import_module(
+                    f"hexcore.darwin.infrastructure.orms.{self.storage_backend}"
+                    f".repositories"
+                )
+            return self._repos_modulo
+
     def users(self) -> "AbstractUserRepository":
         with self._lock:
             if self._users is None:
-                from hexcore.darwin.infrastructure.repositories import (
-                    SqlAlchemyUserRepository,
+                fabrica = self._repositorios().UserRepository
+                # `model=` sólo lo entiende el backend de SQL: en Beanie el documento no es
+                # inyectable de la misma forma. Se pasa nada más si el consumidor declaró uno.
+                self._users = (
+                    fabrica(model=self._config.user_model)
+                    if self._config.user_model is not None
+                    else fabrica()
                 )
-
-                self._users = SqlAlchemyUserRepository(model=self._config.user_model)
             return self._users
 
     def sessions_repository(self) -> "AbstractSessionRepository":
         with self._lock:
             if self._sessions_repo is None:
-                from hexcore.darwin.infrastructure.repositories import (
-                    SqlAlchemySessionRepository,
-                )
-
-                self._sessions_repo = SqlAlchemySessionRepository()
+                self._sessions_repo = self._repositorios().SessionRepository()
             return self._sessions_repo
 
     def accounts(self) -> "AbstractAccountRepository":
         with self._lock:
             if self._accounts is None:
-                from hexcore.darwin.infrastructure.repositories import (
-                    SqlAlchemyAccountRepository,
-                )
-
-                self._accounts = SqlAlchemyAccountRepository()
+                self._accounts = self._repositorios().AccountRepository()
             return self._accounts
 
     def verifications(self) -> "AbstractVerificationRepository":
         with self._lock:
             if self._verifications is None:
-                from hexcore.darwin.infrastructure.repositories import (
-                    SqlAlchemyVerificationRepository,
-                )
-
-                self._verifications = SqlAlchemyVerificationRepository()
+                self._verifications = self._repositorios().VerificationRepository()
             return self._verifications
 
     def events(self) -> "EventBus | None":
@@ -399,7 +436,7 @@ def configure_identity(
         configure_identity(IdentityConfig(), key_store=mi_almacen_persistido)
     """
     from hexcore.darwin.application.config import IdentityConfig
-    from hexcore.darwin.infrastructure.schema import validate_user_model
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import validate_user_model
 
     global _container
 

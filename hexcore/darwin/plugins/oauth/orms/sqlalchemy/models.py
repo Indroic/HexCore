@@ -1,14 +1,14 @@
 """
 El modelo concreto de `oauth`. **Importar este módulo SÍ registra `darwin_oauth_state`.**
 
-Contraparte deliberada de `models_mixins`, igual que `hexcore.darwin.infrastructure.models` lo es
+Contraparte deliberada de `models_mixins`, igual que `hexcore.darwin.infrastructure.orms.sqlalchemy.models` lo es
 de los mixins del núcleo.
 """
 from __future__ import annotations
 
 import typing as t
 
-from hexcore.darwin.plugins.oauth.models_mixins import (
+from hexcore.darwin.plugins.oauth.orms.sqlalchemy.models_mixins import (
     DEFAULT_OAUTH_STATE_TABLE,
     OAuthStateMixin,
 )

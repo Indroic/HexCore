@@ -34,6 +34,13 @@ __all__ = [
 #: ver el docstring del módulo.
 SECRET_KEY_ENV = "HEXCORE_DARWIN_SECRET_KEY"
 
+#: De dónde se lee el backend de almacenamiento si no se declara en la config.
+#:
+#: Existe porque el backend es una decisión de **despliegue** y no de código: la misma imagen
+#: puede correr contra Postgres en producción y contra Mongo en un entorno de pruebas, y obligar
+#: a recompilar la config para eso sería absurdo.
+STORAGE_ENV = "HEXCORE_DARWIN_STORAGE"
+
 #: Largo mínimo del secreto, en caracteres. 32 no es arbitrario: por debajo de ~256 bits de
 #: entropía, un HMAC-SHA256 se puede atacar por fuerza bruta con hardware alquilado.
 MIN_SECRET_LENGTH = 32
@@ -220,6 +227,19 @@ class IdentityConfig(BaseModel):
     #: componga `UserMixin`.
     user_model: t.Any = None
 
+    #: Dónde se guarda la identidad: `"sqlalchemy"` o `"beanie"`.
+    #:
+    #: `None` = detectar según qué extra esté instalado. La detección funciona cuando hay **uno
+    #: solo**; con los dos instalados, el contenedor falla al arrancar y pide que se declare —
+    #: elegir por una regla implícita haría que el backend dependa de qué más haya en el entorno,
+    #: y el síntoma es una app que arranca contra una base vacía.
+    #:
+    #: ⚠️ Declaralo explícito si tu app usa `[sql]` para otra cosa y querés Mongo para la
+    #: identidad, o al revés: tener el paquete instalado no significa querer guardar ahí.
+    #:
+    #: Se lee de `HEXCORE_DARWIN_STORAGE` si no se pasa, porque es una decisión de despliegue.
+    storage: t.Literal["sqlalchemy", "beanie"] | None = None
+
     #: Orígenes autorizados para el chequeo anti-CSRF del transporte por cookie. Separado de
     #: `ServerConfig.allow_origins` a propósito: CORS y CSRF son controles distintos, y hacer
     #: que uno herede del otro significa que relajar CORS relaja CSRF sin que nadie lo note.
@@ -235,6 +255,22 @@ class IdentityConfig(BaseModel):
     #: Techo de intentos sobre un token de verificación u OTP. Un OTP de 6 dígitos son 10^6
     #: combinaciones: sin techo se agotan en minutos.
     max_verification_attempts: int = 5
+
+    @model_validator(mode="after")
+    def _resuelve_el_almacenamiento(self) -> "IdentityConfig":
+        """
+        Lee `storage` del entorno si no vino en la config.
+
+        **No valida que el backend esté instalado**: eso lo hace el contenedor, al resolver el
+        primer repositorio. Acá sólo se toma el valor, porque una `IdentityConfig` se construye
+        también en un proceso que no va a tocar la base —el que sólo verifica tokens, por
+        ejemplo— y exigirle el extra ahí sería pedirle una dependencia que no usa.
+        """
+        if self.storage is None:
+            del_entorno = os.getenv(STORAGE_ENV, "").strip().lower()
+            if del_entorno:
+                object.__setattr__(self, "storage", del_entorno)
+        return self
 
     @model_validator(mode="after")
     def _hay_clave_de_firma(self) -> "IdentityConfig":

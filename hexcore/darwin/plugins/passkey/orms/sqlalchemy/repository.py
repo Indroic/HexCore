@@ -71,7 +71,7 @@ class SqlAlchemyPasskeyRepository(_Base, AbstractPasskeyRepository):
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.plugins.passkey.models import PasskeyModel
+        from hexcore.darwin.plugins.passkey.orms.sqlalchemy.models import PasskeyModel
 
         return PasskeyModel
 
@@ -171,7 +171,7 @@ class SqlAlchemyPasskeyChallengeRepository(_Base, AbstractPasskeyChallengeReposi
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.plugins.passkey.models import PasskeyChallengeModel
+        from hexcore.darwin.plugins.passkey.orms.sqlalchemy.models import PasskeyChallengeModel
 
         return PasskeyChallengeModel
 
@@ -245,3 +245,13 @@ def _a_challenge(fila: t.Any) -> PasskeyChallenge:
         expires_at=_aware(fila.expires_at) or datetime.now(UTC),
         consumed_at=_aware(fila.consumed_at),
     )
+
+# ── El contrato del backend ───────────────────────────────────────────────────
+#
+# Los alias con nombre neutro que `plugin_repositories()` busca. Mismo criterio que en el núcleo:
+# el nombre con prefijo dice en qué está implementado —útil para quien lo instancia a mano— y el
+# neutro es el nombre del rol, que es lo que el resolvedor necesita.
+#
+# ⚠️ Todo backend nuevo de este plugin tiene que exponer estos nombres.
+PasskeyRepository = SqlAlchemyPasskeyRepository
+PasskeyChallengeRepository = SqlAlchemyPasskeyChallengeRepository

@@ -57,7 +57,7 @@ def _sin_contenedor():
 
 
 def _config() -> IdentityConfig:
-    return IdentityConfig(secret_key=CLAVE)
+    return IdentityConfig(storage="sqlalchemy", secret_key=CLAVE)
 
 
 def _componentes() -> dict:
@@ -181,7 +181,7 @@ def test_el_verificador_solo_acepta_el_algoritmo_configurado():
     from hexcore.darwin.application.config import TokenConfig
 
     contenedor = configure_identity(
-        IdentityConfig(secret_key=CLAVE, tokens=TokenConfig(algorithm="Ed25519")),
+        IdentityConfig(storage="sqlalchemy", secret_key=CLAVE, tokens=TokenConfig(algorithm="Ed25519")),
         **_componentes(),
     )
     verificador = contenedor.verifier()
@@ -230,7 +230,7 @@ def test_configure_valida_el_modelo_de_usuario():
 
     with pytest.raises(TypeError, match="UserMixin"):
         configure_identity(
-            IdentityConfig(secret_key=CLAVE, user_model=NoEsUsuario), **_componentes()
+            IdentityConfig(storage="sqlalchemy", secret_key=CLAVE, user_model=NoEsUsuario), **_componentes()
         )
 
 
@@ -239,7 +239,7 @@ def test_configure_acepta_el_modelo_por_defecto():
     from hexcore.darwin import UserModel
 
     contenedor = configure_identity(
-        IdentityConfig(secret_key=CLAVE, user_model=UserModel), **_componentes()
+        IdentityConfig(storage="sqlalchemy", secret_key=CLAVE, user_model=UserModel), **_componentes()
     )
 
     assert contenedor.config.user_model is UserModel

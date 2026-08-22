@@ -1,7 +1,7 @@
 """
 El mixin de `two_factor`. **Importar este módulo no registra ninguna tabla.**
 
-Misma propiedad y mismo motivo que `hexcore.darwin.infrastructure.models_mixins`: el plugin
+Misma propiedad y mismo motivo que `hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins`: el plugin
 shippea el mixin y **el consumidor** declara la clase concreta en su propio paquete ``models/``,
 donde `import_all_models` la ve y `alembic revision --autogenerate` por lo tanto también. Una
 tabla del framework que se registra sola pero que el `env.py` del consumidor no importa recibe
@@ -34,7 +34,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column
 
-from hexcore.darwin.infrastructure.models_mixins import (
+from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import (
     DEFAULT_USER_TABLE,
     TimestampMixin,
 )

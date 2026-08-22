@@ -33,7 +33,7 @@ def identity_tables(models: t.Sequence[type] | None = None) -> list[t.Any]:
         models: Los modelos a considerar. Por defecto, los seis concretos de `models.py`.
             Pasá los tuyos si extendiste el esquema.
     """
-    from hexcore.darwin.infrastructure.models import IDENTITY_MODELS
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.models import IDENTITY_MODELS
 
     objetivo: t.Sequence[t.Any] = (
         models if models is not None else IDENTITY_MODELS
@@ -149,7 +149,7 @@ def validate_user_model(model: type) -> None:
 
         validate_user_model(config.user_model)
     """
-    from hexcore.darwin.infrastructure.models_mixins import UserMixin
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import UserMixin
     from hexcore.infrastructure.repositories.orms.sqlalchemy import Base, BaseModel
 
     nombre = getattr(model, "__name__", repr(model))
@@ -209,7 +209,7 @@ def ensure_identity_schema_loaded() -> list[str]:
     import importlib
 
     try:
-        importlib.import_module("hexcore.darwin.infrastructure.models")
+        importlib.import_module("hexcore.darwin.infrastructure.orms.sqlalchemy.models")
     except ImportError:
         return []
-    return ["hexcore.darwin.infrastructure.models"]
+    return ["hexcore.darwin.infrastructure.orms.sqlalchemy.models"]

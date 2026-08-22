@@ -79,7 +79,7 @@ class IdentityStep:
 
     def _verificar_esquema(self) -> None:
         try:
-            from hexcore.darwin.infrastructure.models import IDENTITY_MODELS
+            from hexcore.darwin.infrastructure.orms.sqlalchemy.models import IDENTITY_MODELS
             from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
         except ImportError:
             # Sin el extra `[sql]` no hay metadata que verificar.

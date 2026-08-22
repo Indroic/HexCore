@@ -133,7 +133,7 @@ def test_generate_secret_saca_una_clave_usable():
     # Y es aceptable para la config, que exige un mínimo.
     from hexcore.darwin import IdentityConfig
 
-    assert IdentityConfig(secret_key=clave).secret_key is not None
+    assert IdentityConfig(storage="sqlalchemy", secret_key=clave).secret_key is not None
 
 
 def test_dos_corridas_no_dan_la_misma_clave():
@@ -184,7 +184,7 @@ def test_check_schema_pasa_con_las_tablas_cargadas():
     `op.drop_table`.
     """
     pytest.importorskip("sqlalchemy")
-    import hexcore.darwin.infrastructure.models  # noqa: F401  # las registra
+    import hexcore.darwin.infrastructure.orms.sqlalchemy.models  # noqa: F401  # las registra
 
     resultado = RUNNER.invoke(identity_cli, ["check-schema"])
 

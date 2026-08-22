@@ -22,7 +22,10 @@ from hexcore.darwin.plugins.oauth.domain import (
     OAuthState,
 )
 
-__all__ = ["SqlAlchemyOAuthStateRepository"]
+__all__ = [
+    "SqlAlchemyOAuthStateRepository",
+    "OAuthStateRepository",
+]
 
 SessionScope = t.Callable[[], t.AsyncContextManager[t.Any]]
 
@@ -63,7 +66,7 @@ class SqlAlchemyOAuthStateRepository(AbstractOAuthStateRepository):
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.plugins.oauth.models import OAuthStateModel
+        from hexcore.darwin.plugins.oauth.orms.sqlalchemy.models import OAuthStateModel
 
         return OAuthStateModel
 
@@ -122,3 +125,12 @@ def _a_entidad(fila: t.Any) -> OAuthState:
         expires_at=_aware(fila.expires_at) or datetime.now(UTC),
         consumed_at=_aware(fila.consumed_at),
     )
+
+# ── El contrato del backend ───────────────────────────────────────────────────
+#
+# Los alias con nombre neutro que `plugin_repositories()` busca. Mismo criterio que en el núcleo:
+# el nombre con prefijo dice en qué está implementado —útil para quien lo instancia a mano— y el
+# neutro es el nombre del rol, que es lo que el resolvedor necesita.
+#
+# ⚠️ Todo backend nuevo de este plugin tiene que exponer estos nombres.
+OAuthStateRepository = SqlAlchemyOAuthStateRepository

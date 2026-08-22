@@ -57,7 +57,7 @@ from hexcore.darwin.plugins.organization import (  # noqa: E402
     get_organization_service,
     slugify,
 )
-from hexcore.darwin.plugins.organization.models import (  # noqa: E402
+from hexcore.darwin.plugins.organization.orms.sqlalchemy.models import (  # noqa: E402
     create_organization_tables,
 )
 from hexcore.infrastructure.repositories.orms.sqlalchemy.session import (  # noqa: E402
@@ -167,6 +167,7 @@ def contenedor(reloj, plugin):
     plugin.reset()
     contenedor = configure_identity(
         IdentityConfig(
+            storage="sqlalchemy",
             secret_key=CLAVE,
             tokens=TokenConfig(issuer="https://api.test"),
             require_verified_email=False,
@@ -376,7 +377,7 @@ class TestInvitar:
         from sqlalchemy import select
 
         from hexcore.darwin.infrastructure.hashing import hash_token
-        from hexcore.darwin.plugins.organization.models import InvitationModel
+        from hexcore.darwin.plugins.organization.orms.sqlalchemy.models import InvitationModel
         from hexcore.infrastructure.uow.scopes import session_scope
 
         dueno = await _usuario(contenedor, "dueno@ejemplo.com")
@@ -458,7 +459,7 @@ class TestInvitar:
         plugin = OrganizationPlugin(max_members=2)
         reset_identity()
         cont = configure_identity(
-            IdentityConfig(secret_key=CLAVE, require_verified_email=False),
+            IdentityConfig(storage="sqlalchemy", secret_key=CLAVE, require_verified_email=False),
             clock=reloj,
             key_store=StaticKeyStore([generate_signing_key(kid="k1")]),
             plugins=PluginRegistry([plugin]),
@@ -648,7 +649,7 @@ class TestRevocar:
         """
         from sqlalchemy import select
 
-        from hexcore.darwin.plugins.organization.models import InvitationModel
+        from hexcore.darwin.plugins.organization.orms.sqlalchemy.models import InvitationModel
         from hexcore.infrastructure.uow.scopes import session_scope
 
         dueno = await _usuario(contenedor, "dueno@ejemplo.com")
@@ -816,7 +817,7 @@ class TestUltimoOwner:
             return_exceptions=True,
         )
 
-        from hexcore.darwin.plugins.organization.repository import (
+        from hexcore.darwin.plugins.organization.orms.sqlalchemy.repository import (
             SqlAlchemyMemberRepository,
         )
 
@@ -1072,7 +1073,7 @@ class TestPlugin:
     def test_el_servicio_sin_registrar_falla_con_remediacion(self, reloj):
         reset_identity()
         configure_identity(
-            IdentityConfig(secret_key=CLAVE),
+            IdentityConfig(storage="sqlalchemy", secret_key=CLAVE),
             clock=reloj,
             key_store=StaticKeyStore([generate_signing_key(kid="k1")]),
         )

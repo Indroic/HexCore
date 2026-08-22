@@ -95,6 +95,7 @@ def _configurar(*, secure_cookies: bool = False, verified: bool = False):
     reset_identity()
     return configure_identity(
         IdentityConfig(
+            storage="sqlalchemy",
             secret_key=CLAVE,
             tokens=TokenConfig(issuer="https://api.test"),
             cookies=CookieConfig(secure=secure_cookies),

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import typing as t
 
-from hexcore.darwin.infrastructure.models_mixins import (
+from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import (
     DEFAULT_ACCOUNT_TABLE,
     DEFAULT_AUDIT_TABLE,
     DEFAULT_JWKS_TABLE,

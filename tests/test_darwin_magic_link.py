@@ -93,6 +93,7 @@ def contenedor(reloj):
     reset_identity()
     contenedor = configure_identity(
         IdentityConfig(
+            storage="sqlalchemy",
             secret_key=CLAVE,
             tokens=TokenConfig(issuer="https://api.test"),
             require_verified_email=False,
@@ -116,7 +117,7 @@ async def _fila(hash_: str):
     """
     from sqlalchemy import select
 
-    from hexcore.darwin.infrastructure.models import VerificationModel
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.models import VerificationModel
     from hexcore.infrastructure.uow.scopes import session_scope
 
     async with session_scope() as sesion:

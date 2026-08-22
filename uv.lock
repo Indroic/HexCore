@@ -698,17 +698,24 @@ celery = [
     { name = "celery" },
 ]
 darwin = [
-    { name = "alembic" },
     { name = "argon2-cffi" },
     { name = "fastapi" },
     { name = "joserfc" },
-    { name = "sqlalchemy" },
+]
+darwin-beanie = [
+    { name = "beanie" },
 ]
 darwin-oauth = [
     { name = "httpx" },
 ]
 darwin-passkey = [
     { name = "webauthn" },
+]
+darwin-sqlalchemy = [
+    { name = "aiosqlite" },
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "sqlalchemy" },
 ]
 mongo = [
     { name = "beanie" },
@@ -747,15 +754,18 @@ requires-dist = [
     { name = "aio-pika", marker = "extra == 'all'", specifier = ">=9.4.0" },
     { name = "aio-pika", marker = "extra == 'rabbitmq'", specifier = ">=9.4.0" },
     { name = "aiosqlite", marker = "extra == 'all'", specifier = ">=0.21.0" },
+    { name = "aiosqlite", marker = "extra == 'darwin-sqlalchemy'", specifier = ">=0.21.0" },
     { name = "aiosqlite", marker = "extra == 'sql'", specifier = ">=0.21.0" },
     { name = "alembic", marker = "extra == 'all'", specifier = ">=1.16.5" },
-    { name = "alembic", marker = "extra == 'darwin'", specifier = ">=1.16.5" },
+    { name = "alembic", marker = "extra == 'darwin-sqlalchemy'", specifier = ">=1.16.5" },
     { name = "alembic", marker = "extra == 'sql'", specifier = ">=1.16.5" },
     { name = "argon2-cffi", marker = "extra == 'all'", specifier = ">=23.1.0" },
     { name = "argon2-cffi", marker = "extra == 'darwin'", specifier = ">=23.1.0" },
     { name = "asyncpg", marker = "extra == 'all'", specifier = ">=0.30.0" },
+    { name = "asyncpg", marker = "extra == 'darwin-sqlalchemy'", specifier = ">=0.30.0" },
     { name = "asyncpg", marker = "extra == 'sql'", specifier = ">=0.30.0" },
     { name = "beanie", marker = "extra == 'all'", specifier = ">=2.0.0" },
+    { name = "beanie", marker = "extra == 'darwin-beanie'", specifier = ">=2.0.0" },
     { name = "beanie", marker = "extra == 'mongo'", specifier = ">=2.0.0" },
     { name = "celery", marker = "extra == 'all'", specifier = ">=5.4.0" },
     { name = "celery", marker = "extra == 'celery'", specifier = ">=5.4.0" },
@@ -775,13 +785,13 @@ requires-dist = [
     { name = "redis", marker = "extra == 'all'", specifier = ">=6.4.0" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=6.4.0" },
     { name = "sqlalchemy", marker = "extra == 'all'", specifier = ">=2.0.43" },
-    { name = "sqlalchemy", marker = "extra == 'darwin'", specifier = ">=2.0.43" },
+    { name = "sqlalchemy", marker = "extra == 'darwin-sqlalchemy'", specifier = ">=2.0.43" },
     { name = "sqlalchemy", marker = "extra == 'sql'", specifier = ">=2.0.43" },
     { name = "typer", specifier = ">=0.17.3" },
     { name = "webauthn", marker = "extra == 'all'", specifier = ">=2.0.0" },
     { name = "webauthn", marker = "extra == 'darwin-passkey'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["api", "redis", "mongo", "sql", "rabbitmq", "procrastinate", "celery", "darwin", "darwin-oauth", "darwin-passkey", "all"]
+provides-extras = ["api", "redis", "mongo", "sql", "rabbitmq", "procrastinate", "celery", "darwin", "darwin-sqlalchemy", "darwin-beanie", "darwin-oauth", "darwin-passkey", "all"]
 
 [package.metadata.requires-dev]
 dev = [

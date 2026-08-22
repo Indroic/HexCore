@@ -62,7 +62,7 @@ from hexcore.darwin.plugins.two_factor.crypto import (  # noqa: E402
     SecretDecryptionError,
     TotpSecretCipher,
 )
-from hexcore.darwin.plugins.two_factor.models import (  # noqa: E402
+from hexcore.darwin.plugins.two_factor.orms.sqlalchemy.models import (  # noqa: E402
     create_two_factor_tables,
 )
 from hexcore.darwin.plugins.two_factor.totp import (  # noqa: E402
@@ -311,6 +311,7 @@ def contenedor(reloj, plugin):
     plugin.reset()
     contenedor = configure_identity(
         IdentityConfig(
+            storage="sqlalchemy",
             secret_key=CLAVE,
             tokens=TokenConfig(issuer="https://api.test"),
             require_verified_email=False,
@@ -439,7 +440,7 @@ class TestInscripcion:
 
         from sqlalchemy import select
 
-        from hexcore.darwin.plugins.two_factor.models import TwoFactorModel
+        from hexcore.darwin.plugins.two_factor.orms.sqlalchemy.models import TwoFactorModel
         from hexcore.infrastructure.uow.scopes import session_scope
 
         async with session_scope() as sesion:
@@ -458,7 +459,7 @@ class TestInscripcion:
 
         from sqlalchemy import func, select
 
-        from hexcore.darwin.plugins.two_factor.models import TwoFactorModel
+        from hexcore.darwin.plugins.two_factor.orms.sqlalchemy.models import TwoFactorModel
         from hexcore.infrastructure.uow.scopes import session_scope
 
         async with session_scope() as sesion:
@@ -485,7 +486,7 @@ class TestSignInEnDosPasos:
         # Y no quedó ninguna sesión en la base.
         from sqlalchemy import func, select
 
-        from hexcore.darwin.infrastructure.models import SessionModel
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import SessionModel
         from hexcore.infrastructure.uow.scopes import session_scope
 
         async with session_scope() as sesion:
@@ -895,7 +896,7 @@ class TestPlugin:
 
         limpiar()
         configure_identity(
-            IdentityConfig(secret_key=CLAVE),
+            IdentityConfig(storage="sqlalchemy", secret_key=CLAVE),
             clock=reloj,
             key_store=StaticKeyStore([generate_signing_key(kid="k1")]),
         )
@@ -1107,7 +1108,7 @@ async def test_un_hook_del_sign_in_puede_abortar_sin_ser_two_factor(
 
     limpiar()
     contenedor = configurar(
-        IdentityConfig(secret_key=CLAVE, require_verified_email=False),
+        IdentityConfig(storage="sqlalchemy", secret_key=CLAVE, require_verified_email=False),
         clock=reloj,
         key_store=StaticKeyStore([generate_signing_key(kid="k1")]),
         plugins=PluginRegistry([BloqueoPorPais()]),
@@ -1146,7 +1147,7 @@ async def test_un_hook_del_sign_in_que_explota_no_deja_entrar(contenedor, reloj)
 
     limpiar()
     contenedor = configurar(
-        IdentityConfig(secret_key=CLAVE, require_verified_email=False),
+        IdentityConfig(storage="sqlalchemy", secret_key=CLAVE, require_verified_email=False),
         clock=reloj,
         key_store=StaticKeyStore([generate_signing_key(kid="k1")]),
         plugins=PluginRegistry([ConBug()]),

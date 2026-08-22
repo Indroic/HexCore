@@ -83,6 +83,7 @@ def contenedor(reloj):
     reset_identity()
     contenedor = configure_identity(
         IdentityConfig(
+            storage="sqlalchemy",
             secret_key=CLAVE,
             tokens=TokenConfig(issuer="https://api.test"),
             require_verified_email=True,

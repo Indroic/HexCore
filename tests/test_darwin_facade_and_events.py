@@ -41,7 +41,7 @@ def _fachada_recien_importada():
     """
     Saca `hexcore.darwin*` de `sys.modules` y **lo restaura al salir**.
 
-    Restaurar no es cortesía: `hexcore.darwin.infrastructure.models` registra sus tablas en
+    Restaurar no es cortesía: `hexcore.darwin.infrastructure.orms.sqlalchemy.models` registra sus tablas en
     `Base.metadata` al importarse. Si se lo borra de `sys.modules` y otro test lo reimporta,
     los cuerpos de clase se vuelven a ejecutar contra un metadata que ya tiene `darwin_user`,
     y SQLAlchemy lanza ``Table 'darwin_user' is already defined for this MetaData instance``
@@ -437,7 +437,7 @@ def test_las_fases_0_a_7_estan_implementadas():
 
     for modulo in (
         "hexcore.darwin.domain.context",              # 2
-        "hexcore.darwin.infrastructure.models",       # 3
+        "hexcore.darwin.infrastructure.orms.sqlalchemy.models",       # 3
         "hexcore.darwin.infrastructure.tokens",       # 4
         "hexcore.darwin.application.container",       # 5
         "hexcore.darwin.infrastructure.envelope",     # 6

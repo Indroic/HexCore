@@ -91,7 +91,7 @@ def create_tables() -> None:
     """
     import asyncio
 
-    from hexcore.darwin.infrastructure.schema import create_identity_tables
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import create_identity_tables
     from hexcore.infrastructure.repositories.orms.sqlalchemy.session import init_engine
     from hexcore.config import LazyConfig
 
@@ -111,7 +111,7 @@ def check_schema() -> None:
 
     Sale con código 1 si falta alguna, para poder ponerlo en un pre-commit o en CI.
     """
-    from hexcore.darwin.infrastructure.models import IDENTITY_MODELS
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.models import IDENTITY_MODELS
     from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
 
     registradas = set(Base.metadata.tables)

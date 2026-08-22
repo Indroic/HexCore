@@ -28,7 +28,10 @@ from hexcore.darwin.plugins.two_factor.domain import (
 if t.TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-__all__ = ["SqlAlchemyTwoFactorRepository"]
+__all__ = [
+    "SqlAlchemyTwoFactorRepository",
+    "TwoFactorRepository",
+]
 
 SessionScope = t.Callable[[], t.AsyncContextManager["AsyncSession"]]
 
@@ -71,7 +74,7 @@ class SqlAlchemyTwoFactorRepository(AbstractTwoFactorRepository):
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.plugins.two_factor.models import TwoFactorModel
+        from hexcore.darwin.plugins.two_factor.orms.sqlalchemy.models import TwoFactorModel
 
         return TwoFactorModel
 
@@ -210,3 +213,12 @@ def _a_entidad(fila: t.Any) -> TwoFactor:
         created_at=_aware(fila.created_at) or datetime.now(UTC),
         updated_at=_aware(fila.updated_at) or datetime.now(UTC),
     )
+
+# ── El contrato del backend ───────────────────────────────────────────────────
+#
+# Los alias con nombre neutro que `plugin_repositories()` busca. Mismo criterio que en el núcleo:
+# el nombre con prefijo dice en qué está implementado —útil para quien lo instancia a mano— y el
+# neutro es el nombre del rol, que es lo que el resolvedor necesita.
+#
+# ⚠️ Todo backend nuevo de este plugin tiene que exponer estos nombres.
+TwoFactorRepository = SqlAlchemyTwoFactorRepository

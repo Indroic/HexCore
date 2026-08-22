@@ -34,17 +34,42 @@ sql = ["sqlalchemy>=2.0.43", "alembic>=1.16.5", "asyncpg>=0.30.0", "aiosqlite>=0
 rabbitmq = ["aio-pika>=9.4.0", "pika>=1.3.2"]
 procrastinate = ["procrastinate>=3.0.0"]
 celery = ["celery>=5.4.0"]
-# Darwin, el modulo de identidad. `joserfc` sobre `pyjwt` porque su API obliga a pasar
-# la lista de algoritmos permitidos: el default seguro es estructural y no documental.
-# `argon2-cffi` porque Argon2id es el ganador del PHC y la recomendacion de OWASP.
-# Ojo: el paquete se importa como `argon2`, no como `argon2_cffi`.
+# ── Darwin, el modulo de identidad ────────────────────────────────────────────
+#
+# Se parte en tres piezas, y el criterio es cual es la unidad de decision del consumidor:
+#
+#   [darwin]             el nucleo. Dominio, servicios, tokens, transportes, plugins.
+#                        SIN almacenamiento: no sabe en que se guardan las cosas.
+#   [darwin-sqlalchemy]  el almacenamiento en SQL.
+#   [darwin-beanie]      el almacenamiento en MongoDB.
+#
+# Por que separado y no un solo extra con los dos: un despliegue elige UN backend, y el que
+# elige Mongo no tiene por que instalar SQLAlchemy, Alembic y asyncpg — son ~15 MB y una
+# superficie de cadena de suministro que no usa. Y al reves igual.
+#
+# La frontera es real y no una convencion: los puertos viven en `darwin/domain/ports.py` y los
+# adaptadores en `darwin/**/orms/{sqlalchemy,beanie}/`. Hay un test que verifica que importar
+# el nucleo no arrastre ninguno de los dos.
+#
+# `joserfc` sobre `pyjwt` porque su API obliga a pasar la lista de algoritmos permitidos: el
+# default seguro es estructural y no documental. `argon2-cffi` porque Argon2id es el ganador
+# del PHC y la recomendacion de OWASP. Ojo: el paquete se importa como `argon2`, no como
+# `argon2_cffi`.
 darwin = [
     "fastapi>=0.116.1",
-    "sqlalchemy>=2.0.43",
-    "alembic>=1.16.5",
     "joserfc>=1.0.0",
     "argon2-cffi>=23.1.0",
 ]
+# El almacenamiento en SQL. `alembic` va aca y no en `[sql]` porque las migraciones de las
+# tablas de identidad son parte de este backend.
+darwin-sqlalchemy = [
+    "sqlalchemy>=2.0.43",
+    "alembic>=1.16.5",
+    "asyncpg>=0.30.0",
+    "aiosqlite>=0.21.0",
+]
+# El almacenamiento en MongoDB. `beanie` arrastra `pymongo`.
+darwin-beanie = ["beanie>=2.0.0"]
 # `[darwin-oauth]` suma httpx: el flujo de Authorization Code necesita hablarle al endpoint
 # de token del proveedor. Va aparte de `[darwin]` porque un despliegue con sólo contraseña o
 # magic link no lo necesita, y el cliente HTTP esta detras de un puerto (asi que los tests del

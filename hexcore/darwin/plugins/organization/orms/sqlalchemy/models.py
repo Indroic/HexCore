@@ -1,14 +1,14 @@
 """
 Los modelos concretos de `organization`. **Importar este módulo SÍ registra las tres tablas.**
 
-Contraparte deliberada de `models_mixins`, igual que `hexcore.darwin.infrastructure.models` lo es
+Contraparte deliberada de `models_mixins`, igual que `hexcore.darwin.infrastructure.orms.sqlalchemy.models` lo es
 de los mixins del núcleo.
 """
 from __future__ import annotations
 
 import typing as t
 
-from hexcore.darwin.plugins.organization.models_mixins import (
+from hexcore.darwin.plugins.organization.orms.sqlalchemy.models_mixins import (
     DEFAULT_INVITATION_TABLE,
     DEFAULT_MEMBER_TABLE,
     DEFAULT_ORGANIZATION_TABLE,

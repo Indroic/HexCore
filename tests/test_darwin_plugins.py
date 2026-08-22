@@ -178,7 +178,7 @@ def test_configure_identity_valida_los_plugins(monkeypatch):
     try:
         with pytest.raises(PluginError, match="ciclo"):
             configure_identity(
-                IdentityConfig(secret_key="k" * 48),
+                IdentityConfig(storage="sqlalchemy", secret_key="k" * 48),
                 plugins=PluginRegistry(
                     [_plugin("x", requiere=("y",)), _plugin("y", requiere=("x",))]
                 ),

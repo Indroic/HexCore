@@ -32,8 +32,11 @@ from hexcore.darwin.plugins.organization.domain import (
 
 __all__ = [
     "SqlAlchemyOrganizationRepository",
+    "OrganizationRepository",
     "SqlAlchemyMemberRepository",
+    "MemberRepository",
     "SqlAlchemyInvitationRepository",
+    "InvitationRepository",
 ]
 
 SessionScope = t.Callable[[], t.AsyncContextManager[t.Any]]
@@ -83,7 +86,7 @@ class SqlAlchemyOrganizationRepository(_Base, AbstractOrganizationRepository):
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.plugins.organization.models import OrganizationModel
+        from hexcore.darwin.plugins.organization.orms.sqlalchemy.models import OrganizationModel
 
         return OrganizationModel
 
@@ -152,7 +155,7 @@ class SqlAlchemyMemberRepository(_Base, AbstractMemberRepository):
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.plugins.organization.models import MemberModel
+        from hexcore.darwin.plugins.organization.orms.sqlalchemy.models import MemberModel
 
         return MemberModel
 
@@ -299,7 +302,7 @@ class SqlAlchemyInvitationRepository(_Base, AbstractInvitationRepository):
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.plugins.organization.models import InvitationModel
+        from hexcore.darwin.plugins.organization.orms.sqlalchemy.models import InvitationModel
 
         return InvitationModel
 
@@ -412,3 +415,14 @@ def _a_invitacion(fila: t.Any) -> Invitation:
         consumed_at=_aware(fila.consumed_at),
         created_at=_aware(fila.created_at),
     )
+
+# ── El contrato del backend ───────────────────────────────────────────────────
+#
+# Los alias con nombre neutro que `plugin_repositories()` busca. Mismo criterio que en el núcleo:
+# el nombre con prefijo dice en qué está implementado —útil para quien lo instancia a mano— y el
+# neutro es el nombre del rol, que es lo que el resolvedor necesita.
+#
+# ⚠️ Todo backend nuevo de este plugin tiene que exponer estos nombres.
+OrganizationRepository = SqlAlchemyOrganizationRepository
+MemberRepository = SqlAlchemyMemberRepository
+InvitationRepository = SqlAlchemyInvitationRepository

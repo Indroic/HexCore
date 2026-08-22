@@ -39,7 +39,7 @@ from hexcore.darwin import (  # noqa: E402
     identity_tables,
     validate_user_model,
 )
-from hexcore.darwin.infrastructure.repositories import (  # noqa: E402
+from hexcore.darwin.infrastructure.orms.sqlalchemy.repositories import (  # noqa: E402
     SqlAlchemyAccountRepository,
     SqlAlchemySessionRepository,
     SqlAlchemyUserRepository,
@@ -159,7 +159,7 @@ def test_importar_los_mixins_no_registra_tablas():
     codigo = (
         "from hexcore.infrastructure.repositories.orms.sqlalchemy import Base;"
         "antes = set(Base.metadata.tables);"
-        "import hexcore.darwin.infrastructure.models_mixins;"
+        "import hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins;"
         "print(sorted(set(Base.metadata.tables) - antes))"
     )
     salida = subprocess.run(
@@ -186,7 +186,7 @@ def test_los_mixins_no_estan_mapeados(mixin):
 
 
 def test_importar_los_modelos_registra_exactamente_seis():
-    import hexcore.darwin.infrastructure.models  # noqa: F401
+    import hexcore.darwin.infrastructure.orms.sqlalchemy.models  # noqa: F401
 
     esperadas = {
         "darwin_user",

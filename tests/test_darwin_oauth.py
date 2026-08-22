@@ -65,7 +65,7 @@ from hexcore.darwin.plugins.oauth.domain import (  # noqa: E402
     generate_pkce_verifier,
     pkce_challenge,
 )
-from hexcore.darwin.plugins.oauth.models import create_oauth_tables  # noqa: E402
+from hexcore.darwin.plugins.oauth.orms.sqlalchemy.models import create_oauth_tables  # noqa: E402
 from hexcore.darwin.plugins.oauth.providers import (  # noqa: E402
     OAuthProfile,
     OAuthProvider,
@@ -314,6 +314,7 @@ def _armar(reloj, falso, *, policy=LinkPolicy.NEVER, redirects=(CALLBACK,)):
     plugin.reset()
     contenedor = configure_identity(
         IdentityConfig(
+            storage="sqlalchemy",
             secret_key=CLAVE,
             tokens=TokenConfig(issuer="https://api.test"),
             require_verified_email=False,
@@ -393,7 +394,7 @@ class TestStart:
 
         from sqlalchemy import select
 
-        from hexcore.darwin.plugins.oauth.models import OAuthStateModel
+        from hexcore.darwin.plugins.oauth.orms.sqlalchemy.models import OAuthStateModel
         from hexcore.infrastructure.uow.scopes import session_scope
 
         async with session_scope() as sesion:
@@ -422,7 +423,7 @@ class TestStart:
 
         from sqlalchemy import select
 
-        from hexcore.darwin.plugins.oauth.models import OAuthStateModel
+        from hexcore.darwin.plugins.oauth.orms.sqlalchemy.models import OAuthStateModel
         from hexcore.infrastructure.uow.scopes import session_scope
 
         async with session_scope() as sesion:
@@ -900,7 +901,7 @@ class TestTokensDelProveedor:
 
         from sqlalchemy import select
 
-        from hexcore.darwin.infrastructure.models import AccountModel
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import AccountModel
         from hexcore.infrastructure.uow.scopes import session_scope
 
         async with session_scope() as sesion:
@@ -1110,7 +1111,7 @@ class TestPlugin:
     def test_el_servicio_sin_registrar_falla_con_remediacion(self, reloj):
         reset_identity()
         configure_identity(
-            IdentityConfig(secret_key=CLAVE),
+            IdentityConfig(storage="sqlalchemy", secret_key=CLAVE),
             clock=reloj,
             key_store=StaticKeyStore([generate_signing_key(kid="k1")]),
         )

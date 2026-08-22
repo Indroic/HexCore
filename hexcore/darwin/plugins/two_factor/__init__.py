@@ -81,7 +81,8 @@ class TwoFactorPlugin(DarwinPlugin):
         issuer: El nombre que muestran las apps autenticadoras. Poné el de tu producto: un
             usuario con tres cuentas en apps distintas ve tres entradas y necesita distinguirlas.
         challenge_ttl: Cuánto vive el desafío del segundo paso.
-        repository: Un `AbstractTwoFactorRepository` propio. Por defecto, el de SQLAlchemy.
+        repository: Un `AbstractTwoFactorRepository` propio. Por defecto, el del backend
+            que resolvió el contenedor.
         include_router: Si aporta su router. Apagalo si querés exponer los flujos con tus
             propias rutas y validaciones.
         rate_limit: `(intentos, ventana)` del endpoint que canjea el desafío. **No lo apagues**:
@@ -153,11 +154,10 @@ class TwoFactorPlugin(DarwinPlugin):
 
     @staticmethod
     def _repositorio_por_defecto() -> "AbstractTwoFactorRepository":
-        from hexcore.darwin.plugins.two_factor.repository import (
-            SqlAlchemyTwoFactorRepository,
-        )
+        """El repositorio del backend que resolvió el contenedor. Ver `plugins/storage.py`."""
+        from hexcore.darwin.plugins.storage import plugin_repositories
 
-        return SqlAlchemyTwoFactorRepository()
+        return plugin_repositories("two_factor").TwoFactorRepository()
 
     def reset(self) -> None:
         """Descarta el servicio cacheado. Para los tests, que reconfiguran el contenedor."""
@@ -166,7 +166,9 @@ class TwoFactorPlugin(DarwinPlugin):
 
     # ── Lo que aporta ─────────────────────────────────────────────────────────
     def tables(self) -> t.Mapping[str, type]:
-        from hexcore.darwin.plugins.two_factor.models_mixins import TwoFactorMixin
+        from hexcore.darwin.plugins.two_factor.orms.sqlalchemy.models_mixins import (
+            TwoFactorMixin,
+        )
 
         return {"TwoFactorMixin": TwoFactorMixin}
 
