@@ -26,6 +26,7 @@ from hexcore.darwin.plugins.passkey.domain import (
 )
 
 __all__ = [
+    "PLUGIN_DOCUMENTS",
     "PasskeyDocument",
     "PasskeyChallengeDocument",
     "BeaniePasskeyRepository",
@@ -264,3 +265,10 @@ def _a_challenge(doc: t.Any) -> PasskeyChallenge:
 # ── El contrato del backend ───────────────────────────────────────────────────
 PasskeyRepository = BeaniePasskeyRepository
 PasskeyChallengeRepository = BeaniePasskeyChallengeRepository
+
+
+# ── El contrato de esquema ───────────────────────────────────────────
+# El nombre neutro que busca `identity_documents`. En Mongo no es una comodidad: un `Document`
+# que `init_beanie` no ve no funciona, asi que sin esto el plugin arranca y falla en la primera
+# consulta con `CollectionWasNotInitialized`.
+PLUGIN_DOCUMENTS = PASSKEY_DOCUMENTS

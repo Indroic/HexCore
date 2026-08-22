@@ -78,16 +78,34 @@ class IdentityStep:
         reset_identity()
 
     def _verificar_esquema(self) -> None:
+        """
+        Compara el metadata contra las tablas que este despliegue realmente usa.
+
+        Cubre el núcleo **y los plugins activos**, y es acá donde la lista de plugins puede ser
+        exacta: el `PluginRegistry` ya está armado, así que no hay que adivinar. Es la diferencia
+        con `ensure_identity_schema_loaded`, que corre en el `env.py` sin contenedor y por eso
+        necesita que le pasen los nombres.
+
+        Esta es la red que agarra al que se olvidó de pasarlos: el síntoma de olvidarse es
+        `op.drop_table` sobre una tabla con datos, y descubrir eso revisando el diff de una
+        migración es demasiado tarde para confiar en que alguien lo revise.
+        """
         try:
             from hexcore.darwin.infrastructure.orms.sqlalchemy.models import IDENTITY_MODELS
             from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
         except ImportError:
-            # Sin el extra `[sql]` no hay metadata que verificar.
+            # Sin el extra `[darwin-sqlalchemy]` no hay metadata que verificar.
             return
+
+        # `t.Any` y no `type`: `__tablename__` lo agrega el mapeo declarativo en tiempo de
+        # ejecución, así que no está en el tipo estático de una `type` cualquiera. Mismo
+        # criterio que `identity_tables`.
+        esperadas: list[t.Any] = list(IDENTITY_MODELS)
+        esperadas.extend(self._modelos_de_los_plugins())
 
         registradas = set(Base.metadata.tables)
         faltan = [
-            m.__tablename__ for m in IDENTITY_MODELS if m.__tablename__ not in registradas
+            m.__tablename__ for m in esperadas if m.__tablename__ not in registradas
         ]
         if not faltan:
             return
@@ -95,10 +113,36 @@ class IdentityStep:
         logger.error(
             "Estas tablas de identidad no están en Base.metadata: %s. Si usás Alembic, el "
             "próximo `revision --autogenerate` va a emitir op.drop_table sobre ellas. "
-            "Importalas desde tu paquete `models/` (o llamá a "
-            "`ensure_identity_schema_loaded()` en el env.py).",
+            "Importalas desde tu paquete `models/`, o llamá en el env.py a "
+            "`ensure_identity_schema_loaded(plugins=%r)`.",
             ", ".join(sorted(faltan)),
+            list(self._nombres_de_los_plugins()),
         )
+
+    def _nombres_de_los_plugins(self) -> tuple[str, ...]:
+        """Los plugins activos, o vacío si el contenedor no llegó a armarse."""
+        from hexcore.darwin.application.container import get_identity_container
+
+        try:
+            return get_identity_container().plugins.names
+        except Exception:  # pragma: no cover - contenedor a medio armar
+            return ()
+
+    def _modelos_de_los_plugins(self) -> list[t.Any]:
+        """
+        Los modelos concretos de los plugins activos.
+
+        Se envuelve en un `try`: un plugin de terceros puede llamarse cualquier cosa y no tener
+        paquete bajo `hexcore.darwin.plugins`, y que la verificación explote sería peor que que
+        no verifique — impediría arrancar por un chequeo que existe para avisar.
+        """
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import plugin_models
+
+        try:
+            return plugin_models(self._nombres_de_los_plugins())
+        except Exception:  # pragma: no cover - plugin de terceros sin esquema importable
+            logger.debug("No se pudieron resolver los modelos de los plugins.", exc_info=True)
+            return []
 
 
 class SessionReaperStep:

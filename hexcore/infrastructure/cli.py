@@ -355,10 +355,29 @@ from hexcore.infrastructure.repositories.orms.sqlalchemy.utils import (
 )
 {models_import}
 
-# Los modelos que declara HexCore (hexcore_cron_jobs, y las tablas de identidad cuando
-# uses el modulo). Sin esta linea quedan afuera de Base.metadata y `--autogenerate` les
-# emite un op.drop_table.
+# Las tablas que declara el framework: hoy hexcore_cron_jobs. Sin esta linea quedan
+# afuera de Base.metadata y `--autogenerate` les emite un op.drop_table.
+#
+# NO cubre las tablas de Darwin: esas van en la linea de abajo.
 ensure_framework_models_loaded()
+
+# Las tablas de Darwin, si usas el modulo de identidad.
+#
+# DARWIN_PLUGINS tiene que listar los mismos plugins que le pasas a configure_identity.
+# Un plugin que falte acá tiene su tabla en la base y ausente del metadata, y el proximo
+# `revision --autogenerate` le emite un op.drop_table. Con Darwin cableado, el paso de
+# arranque IdentitySchemaStep loguea un error nombrando las que falten.
+DARWIN_PLUGINS: list[str] = []
+
+try:
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import (
+        ensure_identity_schema_loaded,
+    )
+except ImportError:
+    # Sin el extra [darwin] no hay tablas de identidad que registrar.
+    pass
+else:
+    ensure_identity_schema_loaded(plugins=DARWIN_PLUGINS)
 
 # Y los tuyos. Recursivo: tambien recorre subpaquetes de models/.
 import_all_models(models)

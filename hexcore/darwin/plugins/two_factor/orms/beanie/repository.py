@@ -23,6 +23,7 @@ from hexcore.darwin.plugins.two_factor.domain import (
 )
 
 __all__ = [
+    "PLUGIN_DOCUMENTS",
     "TwoFactorDocument",
     "BeanieTwoFactorRepository",
     "TwoFactorRepository",
@@ -200,3 +201,10 @@ def _a_entidad(doc: t.Any) -> TwoFactor:
 
 # ── El contrato del backend ───────────────────────────────────────────────────
 TwoFactorRepository = BeanieTwoFactorRepository
+
+
+# ── El contrato de esquema ───────────────────────────────────────────
+# El nombre neutro que busca `identity_documents`. En Mongo no es una comodidad: un `Document`
+# que `init_beanie` no ve no funciona, asi que sin esto el plugin arranca y falla en la primera
+# consulta con `CollectionWasNotInitialized`.
+PLUGIN_DOCUMENTS = TWO_FACTOR_DOCUMENTS

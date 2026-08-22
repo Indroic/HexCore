@@ -1008,7 +1008,7 @@ hallazgos y el [CHANGELOG](../CHANGELOG.md).
 - `headers_for` en los exception handlers (RFC 6750).
 - Gate de tipado midiendo: `[tool.pyright]` strict, ratchet, baseline de **216 errores**.
 
-### Fase 1 — Convención de nombres de constraints
+### Fase 1 — Convención de nombres de constraints ✅ **IMPLEMENTADA**
 
 **Antes** de la primera tabla (§2.6): agregarla después es una migración rompedora.
 Modifica `orms/sqlalchemy/__init__.py`. Test: los nombres generados son estables y no
@@ -1997,6 +1997,110 @@ módulo; que la correspondencia plugin ↔ extra es total **en las dos direccion
 sin extra es un plugin que nadie encuentra y un extra sin plugin es un comando de instalación que
 miente; y que `[all]` contiene las dependencias de los nueve, porque `[all]` es lo que corre en CI
 y lo que le falte no se testea.
+
+---
+
+### Fase 12 — Que el esquema llegue a Alembic y a `init_beanie` ✅
+
+**Objetivo.** Cerrar el peor modo de falla del módulo, que es el único que no da un error: una tabla
+que existe en la base y está ausente de `Base.metadata` hace que el próximo
+`alembic revision --autogenerate` le emita `op.drop_table`. Con datos adentro.
+
+Eran cinco agujeros, y conviene tenerlos separados porque cada uno se arreglaba en otro lado.
+
+| # | Agujero | Consecuencia |
+| :-- | :-- | :-- |
+| 1 | El comentario del `env.py` generado decía "y las tablas de identidad cuando uses el modulo" | Falso. `ensure_framework_models_loaded()` importa **un** módulo: `cron_sql` |
+| 2 | El `env.py` generado no llamaba a `ensure_identity_schema_loaded()` | `op.drop_table` sobre las seis tablas del núcleo |
+| 3 | `ensure_identity_schema_loaded()` cargaba sólo los modelos del núcleo | `op.drop_table` sobre las siete tablas de los cuatro plugins con esquema |
+| 4 | `init_identity_documents` no cubría los plugins | En Mongo no es una migración perdida: `CollectionWasNotInitialized` en la primera consulta |
+| 5 | `IdentityStep`, la red de contención, verificaba sólo el núcleo | El aviso que tenía que agarrar los cuatro anteriores tampoco los veía |
+
+#### El contrato de nombre neutro, otra vez
+
+Juntar los esquemas sin que el núcleo nombre a los plugins pedía lo mismo que resolver los
+repositorios: **un nombre igual en todos**. Cada plugin ya tenía su constante propia
+(`TWO_FACTOR_MODELS`, `OAUTH_MODELS`, …), que sirve para nada si quien las junta tiene que
+conocerlas de antemano.
+
+Así que cada plugin con esquema expone un alias:
+
+- `PLUGIN_MODELS` en `plugins/{nombre}/orms/sqlalchemy/models.py`
+- `PLUGIN_DOCUMENTS` en `plugins/{nombre}/orms/beanie/repository.py`
+
+Es el mismo mecanismo que `UserRepository` o `PasskeyRepository`, y por el mismo motivo. Del lado
+del núcleo entran por `plugin_schema_module(plugin, backend=…, module=…)`, que devuelve `None`
+—y no lanza— cuando el plugin no tiene esquema: `magic_link` reusa `verification` e `impersonate`
+no guarda nada aparte, así que "sin esquema" es el caso normal y no un plugin incompleto. Es la
+diferencia deliberada con `plugin_repositories`, que **sí** lanza: allá el consumidor pidió ese
+repositorio explícitamente, y su ausencia es un error de cableado.
+
+#### Por qué el default no descubre los plugins
+
+`ensure_identity_schema_loaded(plugins=[…])` exige la lista, y eso es a propósito. La tentación es
+descubrir con `installed_plugins()`, y no sirve: **los seis plugins viven en la misma
+distribución**, así que están todos en disco tengas el extra o no. Descubrir por presencia le
+crearía `darwin_passkey` a quien nunca usó passkeys.
+
+La única fuente honesta de "qué plugins usa este despliegue" es la lista que el consumidor le pasa
+a `configure_identity`. En el `env.py` no hay contenedor todavía, así que ahí hay que repetirla —y
+el `env.py` generado lleva una `DARWIN_PLUGINS: list[str] = []` con el comentario que explica qué
+pasa si le falta uno.
+
+Repetir una lista es una fuente de olvidos, y por eso el arreglo no termina ahí.
+
+#### La red de contención: `IdentityStep` verifica lo activo
+
+Al arrancar sí hay contenedor, así que la lista puede ser exacta: `container.plugins.names` **es**
+lo activo. `IdentityStep._verificar_esquema` compara `Base.metadata` contra el núcleo más los
+modelos de los plugins activos, y loguea un error que nombra las tablas que faltan **y la lista
+que hay que copiar al `env.py`**.
+
+Esa es la división: la función del `env.py` no puede adivinar y por eso pregunta; el paso de
+arranque no necesita adivinar y por eso verifica. Descubrir que faltaba una tabla revisando el
+diff de una migración es demasiado tarde para confiar en que alguien lo revise.
+
+La verificación va envuelta en `try`: un plugin de terceros puede llamarse cualquier cosa y no
+tener paquete bajo `hexcore.darwin.plugins`, y que un chequeo que existe para avisar sea lo que
+impide arrancar es peor que que no avise.
+
+#### Mongo: el mismo agujero, un síntoma distinto
+
+`identity_documents(plugins=[…])` e `init_identity_documents(plugins=[…])`. En Mongo esto **no** es
+una comodidad para las migraciones: un `Document` que `init_beanie` no vio no funciona, así que
+omitir un plugin activo lo deja fallando en la primera consulta.
+
+Y los plugins van en **esa misma** llamada, no en una suya: `init_beanie` no acumula —la segunda
+llamada sobre la misma base reemplaza el registro de la primera— así que inicializar el núcleo y
+después cada plugin dejaría funcionando sólo al último. Por eso `plugins=` es un parámetro y no una
+función aparte.
+
+#### El orden de las tablas es la seguridad de FK
+
+`identity_tables(plugins=…)` pone las del núcleo primero y las de los plugins al final.
+`drop_identity_tables` invierte la lista completa, así que las de los plugins se borran primero —
+el único orden que funciona, porque referencian a `darwin_user`. Un test lo verifica creando y
+**borrando** contra un motor de verdad: un test que sólo crea no detecta el orden equivocado.
+
+#### Testing
+
+[`tests/test_darwin_schema_registration.py`](../tests/test_darwin_schema_registration.py).
+
+Se verifica contra el `Base.metadata` real y no contra la lista de módulos importados, porque el
+metadata es lo que decide si `--autogenerate` crea o dropea. Del `env.py` generado se saca el
+template del AST —correr `_setup_alembic` arranca `alembic init` por subproceso y escribe en
+disco— y se le comprueba que llame a la función, que el fragmento **parsee**, que el import de
+Darwin sea opcional para un proyecto que no usa identidad, que el orden sea framework → identidad
+→ consumidor, y que la afirmación falsa ya no esté.
+
+Un hallazgo del propio test de desacoplamiento: juntar los esquemas hace que el núcleo importe
+`plugins/storage.py`, que está bajo `plugins/` pero es del núcleo. La primera versión del chequeo
+excluía el prefijo `hexcore.darwin.plugins.` y quedaba sin dientes; ahora compara contra la lista
+de los seis, con un test que verifica que el propio resolvedor no nombre a nadie. Y `_imports_de`
+pasó a leer el AST en vez de escanear líneas, por dos razones opuestas: alcanza los imports
+diferidos dentro de un método —que ningún test de humo encuentra pero que igual exigen el paquete
+instalado— y deja de contar los bloques `Uso::` de los docstrings, que es el falso positivo que
+delató el problema.
 
 ---
 

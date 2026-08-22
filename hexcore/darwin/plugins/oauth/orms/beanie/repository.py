@@ -22,6 +22,7 @@ from hexcore.darwin.plugins.oauth.domain import (
 )
 
 __all__ = [
+    "PLUGIN_DOCUMENTS",
     "OAuthStateDocument",
     "BeanieOAuthStateRepository",
     "OAuthStateRepository",
@@ -138,3 +139,10 @@ def _a_entidad(doc: t.Any) -> OAuthState:
 
 # ── El contrato del backend ───────────────────────────────────────────────────
 OAuthStateRepository = BeanieOAuthStateRepository
+
+
+# ── El contrato de esquema ───────────────────────────────────────────
+# El nombre neutro que busca `identity_documents`. En Mongo no es una comodidad: un `Document`
+# que `init_beanie` no ve no funciona, asi que sin esto el plugin arranca y falla en la primera
+# consulta con `CollectionWasNotInitialized`.
+PLUGIN_DOCUMENTS = OAUTH_DOCUMENTS

@@ -22,22 +22,59 @@ __all__ = [
     "identity_tables",
     "validate_user_model",
     "ensure_identity_schema_loaded",
+    "plugin_models",
 ]
 
 
-def identity_tables(models: t.Sequence[type] | None = None) -> list[t.Any]:
+def plugin_models(plugins: t.Sequence[str]) -> list[type]:
+    """
+    Los modelos concretos que aportan esos plugins, en orden.
+
+    Cada plugin con tabla propia expone `PLUGIN_MODELS` en
+    ``plugins/{nombre}/orms/sqlalchemy/models.py`` — el mismo contrato de nombre neutro que
+    `UserRepository` o `PasskeyRepository`, y por el mismo motivo: sin un nombre igual en todos,
+    juntar los esquemas obligaba al núcleo a conocer a los plugins por nombre.
+
+    Un plugin sin tabla propia aporta cero y no es un error: `magic_link` reusa `verification` y
+    `impersonate` no guarda nada aparte.
+
+    Args:
+        plugins: Los nombres de los paquetes. Normalmente `container.plugins.names`, que es lo
+            **activo**. `installed_plugins()` da lo que está en disco, que con los seis plugins
+            en la misma distribución es siempre todo — sirve para otras cosas, no para esto.
+    """
+    from hexcore.darwin.plugins.storage import plugin_schema_module
+
+    acumulado: list[type] = []
+    for nombre in plugins:
+        modulo = plugin_schema_module(nombre, backend="sqlalchemy", module="models")
+        if modulo is None:
+            continue
+        acumulado.extend(getattr(modulo, "PLUGIN_MODELS", ()))
+    return acumulado
+
+
+def identity_tables(
+    models: t.Sequence[type] | None = None,
+    *,
+    plugins: t.Sequence[str] | None = None,
+) -> list[t.Any]:
     """
     Los objetos `Table` de los modelos de identidad.
 
     Args:
         models: Los modelos a considerar. Por defecto, los seis concretos de `models.py`.
             Pasá los tuyos si extendiste el esquema.
+        plugins: Los plugins cuyas tablas sumar. Van **después** de las del núcleo, y eso
+            importa: `drop_identity_tables` invierte la lista completa, así que las de los
+            plugins se borran primero — el único orden que funciona, porque referencian a
+            `darwin_user` por FK.
     """
     from hexcore.darwin.infrastructure.orms.sqlalchemy.models import IDENTITY_MODELS
 
-    objetivo: t.Sequence[t.Any] = (
-        models if models is not None else IDENTITY_MODELS
-    )
+    objetivo: list[t.Any] = list(models if models is not None else IDENTITY_MODELS)
+    if plugins:
+        objetivo.extend(plugin_models(plugins))
     # `t.Any` y no `type`: `__table__` lo agrega el mapeo declarativo de SQLAlchemy en
     # tiempo de ejecución, así que no está en el tipo estático de una `type` cualquiera. El
     # contrato lo garantiza `validate_user_model`.
@@ -48,6 +85,7 @@ async def create_identity_tables(
     engine: "AsyncEngine | None" = None,
     *,
     models: t.Sequence[type] | None = None,
+    plugins: t.Sequence[str] | None = None,
 ) -> None:
     """
     Crea las tablas de identidad si no existen. Idempotente.
@@ -94,6 +132,10 @@ async def create_identity_tables(
             sa.UniqueConstraint("token_hash", name="uq_darwin_session_token_hash"),
         )
 
+    Las tablas de los plugins no van por defecto. Sumalas nombrándolos::
+
+        await create_identity_tables(plugins=["two_factor", "passkey"])
+
     Uso::
 
         await create_identity_tables()
@@ -104,7 +146,7 @@ async def create_identity_tables(
     target = engine or get_engine()
     async with target.begin() as connection:
         await connection.run_sync(
-            Base.metadata.create_all, tables=identity_tables(models)
+            Base.metadata.create_all, tables=identity_tables(models, plugins=plugins)
         )
 
 
@@ -112,12 +154,15 @@ async def drop_identity_tables(
     engine: "AsyncEngine | None" = None,
     *,
     models: t.Sequence[type] | None = None,
+    plugins: t.Sequence[str] | None = None,
 ) -> None:
     """
     Borra las tablas de identidad. **Sólo para tests.**
 
     En orden inverso al de `IDENTITY_MODELS`, porque `session` y `account` referencian a
-    `user` por FK y borrarla primero falla en cualquier backend que valide las FKs.
+    `user` por FK y borrarla primero falla en cualquier backend que valide las FKs. Las
+    tablas de los plugins van al final de la lista y por lo tanto **primeras** al invertir,
+    que es el orden correcto: también referencian a `darwin_user`.
     """
     from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
     from hexcore.infrastructure.repositories.orms.sqlalchemy.session import get_engine
@@ -125,7 +170,8 @@ async def drop_identity_tables(
     target = engine or get_engine()
     async with target.begin() as connection:
         await connection.run_sync(
-            Base.metadata.drop_all, tables=list(reversed(identity_tables(models)))
+            Base.metadata.drop_all,
+            tables=list(reversed(identity_tables(models, plugins=plugins))),
         )
 
 
@@ -187,7 +233,9 @@ def validate_user_model(model: type) -> None:
         )
 
 
-def ensure_identity_schema_loaded() -> list[str]:
+def ensure_identity_schema_loaded(
+    *, plugins: t.Sequence[str] | None = None
+) -> list[str]:
     """
     Importa los modelos de identidad para que entren en `Base.metadata`.
 
@@ -196,20 +244,44 @@ def ensure_identity_schema_loaded() -> list[str]:
     tendría las tablas en la base y ausentes del metadata — y `--autogenerate` les emitiría
     ``op.drop_table``.
 
-    Devuelve una lista vacía si el extra `[darwin]` no está instalado: sin sqlalchemy no hay
-    metadata que poblar, y eso no es un error.
+    Args:
+        plugins: Los plugins cuyos modelos sumar. **Hay que pasarlos**, y el default no los
+            descubre a propósito: los seis viven en la misma distribución, así que están todos
+            en disco tengas el extra o no, y descubrir por presencia le crearía
+            `darwin_passkey` a quien nunca usó passkeys. Poné acá la misma lista que le pasás a
+            `configure_identity`.
+
+    Returns:
+        Los nombres de los módulos importados. Lista vacía si el extra `[darwin-sqlalchemy]` no
+        está instalado: sin sqlalchemy no hay metadata que poblar, y eso no es un error.
+
+    ⚠️ **Olvidarse de un plugin acá es `op.drop_table` sobre su tabla.** La red de contención es
+    `IdentityStep`, que al arrancar compara el metadata contra los plugins **activos** —
+    ahí la lista sí es exacta, porque la tiene el `PluginRegistry`— y loguea un error nombrando
+    las que faltan. Por eso el paso de arranque verifica y esta función no: acá no hay contenedor
+    todavía, y adivinar sería peor que preguntar.
 
     Uso, en el `env.py`::
 
         ensure_framework_models_loaded()
-        ensure_identity_schema_loaded()
+        ensure_identity_schema_loaded(plugins=["two_factor", "passkey"])
         import_all_models(models)
         target_metadata = Base.metadata
     """
     import importlib
 
+    from hexcore.darwin.plugins.storage import plugin_schema_module
+
+    NUCLEO = "hexcore.darwin.infrastructure.orms.sqlalchemy.models"
+
     try:
-        importlib.import_module("hexcore.darwin.infrastructure.orms.sqlalchemy.models")
+        importlib.import_module(NUCLEO)
     except ImportError:
         return []
-    return ["hexcore.darwin.infrastructure.orms.sqlalchemy.models"]
+
+    importados = [NUCLEO]
+    for nombre in plugins or ():
+        modulo = plugin_schema_module(nombre, backend="sqlalchemy", module="models")
+        if modulo is not None:
+            importados.append(modulo.__name__)
+    return importados

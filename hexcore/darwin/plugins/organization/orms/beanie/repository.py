@@ -58,6 +58,7 @@ from hexcore.darwin.plugins.organization.domain import (
 )
 
 __all__ = [
+    "PLUGIN_DOCUMENTS",
     "EmbeddedMember",
     "OrganizationDocument",
     "InvitationDocument",
@@ -547,3 +548,10 @@ def _a_invitacion(doc: t.Any) -> Invitation:
 OrganizationRepository = BeanieOrganizationRepository
 MemberRepository = BeanieMemberRepository
 InvitationRepository = BeanieInvitationRepository
+
+
+# ── El contrato de esquema ───────────────────────────────────────────
+# El nombre neutro que busca `identity_documents`. En Mongo no es una comodidad: un `Document`
+# que `init_beanie` no ve no funciona, asi que sin esto el plugin arranca y falla en la primera
+# consulta con `CollectionWasNotInitialized`.
+PLUGIN_DOCUMENTS = ORGANIZATION_DOCUMENTS

@@ -21,7 +21,12 @@ from __future__ import annotations
 
 import typing as t
 
-__all__ = ["plugin_repositories", "plugin_storage_backend"]
+__all__ = [
+    "plugin_repositories",
+    "plugin_storage_backend",
+    "installed_plugins",
+    "plugin_schema_module",
+]
 
 
 def plugin_storage_backend() -> str:
@@ -96,3 +101,66 @@ def _backends_del_plugin(plugin: str) -> list[str]:
         return []
 
     return sorted(m.name for m in pkgutil.iter_modules(list(rutas)) if m.ispkg)
+
+
+# ── Descubrimiento, para juntar los esquemas ────────────────────────────────
+def installed_plugins() -> list[str]:
+    """
+    Los plugins presentes bajo `hexcore.darwin.plugins`.
+
+    Se lee del sistema de archivos, igual que `_backends_del_plugin`, y **no** de una lista
+    declarada en el núcleo. La diferencia importa: una lista declarada es el núcleo nombrando a
+    sus plugins, que es el acoplamiento que la separación en extras sacó. Preguntarle al paquete
+    no lo reintroduce, porque la respuesta es "los que estén", no "los que conozco".
+
+    Ojo con para qué sirve y para qué no: esto responde *qué está instalado*, no *qué está
+    activo*. Lo activo lo declara el consumidor en el `PluginRegistry`, y para cablear servicios
+    esa es la única fuente válida. Acá se usa para juntar esquemas, donde la pregunta correcta es
+    la otra — ver `ensure_identity_schema_loaded`.
+
+    Uso::
+
+        from hexcore.darwin.plugins.storage import installed_plugins
+
+        assert "two_factor" in installed_plugins()
+    """
+    import importlib
+    import pkgutil
+
+    paquete = importlib.import_module("hexcore.darwin.plugins")
+    rutas = getattr(paquete, "__path__", None)
+    if rutas is None:  # pragma: no cover - no es un paquete
+        return []
+
+    # `ispkg` filtra `storage.py`, que es de acá y no un plugin.
+    return sorted(m.name for m in pkgutil.iter_modules(list(rutas)) if m.ispkg)
+
+
+def plugin_schema_module(plugin: str, *, backend: str, module: str) -> t.Any | None:
+    """
+    Un módulo de esquema de un plugin, o `None` si no existe.
+
+    Args:
+        plugin: El nombre del paquete del plugin.
+        backend: `"sqlalchemy"` o `"beanie"`.
+        module: El submódulo (`"models"`, `"repository"`).
+
+    Devuelve `None` y no lanza en los dos casos legítimos: el plugin no tiene tabla propia
+    —`magic_link` reusa `verification`, `impersonate` no guarda nada aparte— o no implementa ese
+    backend. Es lo contrario de `plugin_repositories`, que **sí** lanza: allá el consumidor pidió
+    ese repositorio explícitamente, así que su ausencia es un error de cableado; acá se está
+    recorriendo lo que haya, y un plugin sin esquema es el caso normal.
+
+    Un `ImportError` que **no** venga de `hexcore.*` se propaga: eso es un extra de tercero sin
+    instalar, y taparlo dejaría el esquema incompleto en silencio — que es justo el modo de falla
+    que este módulo existe para cerrar.
+    """
+    import importlib
+
+    ruta = f"hexcore.darwin.plugins.{plugin}.orms.{backend}.{module}"
+    try:
+        return importlib.import_module(ruta)
+    except ModuleNotFoundError as exc:
+        if exc.name is not None and exc.name.startswith("hexcore."):
+            return None
+        raise

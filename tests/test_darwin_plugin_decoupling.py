@@ -18,6 +18,7 @@ Lo que este archivo fija:
 """
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 import tomllib
@@ -61,15 +62,47 @@ def _fuentes(directorio: Path) -> list[Path]:
 
 
 def _imports_de(archivo: Path) -> list[str]:
-    """Las líneas de import del archivo, sin comentarios."""
-    lineas: list[str] = []
-    for linea in archivo.read_text(encoding="utf-8").splitlines():
-        desnuda = linea.strip()
-        if desnuda.startswith("#"):
-            continue
-        if desnuda.startswith("from ") or desnuda.startswith("import "):
-            lineas.append(desnuda)
-    return lineas
+    """
+    Los módulos que el archivo importa, del AST.
+
+    Del AST y no escaneando líneas, por dos razones que apuntan en direcciones opuestas y las dos
+    importan:
+
+    - **Alcanza más.** Un `importlib.import_module` diferido dentro de un método no se ejecuta al
+      importar el módulo, así que ningún test de humo lo encuentra — pero el paquete tiene que
+      estar instalado para que ese método corra. El AST lo ve igual, esté donde esté.
+    - **Alcanza menos, y hace falta.** Los docstrings de esta casa llevan bloques ``Uso::`` con
+      imports de ejemplo, y un escaneo de líneas los cuenta como imports reales. Eso daba un
+      falso positivo en `plugins/storage.py`, cuyo docstring muestra cómo importarlo.
+    """
+    arbol = ast.parse(archivo.read_text(encoding="utf-8"))
+    modulos: list[str] = []
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Import):
+            modulos.extend(alias.name for alias in nodo.names)
+        elif isinstance(nodo, ast.ImportFrom) and nodo.module is not None:
+            modulos.append(nodo.module)
+            # `from paquete import submodulo` también es un import del submódulo, y es la forma
+            # que se colaba cuando la separación del almacenamiento reescribió las rutas.
+            modulos.extend(f"{nodo.module}.{alias.name}" for alias in nodo.names)
+    return modulos
+
+
+def _pertenece_a(modulo: str, plugin: str) -> bool:
+    """`True` si `modulo` es el paquete de ese plugin o algo adentro."""
+    raiz = f"hexcore.darwin.plugins.{plugin}"
+    return modulo == raiz or modulo.startswith(raiz + ".")
+
+
+def _es_de_un_plugin(modulo: str) -> bool:
+    """
+    `True` si el módulo es de alguno de los seis plugins.
+
+    Se compara contra la lista de plugins y no contra el prefijo `hexcore.darwin.plugins.`, así
+    que `plugins.storage` —que es del núcleo aunque viva ahí— no cuenta, y no hace falta una
+    exclusión por nombre que dejaría pasar cualquier otra cosa.
+    """
+    return any(_pertenece_a(modulo, plugin) for plugin, _ in PLUGINS)
 
 
 def _bloqueando_plugins(
@@ -119,13 +152,25 @@ class TestElNucleoNoConoceLosPlugins:
         culpables: list[str] = []
         for paquete in NUCLEO:
             for archivo in _fuentes(RAIZ / paquete):
-                for linea in _imports_de(archivo):
-                    if "hexcore.darwin.plugins." in linea:
-                        culpables.append(f"{archivo.relative_to(RAIZ)}: {linea}")
+                for modulo in _imports_de(archivo):
+                    if _es_de_un_plugin(modulo):
+                        culpables.append(f"{archivo.relative_to(RAIZ)}: {modulo}")
         assert culpables == [], (
             "El núcleo importa un plugin. La dirección de la dependencia es al revés: el plugin "
             "importa el núcleo.\n" + "\n".join(culpables)
         )
+
+    def test_storage_no_importa_ningun_plugin(self) -> None:
+        """
+        El resolvedor está bajo `plugins/` pero es del núcleo, así que tampoco puede nombrarlos.
+
+        `_es_de_un_plugin` lo deja pasar a propósito —es del núcleo— y este test es lo que
+        impide que esa concesión se convierta en un agujero: sin él, mover un import de plugin a
+        `storage.py` lo volvería invisible.
+        """
+        archivo = PLUGINS_DIR / "storage.py"
+        culpables = [m for m in _imports_de(archivo) if _es_de_un_plugin(m)]
+        assert culpables == [], "\n".join(culpables)
 
     def test_el_nucleo_importa_con_los_seis_plugins_bloqueados(self) -> None:
         resultado = _bloqueando_plugins(
@@ -133,6 +178,12 @@ class TestElNucleoNoConoceLosPlugins:
             "from hexcore.darwin.application.services import IdentityService\n"
             "from hexcore.darwin.application.container import IdentityContainer\n"
             "from hexcore.darwin.domain.ports import AbstractVerificationRepository\n"
+            # El camino que junta los esquemas: pasa por `plugins.storage`, así que si ese
+            # módulo arrastrara un plugin, esto explotaría con los seis bloqueados.
+            "from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import (\n"
+            "    ensure_identity_schema_loaded,\n"
+            ")\n"
+            "assert ensure_identity_schema_loaded() != []\n"
             "print('ok')\n"
         )
         assert resultado.returncode == 0, resultado.stderr
@@ -195,10 +246,9 @@ class TestLosPluginsNoSeConocenEntreSi:
         ajenos = [p for p, _ in PLUGINS if p != plugin]
         culpables: list[str] = []
         for archivo in _fuentes(PLUGINS_DIR / plugin):
-            for linea in _imports_de(archivo):
-                for otro in ajenos:
-                    if f"hexcore.darwin.plugins.{otro}" in linea:
-                        culpables.append(f"{archivo.relative_to(RAIZ)}: {linea}")
+            for modulo in _imports_de(archivo):
+                if any(_pertenece_a(modulo, otro) for otro in ajenos):
+                    culpables.append(f"{archivo.relative_to(RAIZ)}: {modulo}")
         assert culpables == [], "\n".join(culpables)
 
     @pytest.mark.parametrize("plugin", [p for p, _ in PLUGINS])

@@ -15,7 +15,7 @@ from hexcore.darwin.plugins.two_factor.orms.sqlalchemy.models_mixins import (
 )
 from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
 
-__all__ = ["TwoFactorModel", "TWO_FACTOR_MODELS", "create_two_factor_tables"]
+__all__ = ["TwoFactorModel", "TWO_FACTOR_MODELS", "create_two_factor_tables", "PLUGIN_MODELS"]
 
 
 class TwoFactorModel(TwoFactorMixin, Base):
@@ -72,3 +72,11 @@ async def create_two_factor_tables(
     target = engine or get_engine()
     async with target.begin() as connection:
         await connection.run_sync(Base.metadata.create_all, tables=tablas)
+
+
+# ── El contrato de esquema ───────────────────────────────────────────
+# El nombre neutro que busca `ensure_identity_schema_loaded`, igual que `PasskeyRepository` es
+# el nombre neutro que busca `plugin_repositories`. Sin un nombre igual en los cuatro plugins,
+# juntar los esquemas obligaba al nucleo a conocerlos por nombre — que es exactamente el
+# acoplamiento que la separacion en extras saco.
+PLUGIN_MODELS = TWO_FACTOR_MODELS
