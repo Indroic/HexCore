@@ -1,19 +1,19 @@
 import contextvars
-from typing import Any, Callable, Awaitable, TypeVar
+import typing as t
 
-A = TypeVar("A")
+A = t.TypeVar("A")
 # ContextVars para stack de ids y cache de resultados
 _visited_ctx: contextvars.ContextVar[set[int]] = contextvars.ContextVar(
     "visited", default=set()
 )
-_results_ctx: contextvars.ContextVar[dict[int, Any]] = contextvars.ContextVar(
+_results_ctx: contextvars.ContextVar[dict[int, t.Any]] = contextvars.ContextVar(
     "results", default={}
 )
 
 
 def cycle_protection_resolver(
-    func: Callable[[A], Awaitable[Any]],
-) -> Callable[[A], Awaitable[Any]]:
+    func: t.Callable[[A], t.Awaitable[t.Any]],
+) -> t.Callable[[A], t.Awaitable[t.Any]]:
     """
     Decorador para resolvedores asíncronos que protege contra recursividad infinita en relaciones cíclicas.
 
@@ -28,7 +28,7 @@ def cycle_protection_resolver(
         3. Así, aunque los resolvedores se llamen recursivamente (por ejemplo, en relaciones A → B → A), nunca se entra en un bucle infinito porque el decorador corta la recursión y retorna el valor ya calculado.
     """
 
-    async def wrapper(model: A) -> Any:
+    async def wrapper(model: A) -> t.Any:
         entity_id = getattr(model, "id", None)
         visited = _visited_ctx.get().copy()
         results = _results_ctx.get().copy()

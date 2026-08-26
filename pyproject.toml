@@ -161,6 +161,11 @@ dev = [
     # Requerido por fastapi.testclient (starlette.testclient) para los tests de la
     # capa API: create_app, middlewares, routing, health checks.
     "httpx>=0.27.0",
+    # Para leer los workflows en `tests/test_packaging.py`, que verifica que la matriz de
+    # extras de CI no se desincronice del `pyproject`. Ya venía instalado como transitivo de
+    # otro paquete, y por eso se declara: un test que se apoya en una dependencia que nadie
+    # pidió se rompe el día que el intermediario la suelta, y el error no señala la causa.
+    "pyyaml>=6.0",
 ]
 
 [tool.setuptools]

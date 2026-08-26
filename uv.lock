@@ -777,6 +777,7 @@ dev = [
     { name = "httpx" },
     { name = "pyright" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ruff" },
     { name = "twine" },
 ]
@@ -841,6 +842,7 @@ dev = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "pyright", specifier = ">=1.1.405" },
     { name = "pytest", specifier = ">=8.4.2" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.12.11" },
     { name = "twine", specifier = ">=5.0.0" },
 ]
