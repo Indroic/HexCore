@@ -1,16 +1,53 @@
-from __future__ import annotations
-import typing as t
-from uuid import UUID
+"""
+Los repositorios genéricos, y el argumento común que comparten.
 
-from hexcore.application.dtos.query import QueryRequestDTO
-from hexcore.infrastructure.uow.decorators import register_entity_on_uow
+`HasBasicArgs` vive acá porque no necesita ningún extra. `SqlAlchemyRepository` y
+`BeanieRepository` viven en módulos hoja —`_sqlalchemy_impl` y `_beanie_impl`— y este módulo los
+reexporta: se resuelven al primer acceso, así que importarlo sigue funcionando sin `[sql]` y sin
+`[mongo]`, que es el contrato que verifica `tests/test_optional_dependencies.py`.
+
+**Por qué no un `try/except ImportError` con una clase vacía**, que es como estaba::
+
+    except ImportError:
+        M = t.TypeVar("M")
+        class SqlAlchemyRepository(t.Generic[T, M]): ...
+
+Funcionaba en runtime y arruinaba el tipado. Pyright analiza las dos ramas del `try` y se queda
+con la última definición del nombre, o sea la vacía: el consumidor que hacía hover sobre su
+repositorio no veía `save`, ni `get_by_id`, ni `model_cls`, ni `query_cursor` — y todo lo que
+pasaba por ahí se propagaba como `Unknown`. Eran 64 de los errores de Pyright del paquete, y la
+mayoría de los `reportUnknown*` de los módulos de más arriba.
+
+El reparto de responsabilidades es el mismo que en cualquier otro punto del framework donde un
+extra puede faltar: el módulo hoja importa lo que necesita **sin guardas** —si falta, que falle
+donde está la causa— y el módulo público traduce esa falla en un error que dice qué instalar.
+Acá el `__getattr__` (PEP 562) hace de traductor.
+
+El `__getattr__` va detrás de `if not t.TYPE_CHECKING:` a propósito. Para Pyright existen los
+imports de arriba, que apuntan a las clases **reales**; el `__getattr__` no llega a verlo, así
+que el namespace del módulo queda cerrado y un nombre mal escrito sigue siendo un error de
+tipado en vez de un `Any` silencioso. En runtime pasa al revés: los imports no se ejecutan y
+resuelve el `__getattr__`.
+"""
+from __future__ import annotations
+
+import typing as t
+
 from hexcore.types import FieldResolversType, FieldSerializersType
 
-from .base import T, BaseSQLAlchemyRepository, BaseBeanieRepository
-from .utils import to_entity_from_model_or_document
+from .base import T
 
 if t.TYPE_CHECKING:
-    from hexcore.application.dtos.cursor import CursorPageDTO, CursorRequestDTO
+    from ._beanie_impl import BeanieRepository as BeanieRepository, D as D
+    from ._sqlalchemy_impl import M as M, SqlAlchemyRepository as SqlAlchemyRepository
+
+__all__ = [
+    "BeanieRepository",
+    "D",
+    "HasBasicArgs",
+    "M",
+    "SqlAlchemyRepository",
+]
 
 A = t.TypeVar("A")
 
@@ -40,177 +77,43 @@ class HasBasicArgs(t.Generic[T, A]):
         return {}
 
 
-try:
-    from .orms.sqlalchemy.utils import (
-        db_get as sql_db_get,
-        db_list as sql_db_list,
-        db_query as sql_db_query,
-        save_entity as sql_save_entity,
-        logical_delete as sql_logical_delete,
-    )
-    from .orms.sqlalchemy import BaseModel
-    
-    M = t.TypeVar("M", bound=BaseModel[t.Any])
+#: Qué módulo hoja y qué paquete de tercero hay detrás de cada nombre diferido.
+#:
+#: Las rutas van absolutas y no relativas: `import_module("._beanie_impl", __name__)` resuelve
+#: contra `__name__`, que acá es el **módulo** y no el paquete, y falla con un
+#: "`...implementations` is not a package" que no señala la causa.
+_DIFERIDOS: dict[str, tuple[str, str]] = {
+    "SqlAlchemyRepository": (
+        "hexcore.infrastructure.repositories._sqlalchemy_impl",
+        "sqlalchemy",
+    ),
+    "M": ("hexcore.infrastructure.repositories._sqlalchemy_impl", "sqlalchemy"),
+    "BeanieRepository": (
+        "hexcore.infrastructure.repositories._beanie_impl",
+        "beanie",
+    ),
+    "D": ("hexcore.infrastructure.repositories._beanie_impl", "beanie"),
+}
 
-    class SqlAlchemyRepository(
-        BaseSQLAlchemyRepository[T], HasBasicArgs[T, M], t.Generic[T, M]
-    ):
-        """
-        Implementaciones comunes para repositorios SQL usando SQLAlchemy.
-        Proporciona métodos CRUD genéricos que pueden ser reutilizados por repositorios específicos.
-        """
-        @property
-        def model_cls(self) -> t.Type[M]:
-            raise NotImplementedError("Debe implementar la propiedad document_cls")
 
-        async def get_by_id(self, entity_id: UUID) -> T:
-            model = await sql_db_get(
-                self.session,
-                self.model_cls,
-                entity_id,
-                self.not_found_exception(entity_id),
-            )
-            return await to_entity_from_model_or_document(
-                model, self.entity_cls, self.fields_resolvers
+if not t.TYPE_CHECKING:
+
+    def __getattr__(name: str) -> t.Any:
+        diferido = _DIFERIDOS.get(name)
+        if diferido is None:
+            # El mensaje estándar de Python, palabra por palabra. Un texto propio que hablara
+            # de extras sugeriría que el nombre existe en algún modo, y `tests/test_deprecations.py`
+            # exige "has no attribute" para los alias que se removieron.
+            raise AttributeError(
+                f"module {__name__!r} has no attribute {name!r}"
             )
 
-        async def list_all(
-            self, limit: t.Optional[int] = None, offset: int = 0
-        ) -> t.List[T]:
-            if self.limit_offset_pagination:
-                models = await sql_db_list(
-                    self.session, self.model_cls, limit=limit, offset=offset
-                )
-            else:
-                models = await sql_db_list(self.session, self.model_cls)
-            return [
-                await to_entity_from_model_or_document(
-                    model, self.entity_cls, self.fields_resolvers
-                )
-                for model in models
-            ]
+        modulo, paquete = diferido
+        import importlib
 
-        async def query_all(self, query: QueryRequestDTO) -> tuple[t.List[T], int]:
-            models, total = await sql_db_query(self.session, self.model_cls, query)
-            entities = [
-                await to_entity_from_model_or_document(
-                    model, self.entity_cls, self.fields_resolvers
-                )
-                for model in models
-            ]
-            return entities, total
+        from hexcore.capabilities import require_extra
 
-        async def query_cursor(
-            self, query: "CursorRequestDTO"
-        ) -> "CursorPageDTO[T]":
-            """
-            Página por cursor (F15). Alternativa a `query_all` para listados grandes,
-            donde `OFFSET` degrada. No devuelve `total`: contar es lo que evita.
-            """
-            from hexcore.application.dtos.cursor import CursorPageDTO
-            from .orms.sqlalchemy.utils import db_query_cursor
-
-            models, next_cursor = await db_query_cursor(
-                self.session, self.model_cls, query
-            )
-            entities = [
-                await to_entity_from_model_or_document(
-                    model, self.entity_cls, self.fields_resolvers
-                )
-                for model in models
-            ]
-            return CursorPageDTO[T](items=entities, next_cursor=next_cursor)
-
-        async def save(self, entity: T) -> T:
-            saved = await sql_save_entity(
-                self.session,
-                entity,
-                self.model_cls,
-                fields_serializers=self.fields_serializers,
-            )
-            return await to_entity_from_model_or_document(
-                saved, self.entity_cls, self.fields_resolvers
-            )
-
-        async def delete(self, entity: T) -> None:
-            await sql_logical_delete(self.session, entity, self.model_cls)
-
-
-except ImportError:
-    M = t.TypeVar("M") # type: ignore
-    class SqlAlchemyRepository(t.Generic[T, M]): ... # type: ignore
-
-
-try:
-    from .orms.beanie import BaseDocument
-    from .orms.beanie.utils import (
-        db_get as nosql_db_get,
-        db_list as nosql_db_list,
-        db_query as nosql_db_query,
-        save_entity as nosql_save_entity,
-        logical_delete as nosql_logical_delete,
-    )
-    
-    D = t.TypeVar("D", bound=BaseDocument)
-
-    class BeanieRepository(
-        BaseBeanieRepository[T], HasBasicArgs[T, D], t.Generic[T, D]
-    ):
-        """
-        Implementaciones comunes para repositorios usando Beanie.
-        Proporciona métodos CRUD genéricos que pueden ser reutilizados por repositorios específicos.
-        """
-        @property
-        def document_cls(self) -> t.Type[D]:
-            raise NotImplementedError("Debe implementar la propiedad document_cls")
-
-        async def get_by_id(self, entity_id: UUID) -> T:
-            document = await nosql_db_get(self.document_cls, entity_id)
-            if not document:
-                raise self.not_found_exception(entity_id)
-            return await to_entity_from_model_or_document(
-                document, self.entity_cls, self.fields_resolvers, is_nosql=True
-            )
-
-        async def list_all(
-            self, limit: t.Optional[int] = None, offset: int = 0
-        ) -> t.List[T]:
-            if self.limit_offset_pagination:
-                documents = await nosql_db_list(
-                    self.document_cls, limit=limit, offset=offset
-                )
-            else:
-                documents = await nosql_db_list(self.document_cls)
-            return [
-                await to_entity_from_model_or_document(
-                    doc, self.entity_cls, self.fields_resolvers, is_nosql=True
-                )
-                for doc in documents
-            ]
-
-        async def query_all(self, query: QueryRequestDTO) -> tuple[t.List[T], int]:
-            documents, total = await nosql_db_query(self.document_cls, query)
-            entities = [
-                await to_entity_from_model_or_document(
-                    doc, self.entity_cls, self.fields_resolvers, is_nosql=True
-                )
-                for doc in documents
-            ]
-            return entities, total
-
-        @register_entity_on_uow
-        async def save(self, entity: T) -> T:  # type: ignore
-            saved = await nosql_save_entity(
-                entity, self.document_cls, self.fields_serializers
-            )
-            return await to_entity_from_model_or_document(
-                saved, self.entity_cls, self.fields_resolvers, is_nosql=True
-            )
-
-        async def delete(self, entity: T) -> None:
-            return await nosql_logical_delete(entity.id, self.document_cls)
-
-
-except ImportError:
-    D = t.TypeVar("D") # type: ignore
-    class BeanieRepository(t.Generic[T, D]): ... # type: ignore
+        # Se pregunta **antes** de importar para que la falta del extra dé el error con la
+        # remediación, y no un `ModuleNotFoundError` crudo desde tres módulos más adentro.
+        require_extra(paquete, para=f"`{name}`")
+        return getattr(importlib.import_module(modulo), name)
