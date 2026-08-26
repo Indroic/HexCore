@@ -11,21 +11,40 @@ from hexcore.domain.base import BaseEntity
 from hexcore.types import FieldResolversType
 from hexcore.types import VisitedType, VisitedResultsType
 
-try:
+if t.TYPE_CHECKING:
     from sqlalchemy import Row
-    from .orms.sqlalchemy import BaseModel
-    from .base import BaseSQLAlchemyRepository
-except ImportError:
-    class Row(t.Generic[t.TypeVar("R")]): ... # type: ignore
-    class BaseModel(t.Generic[t.TypeVar("M")]): ... # type: ignore
-    class BaseSQLAlchemyRepository: ... # type: ignore
 
-try:
+    from .base import BaseBeanieRepository, BaseSQLAlchemyRepository
     from .orms.beanie import BaseDocument
-    from .base import BaseBeanieRepository
-except ImportError:
-    class BaseDocument: ... # type: ignore
-    class BaseBeanieRepository: ... # type: ignore
+    from .orms.sqlalchemy import BaseModel
+else:
+    # Los cinco nombres se usan en runtime —en el `bound` de un `TypeVar`, en un `isinstance`
+    # y en los `t.Type[...]` que arma `_discover_repositories`—, así que el respaldo tiene que
+    # seguir. Lo que se saca es que el checker lo vea: analizando las dos ramas se quedaba con
+    # las clases vacías, y con eso `BaseSQLAlchemyRepository` perdía su parámetro genérico y
+    # `BaseDocument` su `model_dump`. Ahí estaban los cinco `# type: ignore` pelados que había
+    # acá y buena parte de los errores del módulo.
+    try:
+        from sqlalchemy import Row
+
+        from .base import BaseSQLAlchemyRepository
+        from .orms.sqlalchemy import BaseModel
+    except ImportError:
+
+        class Row(t.Generic[t.TypeVar("R")]): ...
+
+        class BaseModel(t.Generic[t.TypeVar("M")]): ...
+
+        class BaseSQLAlchemyRepository: ...
+
+    try:
+        from .base import BaseBeanieRepository
+        from .orms.beanie import BaseDocument
+    except ImportError:
+
+        class BaseDocument: ...
+
+        class BaseBeanieRepository: ...
 
 
 # --- Función auxiliar para aplicar resolvers asíncronos en dicts ---

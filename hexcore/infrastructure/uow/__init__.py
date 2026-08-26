@@ -4,11 +4,18 @@ import typing as t
 from itertools import chain
 from types import TracebackType
 
-try:
+if t.TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
     from hexcore.infrastructure.repositories.orms.sqlalchemy import BaseModel
-except ImportError:
-    pass
+else:
+    # En runtime el import puede fallar y el módulo tiene que importarse igual: lo que sigue
+    # se apoya en que los nombres **no existan** para saltear la clase de SQLAlchemy. Ver el
+    # `except NameError` de más abajo.
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from hexcore.infrastructure.repositories.orms.sqlalchemy import BaseModel
+    except ImportError:
+        pass
 
 from hexcore.config import LazyConfig
 from hexcore.domain.base import BaseEntity
@@ -97,7 +104,12 @@ try:
             )
             for model in all_tracked_models:
                 if isinstance(model, BaseModel):
-                    entity: BaseEntity = model.get_domain_entity()  # type: ignore
+                    # El `isinstance` no puede ligar el parámetro genérico —`BaseModel[T]` no
+                    # es chequeable en runtime—, así que `get_domain_entity()` devolvería un
+                    # `T` sin resolver. El `cast` dice lo que el `assert` de la línea siguiente
+                    # comprueba de verdad: acá dentro, el modelo es de una entidad de dominio.
+                    modelo = t.cast("BaseModel[BaseEntity]", model)
+                    entity: BaseEntity = modelo.get_domain_entity()
                     assert isinstance(entity, BaseEntity)
                     domain_entities.add(entity)
             return domain_entities
@@ -120,7 +132,17 @@ try:
             # No es necesario en SQLAlchemy, pero se define para compatibilidad
             pass
 except NameError:
-    class SqlAlchemyUnitOfWork: ... # type: ignore
+    # `NameError` y no `ImportError`: el import de arriba ya falló y se tragó, así que lo que
+    # falta acá es el **nombre**. Sin `[sql]`, `IUnitOfWork` se queda sin su implementación de
+    # SQLAlchemy y este respaldo deja el símbolo definido para quien lo importe.
+    #
+    # El respaldo se le esconde al checker con `if not t.TYPE_CHECKING`. Sin eso, Pyright
+    # analiza las dos ramas, se queda con la última —la vacía— y `SqlAlchemyUnitOfWork`
+    # aparece sin `session`, sin `commit` y sin `collect_domain_events` para todo el que la
+    # use. Es el mismo defecto que había en `implementations.py`, con la misma consecuencia.
+    if not t.TYPE_CHECKING:
+
+        class SqlAlchemyUnitOfWork: ...
 
 
 class BeanieUnitOfWork(IUnitOfWork):
