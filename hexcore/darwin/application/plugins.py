@@ -47,6 +47,80 @@ class PluginRegistry:
             ...
     """
 
+    @classmethod
+    def coerce(
+        cls,
+        valor: object,
+    ) -> "PluginRegistry | None":
+        """
+        Normaliza ``plugins=`` a un `PluginRegistry` o `None`.
+
+        Es una frontera de coerción: su trabajo es validar en runtime lo que el sistema de
+        tipos no puede garantizar (un ``**kwargs``, un valor que viene de config, un test).
+        Por eso el parámetro está tipado como ``object`` y no como la unión que acepta.
+
+        Formas aceptadas:
+
+        - ``PluginRegistry`` → lo devuelve **tal cual** (identidad, no copia): el
+          consumidor puede haberlo cableado antes y esperar que sea el mismo objeto.
+        - **lista o tupla** de instancias de `DarwinPlugin` → construye un
+          `PluginRegistry(valor)`.
+        - ``None`` → devuelve ``None``.
+        - Cualquier otra cosa levanta `TypeError`.
+
+        **¿Por qué sólo lista y tupla?** Un generador se consume una sola vez — y el
+        registro lo recorre más de una vez —, así que aceptarlo haría que el segundo
+        recorrido vea cero plugins sin ningún error. Un `set` no tiene orden, y el orden
+        de los plugins es justamente lo que decide el orden de los hooks: aceptarlo sería
+        cambiar un `AttributeError` ruidoso por un bug silencioso de ordenamiento.
+        """
+        if valor is None:
+            return None
+        if isinstance(valor, PluginRegistry):
+            return valor
+        if isinstance(valor, (list, tuple)):
+            # Detectar clases sin instanciar y elementos que no son DarwinPlugin antes
+            # de que `register` los rechace con un PluginError de `name` faltante, que
+            # apunta al lugar equivocado: el consumidor pensaría que le falta declarar
+            # `name`, cuando lo que le falta es un paréntesis o pasó un objeto cualquiera.
+            #
+            # Los elementos se juntan en una lista tipada en vez de pasarle `valor` a `cls`:
+            # el `isinstance` de arriba angosta a `list[Unknown]`, así que reusar `valor`
+            # arrastraría ese `Unknown` hasta el constructor. Acá cada elemento ya pasó por
+            # el `isinstance(elemento, DarwinPlugin)` de abajo, que es lo que lo angosta de
+            # verdad — el chequeo que valida en runtime es también el que tipa.
+            elementos: list[DarwinPlugin] = []
+            for i, elemento in enumerate(t.cast("t.Sequence[object]", valor)):
+                if isinstance(elemento, type):
+                    raise TypeError(
+                        f"`plugins=` recibió una clase sin instanciar en la posición "
+                        f"{i}: {elemento.__qualname__}. "
+                        f"Los plugins se pasan como instancias, no como clases — "
+                        f"probablemente falta el paréntesis:\n\n"
+                        f"    plugins=[{elemento.__qualname__}()]  "
+                        f"# ← con paréntesis\n"
+                    )
+                if not isinstance(elemento, DarwinPlugin):
+                    raise TypeError(
+                        f"`plugins=` recibió un {type(elemento).__qualname__} en la "
+                        f"posición {i} ({elemento!r}), y espera instancias de "
+                        f"`DarwinPlugin`.\n\n"
+                        f"    from hexcore.darwin import PluginRegistry\n"
+                        f"    from hexcore.darwin.plugins.magic_link import MagicLinkPlugin\n\n"
+                        f"    plugins=[MagicLinkPlugin()]  # cada elemento es un DarwinPlugin\n"
+                    )
+                elementos.append(elemento)
+            return cls(elementos)
+        raise TypeError(
+            f"`plugins=` recibió un {type(valor).__qualname__}, y espera un "
+            f"`PluginRegistry` o una lista de plugins.\n\n"
+            f"    from hexcore.darwin import PluginRegistry, configure_identity\n"
+            f"    from hexcore.darwin.plugins.magic_link import MagicLinkPlugin\n\n"
+            f"    configure_identity(cfg, plugins=[MagicLinkPlugin()])\n"
+            f"    # o, equivalente:\n"
+            f"    configure_identity(cfg, plugins=PluginRegistry([MagicLinkPlugin()]))\n"
+        )
+
     def __init__(self, plugins: t.Iterable[DarwinPlugin] = ()) -> None:
         self._registrados: list[DarwinPlugin] = []
         self._orden: tuple[DarwinPlugin, ...] | None = None

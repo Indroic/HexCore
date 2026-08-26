@@ -26,6 +26,7 @@ if t.TYPE_CHECKING:
     from hexcore.darwin.application.config import IdentityConfig
     from hexcore.darwin.application.plugins import PluginRegistry
     from hexcore.darwin.application.services import IdentityService, SessionService
+    from hexcore.darwin.domain.plugins import DarwinPlugin
     from hexcore.darwin.domain.ports import (
         AbstractAccountRepository,
         AbstractAuditSink,
@@ -99,7 +100,7 @@ class IdentityContainer:
         revocations: "AbstractRevocationList | None" = None,
         audit: "AbstractAuditSink | None" = None,
         events: "EventBus | None" = None,
-        plugins: "PluginRegistry | None" = None,
+        plugins: "PluginRegistry | list[DarwinPlugin] | tuple[DarwinPlugin, ...] | None" = None,
     ) -> None:
         self._config = config
         self._lock = threading.RLock()
@@ -115,7 +116,12 @@ class IdentityContainer:
         self._revocations = revocations
         self._audit = audit
         self._events = events
-        self._plugins = plugins
+        if plugins is not None:
+            from hexcore.darwin.application.plugins import PluginRegistry
+
+            self._plugins = PluginRegistry.coerce(plugins)
+        else:
+            self._plugins = plugins
 
         # Cacheados.
         self._issuer: "JoserfcTokenIssuer | None" = None
@@ -419,8 +425,10 @@ def configure_identity(
         config: La configuración. Por defecto, la de `ServerConfig.darwin` si está, o una
             `IdentityConfig()` — que en producción **falla** si no hay clave de firma, y eso es
             deliberado.
-        **componentes: Cualquier puerto a inyectar (`users=`, `clock=`, `key_store=`, …). Es lo
-            que usan los tests y lo que permite persistir las claves en producción.
+        **componentes: Cualquier puerto a inyectar (`users=`, `clock=`, `key_store=`, …).
+            Acepta un ``plugins=`` con un `PluginRegistry` o una lista/tupla de instancias
+            de `DarwinPlugin` (los ordena y valida al cablear).  Sin ``plugins=``, el
+            contenedor queda con un registro vacío.
 
     Returns:
         El contenedor, por si lo querés usar directo.
@@ -432,8 +440,23 @@ def configure_identity(
     Uso::
 
         from hexcore.darwin import IdentityConfig, configure_identity
+        from hexcore.darwin.plugins.magic_link import MagicLinkPlugin
 
-        configure_identity(IdentityConfig(), key_store=mi_almacen_persistido)
+        # Sin plugins:
+        configure_identity(IdentityConfig())
+
+        # Con una lista de plugins:
+        configure_identity(
+            IdentityConfig(),
+            plugins=[MagicLinkPlugin()],
+            key_store=mi_almacen_persistido,
+        )
+
+        # Con un PluginRegistry ya armado:
+        from hexcore.darwin import PluginRegistry
+
+        registro = PluginRegistry([MagicLinkPlugin()])
+        configure_identity(IdentityConfig(), plugins=registro)
     """
     from hexcore.darwin.application.config import IdentityConfig
     from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import validate_user_model
@@ -459,9 +482,12 @@ def configure_identity(
     # Los plugins se validan **al cablear**, igual que el modelo de usuario: nombre duplicado,
     # `requires` inexistente, ciclo y conflicto de tablas son errores de cableado, y descubrir
     # cualquiera de ellos en el primer request de producción ya llegó tarde.
-    registro = componentes.get("plugins")
+    from hexcore.darwin.application.plugins import PluginRegistry
+
+    registro = PluginRegistry.coerce(componentes.get("plugins"))
     if registro is not None:
         registro.validate()
+        componentes["plugins"] = registro
 
     with _container_lock:
         _container = IdentityContainer(config, **componentes)

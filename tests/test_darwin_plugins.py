@@ -22,6 +22,7 @@ import pytest
 
 from hexcore.darwin.application.hooks import HookMiddleware
 from hexcore.darwin.application.plugins import PluginError, PluginRegistry
+from hexcore.darwin.plugins.magic_link import MagicLinkPlugin
 from hexcore.darwin.domain.plugins import (
     DarwinPlugin,
     HookBinding,
@@ -185,6 +186,186 @@ def test_configure_identity_valida_los_plugins(monkeypatch):
             )
     finally:
         reset_identity()
+
+
+# ── PluginRegistry.coerce ────────────────────────────────────────────────────
+def test_coerce_con_lista_de_plugins():
+    """Una lista de plugins se normaliza a un PluginRegistry."""
+    registro = PluginRegistry.coerce([_plugin("magic_link")])
+
+    assert isinstance(registro, PluginRegistry)
+    assert registro.names == ("magic_link",)
+
+
+def test_coerce_con_tupla_de_plugins():
+    """Una tupla de plugins también se normaliza a un PluginRegistry."""
+    registro = PluginRegistry.coerce((_plugin("magic_link"),))
+
+    assert isinstance(registro, PluginRegistry)
+    assert registro.names == ("magic_link",)
+
+
+def test_coerce_con_plugin_registry_devuelve_el_mismo_objeto():
+    """Un PluginRegistry existente se devuelve tal cual (identidad, no copia)."""
+    original = PluginRegistry([_plugin("magic_link")])
+
+    resultado = PluginRegistry.coerce(original)
+
+    assert resultado is original
+
+
+def test_coerce_con_none_devuelve_none():
+    registro = PluginRegistry.coerce(None)
+
+    assert registro is None
+
+
+def test_coerce_rechaza_un_string():
+    """Un string no es registro ni secuencia; tiene que levantar TypeError."""
+    with pytest.raises(TypeError) as excinfo:
+        PluginRegistry.coerce("magic_link")
+
+    assert "PluginRegistry" in str(excinfo.value)
+
+
+def test_coerce_rechaza_un_int():
+    """Un int no es registro ni secuencia; tiene que levantar TypeError."""
+    with pytest.raises(TypeError) as excinfo:
+        PluginRegistry.coerce(42)
+
+    assert "PluginRegistry" in str(excinfo.value)
+
+
+def test_coerce_rechaza_un_set():
+    """
+    Un set no tiene orden, y el orden decide el orden de los hooks. Rechazarlo es
+    deliberado: aceptar un set cambiaría un error ruidoso por un bug silencioso de
+    ordenamiento.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        PluginRegistry.coerce({MagicLinkPlugin()})
+
+    assert "PluginRegistry" in str(excinfo.value)
+
+
+def test_coerce_rechaza_un_generador():
+    """
+    Un generador se consume una sola vez, y el registro lo recorre más de una vez.
+    Rechazarlo es deliberado: aceptarlo haría que el segundo recorrido vea cero
+    plugins sin ningún error.
+    """
+    generador = (MagicLinkPlugin() for _ in [1])
+
+    with pytest.raises(TypeError) as excinfo:
+        PluginRegistry.coerce(generador)
+
+    assert "PluginRegistry" in str(excinfo.value)
+
+
+def test_coerce_rechaza_clase_sin_instanciar():
+    """
+    Tiene que levantar con un mensaje que hable de instanciar: el consumidor casi
+    siempre se olvidó del paréntesis, y el mensaje genérico lo mandaría a revisar el
+    tipo de la lista en vez del lugar donde falta.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        PluginRegistry.coerce([MagicLinkPlugin])
+
+    mensaje = str(excinfo.value)
+    assert "instancia" in mensaje.lower() or "instanciar" in mensaje.lower()
+
+
+def test_coerce_rechaza_elemento_que_no_es_darwin_plugin():
+    """
+    El mensaje tiene que nombrar la posición y el tipo: sin eso, el consumidor no
+    puede encontrar el objeto que falla en una lista larga.
+    """
+    with pytest.raises(TypeError) as excinfo:
+        PluginRegistry.coerce([object()])
+
+    mensaje = str(excinfo.value)
+    assert "plugins=" in mensaje
+    assert "DarwinPlugin" in mensaje
+
+
+# ── Integración: configure_identity con plugins= ────────────────────────────
+#
+# `configure_identity` deja un contenedor **global**, así que todo test que la llame lo
+# resetea antes y después, con `finally` para que un assert que falla no le filtre el
+# cableado al test siguiente. Es la convención de
+# `test_configure_identity_valida_los_plugins`, unas líneas más arriba.
+def test_configure_identity_con_lista_de_plugins():
+    pytest.importorskip("joserfc")
+    pytest.importorskip("argon2")
+    from hexcore.darwin import IdentityConfig, configure_identity, reset_identity
+
+    reset_identity()
+    try:
+        contenedor = configure_identity(
+            IdentityConfig(storage="sqlalchemy", secret_key="k" * 48),
+            plugins=[MagicLinkPlugin()],
+        )
+
+        assert contenedor.plugins.names == ("magic_link",)
+    finally:
+        reset_identity()
+
+
+def test_configure_identity_con_plugin_registry():
+    """
+    Si ya pasaste un PluginRegistry, el contenedor tiene que recibir exactamente el
+    mismo objeto — no una copia.
+    """
+    pytest.importorskip("joserfc")
+    pytest.importorskip("argon2")
+    from hexcore.darwin import IdentityConfig, configure_identity, reset_identity
+
+    reset_identity()
+    try:
+        registro = PluginRegistry([MagicLinkPlugin()])
+        contenedor = configure_identity(
+            IdentityConfig(storage="sqlalchemy", secret_key="k" * 48),
+            plugins=registro,
+        )
+
+        assert contenedor.plugins is registro
+    finally:
+        reset_identity()
+
+
+def test_configure_identity_sin_plugins_da_registro_vacio():
+    pytest.importorskip("joserfc")
+    pytest.importorskip("argon2")
+    from hexcore.darwin import IdentityConfig, configure_identity, reset_identity
+
+    reset_identity()
+    try:
+        contenedor = configure_identity(
+            IdentityConfig(storage="sqlalchemy", secret_key="k" * 48)
+        )
+
+        assert contenedor.plugins.names == ()
+    finally:
+        reset_identity()
+
+
+def test_identity_container_con_lista_de_plugins():
+    """
+    El contenedor construido directo también normaliza: `configure_identity` no es la
+    única puerta de entrada, y quien arma un `IdentityContainer` en un test merece el
+    mismo trato.
+
+    No llama a `configure_identity`, así que no toca el contenedor global y no hace
+    falta resetear nada.
+    """
+    pytest.importorskip("joserfc")
+    pytest.importorskip("argon2")
+    from hexcore.darwin import IdentityConfig, IdentityContainer
+
+    cfg = IdentityConfig(storage="sqlalchemy", secret_key="k" * 48)
+    contenedor = IdentityContainer(cfg, plugins=[MagicLinkPlugin()])
+
+    assert contenedor.plugins.names == ("magic_link",)
 
 
 # ── 2. Orden determinista ─────────────────────────────────────────────────────
