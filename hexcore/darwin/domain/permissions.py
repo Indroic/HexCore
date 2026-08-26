@@ -285,7 +285,7 @@ class RoleRegistry:
                 valor.replace(SEPARATOR, "_").replace(WILDCARD, "ALL").upper(): valor
                 for valor in sorted(self.all_permission_values())
             }
-        return Enum("PermissionsEnum", miembros, type=str)  # type: ignore[return-value]
+        return Enum("PermissionsEnum", miembros, type=str)
 
     def clear(self) -> None:
         """Vacía el registro. Para aislar tests."""

@@ -195,17 +195,21 @@ push = true
 # sino `scripts/typing_ratchet.py` contra `typing-baseline.json`: la deuda existente queda
 # congelada y sólo puede bajar.
 #
-# Las reglas que hacen falta para la limpieza posterior (`reportUnnecessaryTypeIgnoreComment`,
-# `reportMissingTypeStubs = "error"`, `enableTypeIgnoreComments = false`) se prenden en sus
-# fases, cada una **después** de que el código que gatean esté limpio. Prenderlas ahora
-# pondría master en rojo el primer día, y un gate rojo desde el arranque se termina
-# desactivando.
+# Las reglas que hacen falta para la limpieza posterior se prenden en sus fases, cada una
+# **después** de que el código que gatean esté limpio. Prenderlas antes pondría master en rojo
+# el primer día, y un gate rojo desde el arranque se termina desactivando.
+#
+# `reportUnnecessaryTypeIgnoreComment` ya está prendida: no quedan supresiones de más, y los
+# `# type: ignore` pelados pasaron a `# pyright: ignore[regla]` con la razón al lado. Prenderla
+# es lo que evita que la deuda vuelva por donde se fue — una supresión que dejó de hacer falta
+# es indistinguible de una que todavía tapa algo, y sin esta regla nadie se entera de cuál es
+# cuál. Las que faltan son `reportMissingTypeStubs = "error"` y `enableTypeIgnoreComments = false`.
 include = ["hexcore"]
 exclude = ["**/__pycache__", ".venv", "build", "dist"]
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
 reportMissingTypeStubs = "warning"
-reportUnnecessaryTypeIgnoreComment = "none"
+reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.pytest.ini_options]
 markers = [

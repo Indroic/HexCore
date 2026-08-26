@@ -2,7 +2,9 @@ from __future__ import annotations
 import typing as t
 from datetime import datetime
 from uuid import UUID
-from beanie import Document, Indexed, after_event, Save  # type: ignore
+# Beanie exporta estos cuatro sin tipo, así que el import entero se reporta como
+# `Unknown`. Es deuda de la librería y no hay nada que tipar de este lado.
+from beanie import Document, Indexed, after_event, Save  # pyright: ignore[reportUnknownVariableType]
 
 
 class BaseDocument(Document):

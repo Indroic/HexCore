@@ -55,8 +55,8 @@ def to_model(
 def _get_relationship_names(model: t.Type[BaseModel[t.Any]]) -> list[str]:
     return [
         key
-        for key, attr in model.__mapper__.all_orm_descriptors.items()  # type: ignore
-        if isinstance(getattr(attr, "property", None), RelationshipProperty)  # type: ignore
+        for key, attr in model.__mapper__.all_orm_descriptors.items()
+        if isinstance(getattr(attr, "property", None), RelationshipProperty)
     ]
 
 

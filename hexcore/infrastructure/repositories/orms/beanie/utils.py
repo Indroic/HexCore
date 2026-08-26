@@ -3,7 +3,8 @@ import types
 import re
 from uuid import UUID
 
-from beanie import init_beanie  # type: ignore
+# Igual que en `orms/beanie/__init__.py`: Beanie no anota lo que exporta.
+from beanie import init_beanie  # pyright: ignore[reportUnknownVariableType]
 from pymongo import AsyncMongoClient
 
 from hexcore.application.dtos.query import (
@@ -70,7 +71,7 @@ async def init_beanie_documents() -> None:
     """
     Inicializa los documentos Beanie descubiertos.
     """
-    client = AsyncMongoClient(LazyConfig.get_config().mongo_uri)  # type: ignore
+    client = AsyncMongoClient(LazyConfig.get_config().mongo_uri)  # pyright: ignore[reportUnknownVariableType]
 
     documents = discover_beanie_documents()
 

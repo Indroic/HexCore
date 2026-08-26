@@ -6,10 +6,14 @@ from hexcore.infrastructure.cache import ICache
 from hexcore.config import LazyConfig
 
 
+# `redis.asyncio` no trae anotaciones en los métodos que usamos: `from_url` y `flushdb`
+# devuelven `Unknown`, y eso se propaga a todo lo que los toque. Los `pyright: ignore` de abajo
+# son deuda **de la librería**, no nuestra: se van solos cuando redis-py tipe esos métodos, y
+# están estrechados a la regla exacta para que ese día el gate avise en vez de callar.
 class RedisCache(ICache):
     def __init__(self):
         config = LazyConfig.get_config()
-        self.redis: redis.Redis = redis.Redis.from_url(  # type: ignore
+        self.redis: redis.Redis = redis.Redis.from_url(  # pyright: ignore[reportUnknownMemberType]
             config.redis_uri, decode_responses=True
         )
 
@@ -29,7 +33,7 @@ class RedisCache(ICache):
         await self.redis.delete(key)
 
     async def clear(self):
-        await self.redis.flushdb(asynchronous=True)  # type: ignore
+        await self.redis.flushdb(asynchronous=True)  # pyright: ignore[reportUnknownMemberType]
 
     async def incr_window(self, key: str, window_seconds: int) -> tuple[int, float]:
         """
