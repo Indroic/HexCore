@@ -9,11 +9,12 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 46 símbolos de `hexcore.fastapi` tipan `Any`. El runtime no cambia — Python usa
+# los 48 símbolos de `hexcore.fastapi` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
 from hexcore.infrastructure.api.app import AppFeatures as AppFeatures
+from hexcore.infrastructure.api.app import HealthRoutes as HealthRoutes
 from hexcore.infrastructure.api.app import create_app as create_app
 from hexcore.infrastructure.api.cqrs import CQRSContainer as CQRSContainer
 from hexcore.infrastructure.api.cqrs import configure_cqrs as configure_cqrs
@@ -28,6 +29,7 @@ from hexcore.infrastructure.api.exception_handlers import register_exception_han
 from hexcore.infrastructure.api.health import DependencyReport as DependencyReport
 from hexcore.infrastructure.api.health import HealthReport as HealthReport
 from hexcore.infrastructure.api.health import Probe as Probe
+from hexcore.infrastructure.api.health import ResponseFactory as ResponseFactory
 from hexcore.infrastructure.api.health import check_health as check_health
 from hexcore.infrastructure.api.health import default_probes as default_probes
 from hexcore.infrastructure.api.health import register_health_routes as register_health_routes
@@ -71,10 +73,12 @@ __all__ = [
     "DependencyReport",
     "EventBusStep",
     "HealthReport",
+    "HealthRoutes",
     "Probe",
     "ProcrastinateStep",
     "RequestIDLogFilter",
     "RequestIDMiddleware",
+    "ResponseFactory",
     "SqlEngineStep",
     "StartupStep",
     "TimingMiddleware",
