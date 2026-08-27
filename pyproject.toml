@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hexcore"
-version = "6.2.1"
+version = "7.0.0"
 authors = [
   { name="David Latosefki (Indroic)", email="indroic@outlook.com" },
 ]

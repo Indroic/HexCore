@@ -524,7 +524,7 @@ wheels = [
 
 [[package]]
 name = "hexcore"
-version = "6.2.1"
+version = "7.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "croniter" },
