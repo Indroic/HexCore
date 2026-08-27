@@ -1154,14 +1154,15 @@ estructura de migraciones con Alembic.
 
 | Serie | Estado | Qué significa |
 | :-- | :-- | :-- |
-| **6.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. |
-| **5.x** | ⛔ **Deprecada** | Sigue funcionando y los alias anteriores a 5.0 todavía están presentes, pero no recibe correcciones. Incluye los defectos de seguridad de CORS y rate limiting corregidos en 7.0. |
+| **7.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. Trae Darwin, elimina la superficie anterior a 5.0 y corrige los defectos de CORS y rate limiting. |
+| **6.x** | ⛔ **Deprecada** | Sigue funcionando pero no recibe correcciones. Incluye los defectos de seguridad de CORS y rate limiting corregidos en 7.0, y los alias anteriores a 5.0 todavía presentes. |
+| **5.x** | ⛔ **Deprecada** | Misma superficie de API que 6.x. Migrar a 6.x era actualizar la versión; a 7.x hay que sacar los alias `I*`. |
 | **4.x** | ⛔ **Deprecada** | Aplicación **parcial**: le faltan el fix del event loop de Celery, las fachadas y la documentación alineada. |
 | **3.x** | ⛔ **Deprecada** | Aplicación **parcial**: tiene las correcciones P0/P1 pero ninguna de las factories de FastAPI. |
 | **2.x** | ⛔ **Deprecada** | Contiene los bugs silenciosos corregidos en 5.x (ver abajo). |
 | **1.x** | ⛔ **Deprecada** | Sin soporte de ningún tipo. |
 
-**Todo lo anterior a 6.0 está deprecado. Migrá a 6.x.**
+**Todo lo anterior a 7.0 está deprecado. Migrá a 7.x.**
 
 Los alias anteriores a 5.0 avisaban que se eliminaban "en 6.0". 6.0.0 salió sin eliminarlos —
 se prefirió mover la fecha antes que romper retroactivamente a quien ya había actualizado
