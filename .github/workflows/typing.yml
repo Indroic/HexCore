@@ -8,7 +8,16 @@ name: Typing & stubs
 #
 # Están: `house-rules`, `stubs-drift`, `typecheck`, `no-extras-import`, `extras-matrix` y
 # `typing-ok`. `packaging` vive en `pytest.yml`, que ya arma la wheel y corre `-m packaging`.
-# `stub-quality` está pero **midiendo**, no gateando: ver su comentario.
+#
+# `stub-quality` **no** está, y el script que lo implementaría —`scripts/stub_quality.py`— sí.
+# La razón está medida y no supuesta: `pyright --verifytypes` no resuelve el paquete por PEP 561
+# ni en Windows ni en el runner de Ubuntu, con la wheel instalada en un venv limpio y con
+# `--pythonpath` apuntándole. Devuelve cero módulos y cero símbolos. No es cosa de `hexcore`:
+# probado contra `pydantic`, falla igual, así que es la herramienta en esta versión.
+#
+# El script queda porque detecta exactamente ese caso y lo dice; el día que `--verifytypes`
+# ande, cablearlo es agregar el job. Lo que no se deja es un check permanentemente rojo detrás
+# de `continue-on-error`: enseña a ignorar el workflow, que es peor que no tener el job.
 #
 # `workflow_call` está declarado a propósito: cuando el gate se enganche a
 # `publish-to-pypi.yml`, ese workflow lo invoca en vez de duplicar los pasos.
@@ -175,12 +184,15 @@ jobs:
         # y no de un subproceso con un finder falso, que es mucho más fácil de leer.
         run: uv run python scripts/extra_smoke.py none
 
-      - name: Contrato de dependencias opcionales
-        # Cada caso corre en un subproceso con un finder en `sys.meta_path` que **bloquea** el
-        # paquete. Bloquear y no mirar `sys.modules`: lo segundo pasa si el import está
-        # cacheado por otro test, y este archivo es el que fija qué módulo puede importarse
-        # sin qué extra.
-        run: uv run pytest tests/test_optional_dependencies.py -q
+      # `tests/test_optional_dependencies.py` **no** se corre acá, y la primera versión de
+      # este job lo hacía mal: con cero extras fallaban 21 casos. No era un defecto del código
+      # sino del job. Ese archivo afirma "el módulo X importa con el extra Y **bloqueado**", y
+      # eso sólo tiene sentido si los extras que X sí necesita están puestos: pedirle a
+      # `darwin.plugins.oauth.orms.sqlalchemy.repository` que importe sin `beanie` es correcto,
+      # pedirle que importe sin SQLAlchemy no.
+      #
+      # Corre en `pytest.yml`, que instala `--extra all` y deja que el finder de
+      # `sys.meta_path` haga el bloqueo — que es como el archivo está diseñado.
 
   # ── Cada extra, solo, alcanza para lo que promete ───────────────────────────
   extras-matrix:
@@ -244,44 +256,6 @@ jobs:
 
       - name: Verificar la promesa del extra
         run: .venv-extra/bin/python scripts/extra_smoke.py ${{ matrix.extra }}
-
-  # ── Completitud de tipos de lo que se publica ───────────────────────────────
-  stub-quality:
-    name: "Completitud de tipos (midiendo)"
-    runs-on: ubuntu-latest
-    # **Mide, no rompe** — el mismo criterio con el que arrancó `typecheck` en la Fase 0.
-    #
-    # `pyright --verifytypes` resuelve el paquete por PEP 561 y necesita la wheel instalada en
-    # un venv limpio; en un checkout editable no lo encuentra. Eso no se pudo comprobar de
-    # antemano en el entorno de desarrollo, donde `--verifytypes` no resuelve **ningún**
-    # paquete (se probó contra `pydantic` y falla igual), así que el primer run acá es el que
-    # dice si la herramienta anda en el runner.
-    #
-    # `continue-on-error` se saca en cuanto haya un run verde y su piso quede grabado con
-    # `--update`. Hasta entonces, un job rojo por una limitación de la herramienta enseñaría a
-    # ignorar el workflow, que es peor que no tener el job.
-    continue-on-error: true
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Install dependencies
-        run: uv sync --extra all --group dev
-
-      - name: Instalar la wheel en un venv limpio
-        run: |
-          uv build --wheel -o dist
-          uv venv .venv-wheel
-          uv pip install --python .venv-wheel "$(ls dist/*.whl)[all]"
-
-      - name: Medir
-        run: uv run python scripts/stub_quality.py --python .venv-wheel/bin/python
 
   typing-ok:
     name: "Gate de tipado"
