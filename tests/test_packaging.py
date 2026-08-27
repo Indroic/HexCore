@@ -19,6 +19,7 @@ no tiene sentido pagarlos en cada corrida.
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -33,7 +34,25 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 @pytest.fixture(scope="module")
 def wheel(tmp_path_factory: pytest.TempPathFactory) -> zipfile.ZipFile:
-    """Construye la wheel en un directorio temporal y la devuelve abierta."""
+    """
+    Construye la wheel en un directorio temporal y la devuelve abierta.
+
+    El `--outdir` es temporal pero `build/lib/`, donde setuptools arma el árbol antes de
+    comprimirlo, **no**: vive en el repo y se reusa entre corridas. Un archivo que estuvo en
+    el árbol y ya no está se queda ahí y termina adentro de la wheel, así que estos tests
+    pasan a medir una build vieja en vez de el estado actual.
+
+    No es hipotético: cambiar de rama a una sin los `.pyi` generados y correr esto daba un
+    fallo que acusaba al empaquetado de incluir archivos que el árbol no tenía. La causa era
+    el `build/` de la rama anterior.
+
+    Por eso se borra antes de construir. Es el mismo motivo por el que estos tests construyen
+    de verdad en vez de inspeccionar el `pyproject`: lo que importa es el artefacto, y un
+    artefacto armado sobre restos no es el que se publica.
+    """
+    for residuo in ("build", "hexcore.egg-info"):
+        shutil.rmtree(REPO_ROOT / residuo, ignore_errors=True)
+
     outdir = tmp_path_factory.mktemp("wheel")
     result = subprocess.run(
         [sys.executable, "-m", "build", "--wheel", "--outdir", str(outdir)],

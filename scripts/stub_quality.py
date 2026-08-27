@@ -84,9 +84,12 @@ def main() -> int:
         print(
             "::error::`--verifytypes` no encontró el paquete: 0 módulos y 0 símbolos. No es "
             "que el tipado sea malo, es que pyright no lo resolvió por PEP 561.\n"
-            "    Suele ser una de dos: la wheel no está instalada en el entorno que apunta "
-            "`--python`, o se instaló en modo editable (el finder de `__editable__` no es "
-            "resoluble por PEP 561). Instalá la wheel construida en un venv limpio."
+            "    La causa habitual es el entorno: la wheel no está instalada donde apunta "
+            "`--python`, o se instaló en modo editable — el finder de `__editable__` no es "
+            "resoluble por PEP 561.\n"
+            "    Ojo con darlo por resuelto ahí: con la wheel bien instalada en un venv "
+            "limpio esto igual devuelve cero, mientras `--verifytypes pydantic` en el mismo "
+            "pyright resuelve bien. Es específico de este paquete y está sin aislar."
         )
         return 1
 

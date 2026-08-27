@@ -10,14 +10,18 @@ name: Typing & stubs
 # `typing-ok`. `packaging` vive en `pytest.yml`, que ya arma la wheel y corre `-m packaging`.
 #
 # `stub-quality` **no** está, y el script que lo implementaría —`scripts/stub_quality.py`— sí.
-# La razón está medida y no supuesta: `pyright --verifytypes` no resuelve el paquete por PEP 561
-# ni en Windows ni en el runner de Ubuntu, con la wheel instalada en un venv limpio y con
-# `--pythonpath` apuntándole. Devuelve cero módulos y cero símbolos. No es cosa de `hexcore`:
-# probado contra `pydantic`, falla igual, así que es la herramienta en esta versión.
+# `pyright --verifytypes hexcore` devuelve cero módulos y cero símbolos: no encuentra el paquete
+# por PEP 561. Se probó con la wheel instalada en un venv limpio, con pyright adentro de ese
+# mismo venv, con `--pythonpath`, con `venvPath` en un `pyrightconfig.json` y con `VIRTUAL_ENV`
+# apuntado y desapuntado. Ninguna combinación lo resuelve.
 #
-# El script queda porque detecta exactamente ese caso y lo dice; el día que `--verifytypes`
-# ande, cablearlo es agregar el job. Lo que no se deja es un check permanentemente rojo detrás
-# de `continue-on-error`: enseña a ignorar el workflow, que es peor que no tener el job.
+# Lo que **no** es: la herramienta rota en general. Con pyright 1.1.411, `--verifytypes pydantic`
+# resuelve sin problema. O sea que es algo de cómo se resuelve *este* paquete, y queda sin
+# aislar — se anota acá para que el próximo no repita el camino.
+#
+# El script queda porque detecta exactamente el caso de "no lo encontré" y lo dice en vez de
+# grabar un piso de 0 %. Lo que no se deja es un check permanentemente rojo detrás de
+# `continue-on-error`: enseña a ignorar el workflow, que es peor que no tener el job.
 #
 # `workflow_call` está declarado a propósito: cuando el gate se enganche a
 # `publish-to-pypi.yml`, ese workflow lo invoca en vez de duplicar los pasos.
