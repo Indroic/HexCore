@@ -40,6 +40,7 @@ DEFAULT_EXCEPTION_STATUS_MAP: dict[type[Exception], int] = {
 }
 
 DetailFactory = t.Callable[[Exception], str]
+HeadersFactory = t.Callable[[Exception], t.Mapping[str, str]]
 
 
 def register_exception_handlers(
@@ -47,6 +48,7 @@ def register_exception_handlers(
     *,
     mapping: dict[type[Exception], int] | None = None,
     include_detail: bool | DetailFactory = True,
+    headers_for: HeadersFactory | None = None,
 ) -> None:
     """
     Registra handlers que traducen excepciones a respuestas JSON.
@@ -58,13 +60,31 @@ def register_exception_handlers(
         include_detail: Qué poner en el campo ``detail`` de la respuesta.
             ``True`` → ``str(exc)``. ``False`` → un mensaje genérico por status, para no
             filtrar internals en una API pública. Un callable → lo que devuelva.
+        headers_for: Headers extra por excepción. Recibe la excepción y devuelve un mapa
+            de headers; devolvé un mapa vacío para no agregar nada. Hace falta porque hay
+            status codes que **exigen** un header por especificación y no se pueden
+            expresar sólo con un número: un 401 tiene que llevar `WWW-Authenticate`
+            (RFC 6750 §3), y un 429 un `Retry-After`.
 
     El cuerpo es siempre ``{"detail": ..., "error": "<NombreDeLaExcepción>"}``, para que
     el cliente pueda distinguir el caso sin parsear el texto.
 
+    Se eligió un callable aparte antes que cambiar el tipo de valor de
+    `DEFAULT_EXCEPTION_STATUS_MAP` a ``int | tuple[int, Mapping]``: el mapa es público y
+    hay código que lo lee esperando enteros, así que cambiarlo rompería a quien lo
+    inspecciona o lo extiende.
+
     Uso::
 
         register_exception_handlers(app, mapping={MiNotFound: 404})
+
+        # 401 con el header que la especificación exige
+        def cabeceras(exc: Exception) -> dict[str, str]:
+            if isinstance(exc, TokenInvalido):
+                return {"WWW-Authenticate": 'Bearer error="invalid_token"'}
+            return {}
+
+        register_exception_handlers(app, mapping={TokenInvalido: 401}, headers_for=cabeceras)
     """
     resolved = {**DEFAULT_EXCEPTION_STATUS_MAP, **(mapping or {})}
 
@@ -74,7 +94,7 @@ def register_exception_handlers(
     for exc_type in sorted(resolved, key=_specificity, reverse=True):
         app.add_exception_handler(
             exc_type,
-            _build_handler(exc_type, resolved[exc_type], include_detail),
+            _build_handler(exc_type, resolved[exc_type], include_detail, headers_for),
         )
 
 
@@ -87,6 +107,7 @@ def _build_handler(
     exc_type: type[Exception],
     status_code: int,
     include_detail: bool | DetailFactory,
+    headers_for: HeadersFactory | None = None,
 ) -> t.Callable[[Request, Exception], t.Awaitable[JSONResponse]]:
     async def handler(request: Request, exc: Exception) -> JSONResponse:
         if status_code >= 500:
@@ -107,12 +128,27 @@ def _build_handler(
                 exc,
             )
 
+        headers: dict[str, str] | None = None
+        if headers_for is not None:
+            # Un `headers_for` que explota no puede convertir un 401 prolijo en un 500:
+            # el header es accesorio y la respuesta ya está decidida.
+            try:
+                extra = headers_for(exc)
+            except Exception:
+                logger.exception(
+                    "headers_for falló para %s; se responde sin headers extra.",
+                    type(exc).__name__,
+                )
+            else:
+                headers = {str(k): str(v) for k, v in dict(extra).items()} or None
+
         return JSONResponse(
             status_code=status_code,
             content={
                 "detail": _detail_for(exc, status_code, include_detail),
                 "error": type(exc).__name__,
             },
+            headers=headers,
         )
 
     handler.__name__ = f"handle_{exc_type.__name__}"

@@ -3,5 +3,13 @@
 __pycache__
 .mypy_cache
 *.egg-info
+# Artefactos de build. Antes no estaban ignorados y `python -m build` dejaba `build/` y
+# `dist/` sucios en el árbol — al punto de que `dist` terminó publicándose como paquete
+# top-level en la wheel.
+build/
+dist/
+# Reportes del gate de tipado
+pyright.json
+verifytypes.json
 # Índice local de CodeGraph (no es artefacto del proyecto)
 .codegraph/

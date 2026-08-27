@@ -43,14 +43,17 @@ jobs:
         # `-rs` lista los tests saltados. Con todos los extras instalados no debe haber
         # ninguno, así que un SKIPPED aquí significa que un extra no llegó al entorno y que
         # estaríamos reportando verde habiendo saltado tests. Se falla a propósito.
-        # `python -m pytest` y no `pytest`: este proyecto no declara `build-system`, así que
-        # `uv sync` no lo instala en el venv y el script `pytest` no vería el paquete
-        # `hexcore`. Con `-m`, el directorio de trabajo entra en `sys.path`.
         run: |
           set -o pipefail
-          uv run python -m pytest -q -rs | tee pytest-output.txt
+          uv run pytest -q -rs | tee pytest-output.txt
           if grep -q '^SKIPPED' pytest-output.txt; then
             echo "::error::Hay tests saltados: falta alguna dependencia opcional en el entorno de CI."
             grep '^SKIPPED' pytest-output.txt
             exit 1
           fi
+
+      - name: Tests de empaquetado
+        # Deseleccionados por `addopts` en la corrida de arriba, porque construyen la wheel.
+        # Verifican lo que sólo se ve en el artefacto: que la wheel lleve `py.typed` y los
+        # `.pyi`, y que no publique `tests`/`scripts`/`refs` como paquetes top-level.
+        run: uv run pytest -m packaging -q

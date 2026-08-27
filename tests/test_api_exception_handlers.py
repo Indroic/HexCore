@@ -149,3 +149,89 @@ def test_a_subclass_wins_over_its_parent():
     with _client(app) as client:
         assert client.get("/specific").status_code == 418
         assert client.get("/generic").status_code == 422
+
+
+# ── headers_for: los status que exigen un header por especificación ────────────
+
+
+class _TokenInvalido(Exception):
+    pass
+
+
+def test_headers_for_agrega_www_authenticate_en_un_401():
+    """
+    Un 401 sin `WWW-Authenticate` viola RFC 6750 §3, y `_build_handler` no podía emitir
+    headers en absoluto: el mapa de excepciones sólo lleva un entero.
+    """
+    def cabeceras(exc: Exception) -> dict[str, str]:
+        if isinstance(exc, _TokenInvalido):
+            return {"WWW-Authenticate": 'Bearer error="invalid_token"'}
+        return {}
+
+    app = FastAPI()
+    register_exception_handlers(
+        app, mapping={_TokenInvalido: 401}, headers_for=cabeceras
+    )
+
+    @app.get("/protegido")
+    async def protegido() -> None:
+        raise _TokenInvalido("token vencido")
+
+    response = TestClient(app, raise_server_exceptions=False).get("/protegido")
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == 'Bearer error="invalid_token"'
+    assert response.json()["error"] == "_TokenInvalido"
+
+
+def test_headers_for_vacio_no_agrega_nada():
+    app = FastAPI()
+    register_exception_handlers(
+        app, mapping={_TokenInvalido: 401}, headers_for=lambda exc: {}
+    )
+
+    @app.get("/protegido")
+    async def protegido() -> None:
+        raise _TokenInvalido("nope")
+
+    response = TestClient(app, raise_server_exceptions=False).get("/protegido")
+
+    assert response.status_code == 401
+    assert "WWW-Authenticate" not in response.headers
+
+
+def test_un_headers_for_que_explota_no_arruina_la_respuesta():
+    """El header es accesorio: el status ya está decidido y no puede degradar a 500."""
+    def cabeceras(exc: Exception) -> dict[str, str]:
+        raise RuntimeError("bug en la fábrica de headers")
+
+    app = FastAPI()
+    register_exception_handlers(
+        app, mapping={_TokenInvalido: 401}, headers_for=cabeceras
+    )
+
+    @app.get("/protegido")
+    async def protegido() -> None:
+        raise _TokenInvalido("nope")
+
+    response = TestClient(app, raise_server_exceptions=False).get("/protegido")
+
+    assert response.status_code == 401
+
+
+def test_create_app_reenvia_exception_headers():
+    from hexcore.infrastructure.api.app import create_app
+
+    app = create_app(
+        exception_mapping={_TokenInvalido: 401},
+        exception_headers=lambda exc: {"WWW-Authenticate": "Bearer"},
+    )
+
+    @app.get("/protegido")
+    async def protegido() -> None:
+        raise _TokenInvalido("nope")
+
+    response = TestClient(app, raise_server_exceptions=False).get("/protegido")
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"

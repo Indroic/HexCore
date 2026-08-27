@@ -1,3 +1,13 @@
+[build-system]
+# Sin esta tabla, `pip`/`build` caían en `setuptools.build_meta:__legacy__` —la rama donde
+# el default de `include-package-data` es menos predecible entre versiones de setuptools—
+# y `uv sync` no instalaba el proyecto en el venv (por eso el workflow corría
+# `python -m pytest` en vez de `pytest`, dependiendo de que el cwd estuviera en sys.path).
+# Declararla es también el prerrequisito para que `pyright --verifytypes hexcore` pueda
+# resolver el paquete por PEP 561.
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "hexcore"
 version = "6.2.1"
@@ -11,7 +21,6 @@ dependencies = [
     "croniter>=2.0.0",
     "pydantic>=2.11.7",
     "typer>=0.17.3",
-    "ruff>=0.12.11",
 ]
 
 license = "MIT"
@@ -47,6 +56,11 @@ hexcore = "hexcore.__main__:app"
 dev = [
     "commitizen>=4.9.1",
     "pyright>=1.1.405",
+    # Movido desde `[project.dependencies]`: es una herramienta de desarrollo, y estaba
+    # siendo instalada en el entorno de todo consumidor de la librería.
+    "ruff>=0.12.11",
+    "build>=1.2.0",
+    "twine>=5.0.0",
     "pytest>=8.4.2",
     "anyio>=4.0.0",
     # Requerido por fastapi.testclient (starlette.testclient) para los tests de la
@@ -55,9 +69,20 @@ dev = [
 ]
 
 [tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+# `MANIFEST.in` ya incluía `py.typed` y los `*.pyi`, pero eso gobierna el **sdist**. La
+# wheel se armaba sin `package-data`, así que `pip install hexcore` entregaba un paquete
+# que los type checkers ignoran: el marcador PEP 561 estaba en el repo y no en el
+# artefacto. Se declara explícito y hay un test que lo verifica sobre la wheel construida.
+hexcore = ["py.typed", "*.pyi", "**/*.pyi"]
 
 [tool.setuptools.packages.find]
-where = ["."]
+# `where = ["."]` sin `include` publicaba `refs`, `scripts` y `tests` como paquetes
+# top-level: `pip install hexcore` te instalaba un paquete `tests` en site-packages.
+include = ["hexcore*"]
+namespaces = false
 
 [tool.commitizen]
 name = "cz_conventional_commits"
@@ -68,7 +93,30 @@ update_changelog_on_bump = false
 major_version_zero = false
 push = true
 
+[tool.pyright]
+# Fase 0 del plan de tipado: se **mide**, no se rompe. `strict` iguala lo que
+# `.vscode/settings.json` ya usaba localmente (`python.analysis.typeCheckingMode`), de modo
+# que el editor y CI no puedan discrepar. El veredicto no lo da el exit code de pyright
+# sino `scripts/typing_ratchet.py` contra `typing-baseline.json`: la deuda existente queda
+# congelada y sólo puede bajar.
+#
+# Las reglas que hacen falta para la limpieza posterior (`reportUnnecessaryTypeIgnoreComment`,
+# `reportMissingTypeStubs = "error"`, `enableTypeIgnoreComments = false`) se prenden en sus
+# fases, cada una **después** de que el código que gatean esté limpio. Prenderlas ahora
+# pondría master en rojo el primer día, y un gate rojo desde el arranque se termina
+# desactivando.
+include = ["hexcore"]
+exclude = ["**/__pycache__", ".venv", "build", "dist"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+reportMissingTypeStubs = "warning"
+reportUnnecessaryTypeIgnoreComment = "none"
+
 [tool.pytest.ini_options]
 markers = [
     "anyio: mark test as an anyio test",
+    "packaging: verifica la wheel construida (lento: construye de verdad)",
 ]
+# Los tests de `packaging` construyen la wheel, así que no corren en la corrida normal.
+# Se piden explícito: `pytest -m packaging`. El workflow los corre en su propio job.
+addopts = "-m 'not packaging'"

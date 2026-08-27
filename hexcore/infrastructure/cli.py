@@ -99,9 +99,21 @@ def init_project(
         base_path, models_import=models_import, migrations_root=migrations_root
     )
 
+    # `ruff` es una comodidad, no un requisito: formatea el scaffolding recién escrito.
+    # Dejó de ser dependencia de runtime de hexcore (era la única herramienta de
+    # desarrollo colada en `[project.dependencies]`, y se la imponía a todo el mundo por
+    # un `hexcore init` que se corre una vez). Si no está, el proyecto queda igual de
+    # funcional, sólo sin pasar por el formateador.
     import subprocess
 
-    subprocess.run(["ruff", "format"], cwd=base_path)
+    try:
+        subprocess.run(["ruff", "format"], cwd=base_path, check=False)
+    except FileNotFoundError:
+        typer.secho(
+            "  (ruff no está instalado: se saltea el formateo del scaffolding. "
+            "Si lo querés: pip install ruff && ruff format)",
+            fg=typer.colors.YELLOW,
+        )
 
     typer.secho(
         f"\n¡Proyecto '{project_name}' inicializado exitosamente en {base_path} con template '{normalized_template}'!",

@@ -15,10 +15,14 @@ import pytest
 pytest.importorskip("fastapi")
 pytest.importorskip("httpx")
 
-from fastapi import Depends, FastAPI, Request  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from hexcore.infrastructure.api.rate_limit import client_ip_key, rate_limit  # noqa: E402
+from hexcore.infrastructure.api.rate_limit import (  # noqa: E402
+    client_ip_key,
+    forwarded_ip_key,
+    rate_limit,
+)
 from hexcore.infrastructure.cache import ICache  # noqa: E402
 from hexcore.infrastructure.cache.cache_backends.memory import MemoryCache  # noqa: E402
 
@@ -135,7 +139,15 @@ def test_different_keys_have_independent_budgets():
         assert client.get("/limited", headers={"X-User": "a"}).status_code == 429
 
 
-def test_client_ip_key_prefers_forwarded_for():
+def test_client_ip_key_ignora_forwarded_for():
+    """
+    Fase 0 (seguridad): `client_ip_key` ya **no** confía en `X-Forwarded-For`.
+
+    Antes lo prefería sin condiciones, y como el header lo escribe el cliente, mandar un
+    valor distinto en cada petición daba un bucket nuevo en cada petición: el límite de
+    login era un no-op. La versión anterior de este test afirmaba el comportamiento
+    vulnerable, así que se invierte.
+    """
     app = FastAPI()
 
     @app.get("/whoami")
@@ -147,7 +159,120 @@ def test_client_ip_key_prefers_forwarded_for():
             "/whoami", headers={"X-Forwarded-For": "203.0.113.5, 10.0.0.1"}
         ).json()
 
+    assert body["key"] != "203.0.113.5"
+
+
+def test_forwarded_for_spoofeado_no_crea_buckets_nuevos():
+    """El ataque concreto: un XFF distinto por petición no debe esquivar el límite."""
+    cache = MemoryCache()
+    app = FastAPI()
+    limiter = rate_limit(limit=2, cache=cache, key=client_ip_key)
+
+    @app.get("/login", dependencies=[Depends(limiter)])
+    async def login() -> dict[str, bool]:
+        return {"ok": True}
+
+    with TestClient(app) as client:
+        assert client.get("/login", headers={"X-Forwarded-For": "1.1.1.1"}).status_code == 200
+        assert client.get("/login", headers={"X-Forwarded-For": "2.2.2.2"}).status_code == 200
+        # Con el bug, ésta era otra IP y pasaba.
+        assert client.get("/login", headers={"X-Forwarded-For": "3.3.3.3"}).status_code == 429
+
+
+def test_forwarded_ip_key_honra_el_header_desde_un_proxy_declarado():
+    app = FastAPI()
+    key = forwarded_ip_key(trusted_proxies=["10.9.0.1"])
+
+    @app.get("/whoami")
+    async def whoami(request: Request) -> dict[str, str]:
+        return {"key": key(request)}
+
+    with TestClient(app, client=("10.9.0.1", 4000)) as client:
+        body = client.get(
+            "/whoami", headers={"X-Forwarded-For": "203.0.113.5, 10.0.0.1"}
+        ).json()
+
+    # `trust_hops=1` -> el cliente es el último elemento, que es la única parte del
+    # header que el cliente no controla.
+    assert body["key"] == "10.0.0.1"
+
+
+def test_forwarded_ip_key_cuenta_los_saltos_desde_la_derecha():
+    app = FastAPI()
+    key = forwarded_ip_key(trusted_proxies=["10.9.0.1"], trust_hops=2)
+
+    @app.get("/whoami")
+    async def whoami(request: Request) -> dict[str, str]:
+        return {"key": key(request)}
+
+    with TestClient(app, client=("10.9.0.1", 4000)) as client:
+        body = client.get(
+            "/whoami",
+            headers={"X-Forwarded-For": "9.9.9.9, 203.0.113.5, 10.0.0.1"},
+        ).json()
+
     assert body["key"] == "203.0.113.5"
+
+
+def test_forwarded_ip_key_ignora_el_header_de_un_par_no_declarado():
+    app = FastAPI()
+    key = forwarded_ip_key(trusted_proxies=["10.0.0.0/8"])
+
+    @app.get("/whoami")
+    async def whoami(request: Request) -> dict[str, str]:
+        return {"key": key(request)}
+
+    # El par es 198.51.100.7, que NO está en trusted_proxies.
+    with TestClient(app, client=("198.51.100.7", 4000)) as client:
+        body = client.get("/whoami", headers={"X-Forwarded-For": "203.0.113.5"}).json()
+
+    assert body["key"] != "203.0.113.5"
+
+
+def test_forwarded_ip_key_rechaza_configuracion_invalida():
+    with pytest.raises(ValueError, match="client_ip_key"):
+        forwarded_ip_key(trusted_proxies=[])
+
+    with pytest.raises(ValueError, match="trust_hops"):
+        forwarded_ip_key(trusted_proxies=["10.0.0.0/8"], trust_hops=0)
+
+    with pytest.raises(ValueError, match="CIDR"):
+        forwarded_ip_key(trusted_proxies=["no-es-una-ip"])
+
+
+@pytest.mark.anyio
+async def test_el_conteo_concurrente_no_se_pasa_del_limite():
+    """
+    El read-modify-write dejaba pasar un pico entero.
+
+    Antes: `get()` → comparar → `set()` con un `await` en el medio, así que 20 corutinas
+    leían `count=0` y pasaban las 20 con `limit=3`. `MemoryCache.incr_window` no cede el
+    control entre la lectura y la escritura, así que ahora pasan exactamente 3.
+    """
+    import anyio
+
+    cache = MemoryCache()
+    limiter = rate_limit(limit=3, window_seconds=60, cache=cache, key=lambda r: "fijo")
+
+    class _FakeRequest:
+        headers: dict[str, str] = {}
+        client = None
+
+    aceptadas = 0
+
+    async def intentar() -> None:
+        nonlocal aceptadas
+        try:
+            await limiter(t.cast(t.Any, _FakeRequest()))
+            aceptadas += 1
+        except HTTPException:
+            pass
+
+    async with anyio.create_task_group() as tg:
+        for _ in range(20):
+            tg.start_soon(intentar)
+
+    assert aceptadas == 3
 
 
 def test_client_ip_key_falls_back_to_the_socket_address():

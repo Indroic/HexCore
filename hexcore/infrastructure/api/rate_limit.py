@@ -10,17 +10,23 @@ limiter que sólo funciona contra Redis no se puede testear.
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
 import time
 import typing as t
 
 from fastapi import HTTPException, Request
 
-from hexcore.infrastructure.cache import ICache
+from hexcore.infrastructure.cache import ICache, SupportsAtomicWindow
 
 logger = logging.getLogger("hexcore.api.rate_limit")
 
-__all__ = ["rate_limit", "RateLimitBackendPolicy", "client_ip_key"]
+__all__ = [
+    "rate_limit",
+    "RateLimitBackendPolicy",
+    "client_ip_key",
+    "forwarded_ip_key",
+]
 
 RateLimitBackendPolicy = t.Literal["allow", "deny"]
 
@@ -29,16 +35,123 @@ KeyFunc = t.Callable[[Request], str]
 
 def client_ip_key(request: Request) -> str:
     """
-    Clave por IP del cliente.
+    Clave por IP del par TCP. **No** mira `X-Forwarded-For`.
 
-    Respeta `X-Forwarded-For` si viene, porque detrás de un balanceador
-    `request.client.host` es la IP del balanceador y limitaría a todo el mundo junto.
+    Antes sí lo miraba, sin condiciones, y eso hacía que el límite no limitara nada:
+    `X-Forwarded-For` lo escribe el cliente, así que mandar un valor distinto en cada
+    petición daba un bucket nuevo en cada petición. Contra un endpoint de login, un
+    límite de 5 intentos se volvía infinito con una línea de código.
+
+    Si estás detrás de un proxy o un balanceador, `request.client.host` es la IP del
+    proxy y esto limita a todo el mundo junto — que es el lado **seguro** del error, pero
+    no el que querés. Para ese caso usá `forwarded_ip_key()`, que exige declarar en quién
+    confiás.
+
+    Uso::
+
+        # sin proxy
+        rate_limit(5, 300, key=client_ip_key)
+
+        # detrás de un balanceador
+        rate_limit(5, 300, key=forwarded_ip_key(trusted_proxies=["10.0.0.0/8"]))
     """
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
     client = request.client
     return client.host if client else "unknown"
+
+
+def forwarded_ip_key(
+    *,
+    trusted_proxies: t.Collection[str],
+    trust_hops: int = 1,
+) -> KeyFunc:
+    """
+    Clave por IP real del cliente, leyendo `X-Forwarded-For` **sólo de proxies declarados**.
+
+    El header sólo se honra si el par TCP inmediato está en `trusted_proxies`. Si no lo
+    está, se cae a la IP del par y se ignora lo que haya mandado: alguien que llega
+    directo a la app no puede elegir su propio bucket.
+
+    Args:
+        trusted_proxies: IPs o redes CIDR de tus proxies (``["10.0.0.0/8", "172.18.0.5"]``).
+            No puede estar vacío: un allowlist vacío significaría "no confío en nadie", y
+            para eso ya está `client_ip_key`.
+        trust_hops: Cuántos proxies tenés adelante. Cada proxy **agrega** la IP de quien le
+            habló, así que con un balanceador el cliente es el último elemento del header,
+            con dos es el penúltimo, y así. Se cuenta desde la derecha, que es la única
+            parte del header que no controla el cliente: los elementos de la izquierda los
+            puede inventar.
+
+    Raises:
+        ValueError: Si `trusted_proxies` está vacío, si alguna entrada no es una IP/red
+            válida, o si `trust_hops < 1`.
+
+    Uso::
+
+        # un ALB delante
+        key = forwarded_ip_key(trusted_proxies=["10.0.0.0/8"])
+
+        # CDN -> balanceador -> app
+        key = forwarded_ip_key(trusted_proxies=["10.0.0.0/8"], trust_hops=2)
+    """
+    if trust_hops < 1:
+        raise ValueError(
+            "forwarded_ip_key(trust_hops=...) tiene que ser >= 1. Si no tenés ningún "
+            "proxy adelante, usá `client_ip_key` en vez de esta función."
+        )
+    if not trusted_proxies:
+        raise ValueError(
+            "forwarded_ip_key(trusted_proxies=...) no puede estar vacío: sin proxies de "
+            "confianza, `X-Forwarded-For` lo controla el cliente y el límite no limita "
+            "nada. Si no tenés proxy, usá `client_ip_key`."
+        )
+
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for entry in trusted_proxies:
+        try:
+            networks.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError as exc:
+            raise ValueError(
+                f"forwarded_ip_key(trusted_proxies=...): {entry!r} no es una IP ni una red "
+                f"CIDR válida. Ejemplos válidos: '10.0.0.0/8', '172.18.0.5'."
+            ) from exc
+
+    def key_func(request: Request) -> str:
+        client = request.client
+        peer = client.host if client else None
+        if peer is None or not _ip_in_any(peer, networks):
+            # El par no es un proxy declarado: su header no vale nada.
+            return peer or "unknown"
+
+        forwarded = request.headers.get("X-Forwarded-For")
+        if not forwarded:
+            return peer
+
+        hops = [item.strip() for item in forwarded.split(",") if item.strip()]
+        if len(hops) < trust_hops:
+            # Menos saltos de los declarados: el header está incompleto o alguien lo
+            # recortó. Se cae al par en vez de agarrar la entrada más a la izquierda,
+            # que es justo la que el cliente puede inventar.
+            return peer
+
+        candidate = hops[-trust_hops]
+        try:
+            ipaddress.ip_address(candidate)
+        except ValueError:
+            return peer
+        return candidate
+
+    return key_func
+
+
+def _ip_in_any(
+    address: str,
+    networks: t.Sequence[ipaddress.IPv4Network | ipaddress.IPv6Network],
+) -> bool:
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return any(parsed in network for network in networks)
 
 
 def rate_limit(
@@ -90,10 +203,28 @@ def rate_limit(
         now = time.time()
 
         try:
-            state = await backend.get(cache_key)
-            count, reset_at = _read_window(state, now, window_seconds)
+            if isinstance(backend, SupportsAtomicWindow):
+                # Camino atómico: se incrementa primero y se compara después. Al revés
+                # —leer, comparar, escribir— hay un `await` entre la lectura y la
+                # escritura, así que N peticiones concurrentes leen el mismo contador y
+                # pasan todas.
+                count, reset_at = await backend.incr_window(cache_key, window_seconds)
+                excedido = count > limit
+            else:
+                _warn_backend_sin_atomicidad(backend)
+                state = await backend.get(cache_key)
+                count, reset_at = _read_window(state, now, window_seconds)
+                excedido = count >= limit
+                if not excedido:
+                    result = backend.set(
+                        cache_key,
+                        {"count": count + 1, "reset_at": reset_at},
+                        expire=window_seconds,
+                    )
+                    if _is_awaitable(result):
+                        await result
 
-            if count >= limit:
+            if excedido:
                 retry_after = max(1, int(reset_at - now) + 1)
                 raise HTTPException(
                     status_code=429,
@@ -102,14 +233,6 @@ def rate_limit(
                     ),
                     headers={"Retry-After": str(retry_after)},
                 )
-
-            result = backend.set(
-                cache_key,
-                {"count": count + 1, "reset_at": reset_at},
-                expire=window_seconds,
-            )
-            if _is_awaitable(result):
-                await result
         except HTTPException:
             raise
         except Exception as exc:
@@ -157,6 +280,28 @@ def _read_window(
 
 def _is_awaitable(value: t.Any) -> bool:
     return hasattr(value, "__await__")
+
+
+_BACKENDS_AVISADOS: set[int] = set()
+
+
+def _warn_backend_sin_atomicidad(backend: ICache) -> None:
+    """
+    Avisa una sola vez por backend que el conteo no es atómico.
+
+    Una vez y no por petición: un log por request en el camino caliente es peor que el
+    problema que denuncia. `id()` alcanza porque el backend es un singleton de proceso.
+    """
+    marca = id(backend)
+    if marca in _BACKENDS_AVISADOS:
+        return
+    _BACKENDS_AVISADOS.add(marca)
+    logger.warning(
+        "%s no implementa `incr_window`, así que el conteo del rate limit hace "
+        "read-modify-write y un pico de peticiones concurrentes puede pasarse del "
+        "límite. Implementá `SupportsAtomicWindow` en tu backend, o usá `RedisCache`.",
+        type(backend).__name__,
+    )
 
 
 def _default_cache() -> ICache:

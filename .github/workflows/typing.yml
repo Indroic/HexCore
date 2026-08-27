@@ -1,0 +1,133 @@
+name: Typing & stubs
+
+# Fase 0 del plan de tipado: se **mide**, no se rompe.
+#
+# Sólo dos jobs: `typecheck`, que corre pyright strict y compara contra
+# `typing-baseline.json`, y `typing-ok`, el agregador de nombre fijo para branch
+# protection. Los otros jobs del blueprint (`stubs-drift`, `stub-quality`,
+# `no-extras-import`, `extras-matrix`, `packaging`, `house-rules`) se agregan en sus fases,
+# cada uno **después** de que el código que gatean esté limpio. Al revés, el primer PR pone
+# master en rojo, y un gate que arranca rojo se desactiva — que es exactamente cómo se llega
+# a un repo con pyright en las dependencias de dev y en ningún workflow.
+#
+# `workflow_call` está declarado a propósito: cuando el gate se enganche a
+# `publish-to-pypi.yml`, ese workflow lo invoca en vez de duplicar los pasos.
+
+on:
+  push:
+    branches:
+      - master
+      - "release/**"
+      - "feat/**"
+  pull_request:
+    # Filtra por rama **base**, igual que `pytest.yml`: sin `release/**` y `feat/**` los
+    # PRs de una cadena apilada no disparan ningún check.
+    branches:
+      - master
+      - "release/**"
+      - "feat/**"
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: "Pyright strict sobre hexcore/"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        # `--extra all` a propósito: los tipos de los adaptadores opcionales son REALES
+        # (`app: procrastinate.App`, `redis_client: Redis`), así que chequearlos exige tener
+        # el paquete instalado. La garantía de "importa sin extras" es de runtime y la mide
+        # `tests/test_optional_dependencies.py`, no este job.
+        run: uv sync --extra all --group dev
+
+      - name: Pyright
+        # Sin `set -o pipefail` y con `|| true`: pyright sale con 1 si hay un solo error, y
+        # acá el veredicto lo da el ratchet, no el exit code de pyright.
+        run: |
+          uv run pyright --outputjson hexcore > pyright.json || true
+          uv run python - <<'PY'
+          import json
+          resumen = json.load(open("pyright.json", encoding="utf-8"))["summary"]
+          print("::group::Resumen de Pyright")
+          print(resumen)
+          print("::endgroup::")
+          PY
+
+      - name: Anotaciones en el PR
+        # Un `::error file=…,line=…::` por diagnóstico, así el error aparece **en la línea**
+        # del diff y no hay que abrir el log. No falla el job: el veredicto es del ratchet.
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          raiz = Path.cwd()
+          reporte = json.load(open("pyright.json", encoding="utf-8"))
+          for d in reporte.get("generalDiagnostics", []):
+              if d.get("severity") != "error":
+                  continue
+              try:
+                  ruta = Path(d["file"]).resolve().relative_to(raiz).as_posix()
+              except ValueError:
+                  ruta = d["file"]
+              linea = d["range"]["start"]["line"] + 1
+              regla = d.get("rule", "sin-regla")
+              mensaje = d["message"].splitlines()[0]
+              print(f"::error file={ruta},line={linea}::[{regla}] {mensaje}")
+          PY
+
+      - name: Ratchet de errores
+        run: uv run python scripts/typing_ratchet.py errors --report pyright.json
+
+      - name: Subir el JSON de Pyright
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyright-report
+          path: pyright.json
+          retention-days: 14
+
+  typing-ok:
+    name: "Gate de tipado"
+    # Agregador de nombre fijo. Es el ÚNICO check que hay que marcar como obligatorio en la
+    # protección de rama: cuando se agreguen los jobs de matriz (cuyos nombres son
+    # dinámicos, `Imports con extra=sql`), no se pueden marcar como required, así que todos
+    # llegan acá por `needs`.
+    if: always()
+    needs:
+      - typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Veredicto
+        # La expresión va por `env:` y no interpolada adentro del `run:`. GitHub rechazaba el
+        # workflow **entero** con `RESULTS='${{ join(needs.*.result, " ") }}'`: las comillas
+        # dobles adentro de la expresión, dentro de un string del shell, dentro de un bloque
+        # literal de YAML, le rompían el parser. El síntoma era el peor posible — un run que
+        # falla en 0 s, sin un solo job, sin log y sin anotación, o sea sin nada que leer.
+        #
+        # Pasarla por `env:` la saca del texto del comando, que ademas es la forma recomendada:
+        # una expresión interpolada directo en un `run:` es una inyección esperando un valor
+        # con comillas.
+        env:
+          RESULTADOS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Resultados: $RESULTADOS"
+          for result in $RESULTADOS; do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "::error::El gate de tipado falló. Mirá qué job está en rojo: cada uno imprime su propia remediación."
+              exit 1
+            fi
+          done
+          echo "Gate de tipado en verde."
