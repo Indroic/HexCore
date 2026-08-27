@@ -1,3 +1,34 @@
+## 7.0.0 (2026-08-27)
+
+### BREAKING CHANGE
+
+- `allow_credentials` pasa a `False` si `allow_origins` contiene
+`"*"`. Para sesiones por cookie declará tus orígenes:
+`allow_origins=["http://localhost:3000"], allow_credentials=True`.
+- los paquetes top-level `tests`, `scripts`, `refs` y `dist`
+dejan de instalarse con `hexcore`. Si algo hacía `import scripts` esperando los
+del repo, dejará de resolver.
+- `client_ip_key` ignora `X-Forwarded-For`. Detrás de un
+balanceador, pasá a `forwarded_ip_key(trusted_proxies=[...])` o vas a limitar a
+todos los clientes juntos.
+- con `debug=False` y sin `allow_origins` explícito, el default
+deja de ser `["*"]`. Si servías una API pública sin cookies, poné
+`allow_credentials=False`; si tenés un frontend, declará sus orígenes.
+
+### Feat
+
+- **api**: headers_for en los exception handlers
+
+### Fix
+
+- **ci**: el workflow de tipado no parseaba y fallaba entero en 0 s
+- **config**: el invariante de CORS vale siempre, no sólo fuera de debug
+- **api**: el rate limit de login era esquivable
+- **config**: allow_origins ya no queda en ["*"] con credenciales
+
+
+- la wheel deja de publicar tests, scripts, refs y dist
+
 ## 6.2.1 (2026-08-04)
 
 ### Fix
