@@ -72,21 +72,6 @@ class ServerConfig(BaseModel):
     # Event Bus
     event_bus: EventBus = InMemoryEventBus()
 
-    @property
-    def event_dispatcher(self) -> EventBus:
-        """Retrocompatibilidad para acceso a event_dispatcher."""
-        import warnings
-        warnings.warn(
-            "ServerConfig.event_dispatcher is deprecated. Use ServerConfig.event_bus instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.event_bus
-
-    @event_dispatcher.setter
-    def event_dispatcher(self, value: EventBus) -> None:
-        self.event_bus = value
-
     # Repository Discovery
     # v2 (breaking): discovery explicito y folder-agnostic.
     # Si se deja vacio, no se autoloadearan modulos de repositorios.
@@ -96,17 +81,45 @@ class ServerConfig(BaseModel):
     # Tipo: Optional[hexcore.application.cqrs.config.CQRSConfig]
     cqrs: t.Any = None
 
+    # Darwin, el módulo de identidad (opcional — None = deshabilitado).
+    # Tipo: Optional[hexcore.darwin.application.config.IdentityConfig]
+    #
+    # Se tipa `t.Any` por el mismo motivo que `cqrs`: anotarlo de verdad obligaría a
+    # importar el módulo acá, y `hexcore.config` lo importa medio framework — incluida la
+    # CLI, que `hexcore/__init__.py` carga eagerly.
+    #
+    # La clave de firma **no va acá**. Todo campo de `ServerConfig` tiene default, y un
+    # secreto de firma con default es lo peor que puede shippear una librería de auth: la
+    # mitad de los despliegues quedaría firmando con el mismo valor de ejemplo. Vive en
+    # `IdentityConfig` como `SecretStr` sin default, leída de `HEXCORE_DARWIN_SECRET_KEY`.
+    darwin: t.Any = None
+
+    # ── Nombres removidos ─────────────────────────────────────────────────────
     @model_validator(mode="before")
     @classmethod
-    def map_deprecated_fields(cls, data: t.Any) -> t.Any:
-        if isinstance(data, dict) and "event_dispatcher" in data:
-            import warnings
-            warnings.warn(
-                "Passing 'event_dispatcher' to ServerConfig is deprecated. Use 'event_bus' instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            data["event_bus"] = data.pop("event_dispatcher")
+    def _rechazar_nombres_removidos(cls, data: t.Any) -> t.Any:
+        """
+        Falla con remediación si te pasan un nombre que se eliminó en 7.0.
+
+        Sin esto, pydantic **ignora en silencio** los kwargs que no conoce: quien migre
+        pasando `event_dispatcher=` se quedaría con el bus por defecto sin enterarse, y el
+        síntoma aparecería mucho más tarde como "mis eventos no llegan". Un error al construir
+        es estrictamente mejor que un default silencioso.
+
+        No se usa `extra="forbid"` para lograr lo mismo: eso rechazaría **cualquier** clave
+        desconocida, y hay consumidores que pasan kwargs propios a propósito.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        removidos = {"event_dispatcher": "event_bus"}
+        for viejo, nuevo in removidos.items():
+            if viejo in data:
+                raise ValueError(
+                    f"ServerConfig ya no acepta '{viejo}': se eliminó en 7.0 y estaba "
+                    f"deprecado desde 5.0. Usá '{nuevo}':\n\n"
+                    f"    config = ServerConfig({nuevo}=...)\n"
+                )
         return data
 
     # ── CORS ──────────────────────────────────────────────────────────────────

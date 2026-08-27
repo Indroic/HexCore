@@ -2,13 +2,26 @@ name: Typing & stubs
 
 # Fase 0 del plan de tipado: se **mide**, no se rompe.
 #
-# Sólo dos jobs: `typecheck`, que corre pyright strict y compara contra
-# `typing-baseline.json`, y `typing-ok`, el agregador de nombre fijo para branch
-# protection. Los otros jobs del blueprint (`stubs-drift`, `stub-quality`,
-# `no-extras-import`, `extras-matrix`, `packaging`, `house-rules`) se agregan en sus fases,
-# cada uno **después** de que el código que gatean esté limpio. Al revés, el primer PR pone
-# master en rojo, y un gate que arranca rojo se desactiva — que es exactamente cómo se llega
-# a un repo con pyright en las dependencias de dev y en ningún workflow.
+# Cada job se agregó **después** de que el código que gatea estuviera limpio. Al revés, el
+# primer PR pone master en rojo, y un gate que arranca rojo se desactiva — que es exactamente
+# cómo se llega a un repo con pyright en las dependencias de dev y en ningún workflow.
+#
+# Están: `house-rules`, `stubs-drift`, `typecheck`, `no-extras-import`, `extras-matrix` y
+# `typing-ok`. `packaging` vive en `pytest.yml`, que ya arma la wheel y corre `-m packaging`.
+#
+# `stub-quality` **no** está, y el script que lo implementaría —`scripts/stub_quality.py`— sí.
+# `pyright --verifytypes hexcore` devuelve cero módulos y cero símbolos: no encuentra el paquete
+# por PEP 561. Se probó con la wheel instalada en un venv limpio, con pyright adentro de ese
+# mismo venv, con `--pythonpath`, con `venvPath` en un `pyrightconfig.json` y con `VIRTUAL_ENV`
+# apuntado y desapuntado. Ninguna combinación lo resuelve.
+#
+# Lo que **no** es: la herramienta rota en general. Con pyright 1.1.411, `--verifytypes pydantic`
+# resuelve sin problema. O sea que es algo de cómo se resuelve *este* paquete, y queda sin
+# aislar — se anota acá para que el próximo no repita el camino.
+#
+# El script queda porque detecta exactamente el caso de "no lo encontré" y lo dice en vez de
+# grabar un piso de 0 %. Lo que no se deja es un check permanentemente rojo detrás de
+# `continue-on-error`: enseña a ignorar el workflow, que es peor que no tener el job.
 #
 # `workflow_call` está declarado a propósito: cuando el gate se enganche a
 # `publish-to-pypi.yml`, ese workflow lo invoca en vez de duplicar los pasos.
@@ -32,6 +45,51 @@ permissions:
   contents: read
 
 jobs:
+  # ── La regla de tipado de la casa ───────────────────────────────────────────
+  house-rules:
+    name: "Regla de tipado de la casa"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # El script sólo lee ASTs: no importa hexcore ni necesita un extra. Es el job más
+      # barato del workflow, y por eso va primero — si el idioma está mal, se sabe en
+      # segundos y no después de instalar todo.
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Verificar
+        run: uv run python scripts/house_rules.py
+
+  # ── Stubs sincronizados con su _EXPORTS ─────────────────────────────────────
+  stubs-drift:
+    name: "Stubs sincronizados con _EXPORTS"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # `gen_stubs.py` trabaja sobre el AST de las tres fachadas: no importa hexcore ni
+      # necesita un solo extra. Es el job más rápido del workflow, así que va primero.
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Regenerar y comparar
+        run: uv run python scripts/gen_stubs.py --check
+
   typecheck:
     name: "Pyright strict sobre hexcore/"
     runs-on: ubuntu-latest
@@ -91,6 +149,12 @@ jobs:
       - name: Ratchet de errores
         run: uv run python scripts/typing_ratchet.py errors --report pyright.json
 
+      - name: Tests de tipo (tests/typing/)
+        # Deseleccionados por `addopts`, así que acá se piden explícitamente. Corren Pyright
+        # sobre `tests/typing/`, donde los `assert_type` fijan que las fachadas NO tipen
+        # `Any` — el estado anterior a los `.pyi` generados.
+        run: uv run pytest -m typing -q
+
       - name: Subir el JSON de Pyright
         if: always()
         uses: actions/upload-artifact@v4
@@ -99,15 +163,119 @@ jobs:
           path: pyright.json
           retention-days: 14
 
+  # ── El núcleo importa sin un solo extra ─────────────────────────────────────
+  no-extras-import:
+    name: "Imports sin ningún extra"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        # `--group dev` **sin** un solo `--extra`, que es el punto del job: el resto del
+        # workflow instala `--extra all`, y con todo puesto un import sin guarda anda igual.
+        # Acá no hay nada que lo tape.
+        run: uv sync --group dev
+
+      - name: Las fachadas importan peladas
+        # Antes que los tests, y a propósito: si esto se rompe, el error sale de un `import`
+        # y no de un subproceso con un finder falso, que es mucho más fácil de leer.
+        run: uv run python scripts/extra_smoke.py none
+
+      # `tests/test_optional_dependencies.py` **no** se corre acá, y la primera versión de
+      # este job lo hacía mal: con cero extras fallaban 21 casos. No era un defecto del código
+      # sino del job. Ese archivo afirma "el módulo X importa con el extra Y **bloqueado**", y
+      # eso sólo tiene sentido si los extras que X sí necesita están puestos: pedirle a
+      # `darwin.plugins.oauth.orms.sqlalchemy.repository` que importe sin `beanie` es correcto,
+      # pedirle que importe sin SQLAlchemy no.
+      #
+      # Corre en `pytest.yml`, que instala `--extra all` y deja que el finder de
+      # `sys.meta_path` haga el bloqueo — que es como el archivo está diseñado.
+
+  # ── Cada extra, solo, alcanza para lo que promete ───────────────────────────
+  extras-matrix:
+    name: "Extra ${{ matrix.extra }}"
+    runs-on: ubuntu-latest
+
+    # El punto ciego que esto cierra: hasta acá CI instalaba `--extra all` y nada más. Con
+    # todo puesto, un extra al que le falta una dependencia declarada anda igual, porque se la
+    # presta otro. El consumidor que instala uno solo es el que se come el ImportError.
+    #
+    # Son 18 patas: `none`, los 16 extras y `all`. Nueve son de Darwin, y las seis de plugin
+    # verifican la promesa que el `pyproject` hace explícita — que
+    # `pip install 'hexcore[darwin-two-factor]'` trae el núcleo por la autorreferencia a
+    # `hexcore[darwin]`. Sin la autorreferencia ese comando instalaba un plugin sin núcleo.
+    strategy:
+      fail-fast: false
+      matrix:
+        extra:
+          - none
+          - api
+          - sql
+          - mongo
+          - redis
+          - rabbitmq
+          - procrastinate
+          - celery
+          - darwin
+          - darwin-sqlalchemy
+          - darwin-beanie
+          - darwin-magic-link
+          - darwin-two-factor
+          - darwin-oauth
+          - darwin-impersonate
+          - darwin-passkey
+          - darwin-organization
+          - all
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Instalar sólo este extra
+        # Se instala **la wheel construida**, no el checkout editable, y no es un detalle: un
+        # editable resuelve el paquete desde el árbol de fuentes, así que un archivo que el
+        # empaquetado se olvide de publicar se importa igual. Instalar la wheel es lo que hace
+        # que la pata mida lo que el consumidor recibe.
+        run: |
+          uv build --wheel -o dist
+          WHEEL=$(ls dist/*.whl)
+          uv venv .venv-extra
+          if [ "${{ matrix.extra }}" = "none" ]; then
+            uv pip install --python .venv-extra "$WHEEL"
+          else
+            uv pip install --python .venv-extra "$WHEEL[${{ matrix.extra }}]"
+          fi
+
+      - name: Verificar la promesa del extra
+        run: .venv-extra/bin/python scripts/extra_smoke.py ${{ matrix.extra }}
+
   typing-ok:
     name: "Gate de tipado"
     # Agregador de nombre fijo. Es el ÚNICO check que hay que marcar como obligatorio en la
-    # protección de rama: cuando se agreguen los jobs de matriz (cuyos nombres son
-    # dinámicos, `Imports con extra=sql`), no se pueden marcar como required, así que todos
-    # llegan acá por `needs`.
+    # protección de rama: los nombres de `extras-matrix` son dinámicos (`Extra darwin-oauth`)
+    # y no se pueden marcar como required uno por uno, así que todos llegan acá por `needs`.
+    #
+    # `stub-quality` **no** está en `needs`: hoy es `continue-on-error` y su resultado no debe
+    # decidir nada. Entra acá el día que deje de medir y pase a gatear.
     if: always()
     needs:
+      - house-rules
+      - stubs-drift
       - typecheck
+      - no-extras-import
+      - extras-matrix
     runs-on: ubuntu-latest
     steps:
       - name: Veredicto

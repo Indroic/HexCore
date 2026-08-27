@@ -74,7 +74,22 @@ exige estar al día · `BLOCKED` = falta review · `CLEAN` = listo.
 - Usa los issues y las discusiones para preguntas, sugerencias o propuestas.
 - Si tienes dudas sobre cómo empezar, puedes abrir un issue para orientación.
 
-## 8. Licencia
+## 8. Publicar un major
+
+`commitizen` calcula la versión desde los commits: un `BREAKING CHANGE:` en el cuerpo, o un `!`
+en el subject, dispara un major. Antes de mergear a `master` con un breaking pendiente:
+
+1. **Actualizá la tabla de "Versiones y soporte" del README** — agregá la serie nueva como
+   activa y bajá la anterior a deprecada. No es opcional:
+   `tests/test_documentation_examples.py` compara la serie activa contra `pyproject.toml` y
+   falla si no coinciden. Ese test existe porque 6.0.0 salió con 5.x todavía marcada activa.
+2. **Revisá `REMOVED_IN` en `hexcore/_deprecation.py`.** Tiene que apuntar a un major
+   **futuro**. `tests/test_deprecations.py` falla si queda en el pasado, así que o eliminás lo
+   que prometiste eliminar, o corrés la constante — pero no podés publicar con la promesa
+   vencida. 6.0.0 se publicó prometiendo una remoción "en 6.0" que no ocurrió; ese test es el
+   que impide repetirlo.
+
+## 9. Licencia
 Al contribuir, aceptas que tu código será distribuido bajo la licencia del repositorio.
 
 ---

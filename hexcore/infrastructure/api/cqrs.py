@@ -69,25 +69,19 @@ class CQRSContainer:
     def command_bus(self) -> AbstractCommandBus:
         with self._lock:
             if self._command_bus is None:
-                self._command_bus = t.cast(
-                    AbstractCommandBus, self._factory.create_command_bus()
-                )
+                self._command_bus = self._factory.create_command_bus()
             return self._command_bus
 
     def query_bus(self) -> AbstractQueryBus:
         with self._lock:
             if self._query_bus is None:
-                self._query_bus = t.cast(
-                    AbstractQueryBus, self._factory.create_query_bus()
-                )
+                self._query_bus = self._factory.create_query_bus()
             return self._query_bus
 
     def event_bus(self) -> AbstractEventBus:
         with self._lock:
             if self._event_bus is None:
-                self._event_bus = t.cast(
-                    AbstractEventBus, self._factory.create_event_bus()
-                )
+                self._event_bus = self._factory.create_event_bus()
             return self._event_bus
 
     def build_consumer(self) -> "CQRSConsumer":

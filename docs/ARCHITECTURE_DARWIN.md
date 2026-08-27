@@ -3,8 +3,8 @@
 > Documento técnico de arquitectura. Port deliberado de [Better Auth](https://github.com/better-auth/better-auth)
 > (TypeScript) a Python + CQRS sobre HexCore 6.x.
 >
-> Estado: **diseño aprobado, Fase 0 implementada.** Sin fechas ni estimaciones: el orden es
-> por dependencia, no por calendario.
+> Estado: **diseño aprobado, Fases 0-7 implementadas.** Sin fechas ni estimaciones: el orden
+> es por dependencia, no por calendario.
 
 ---
 
@@ -36,6 +36,14 @@
 | **Prefijo de tablas** | `darwin_` | `keystone_` | `sigil_` |
 | **Extra de pip** | `[darwin]` | `[keystone]` | `[sigil]` |
 | **Costo** | Ninguno conocido. Sin colisión en PyPI ni en el ecosistema Python. | **OpenStack Keystone es un servicio de identidad.** Toda búsqueda, todo resultado de Stack Overflow y todo autocompletado de LLM va a ser sobre OpenStack. Fatal para la discoverability. | El menos autodescriptivo: quien escanea la lista de paquetes no aprende que `sigil` es auth. |
+
+> **Estado de implementación.** Fases 0-7 completas. Siguen: plugins (8-9) y kit de
+> testing (10), que **agregan** superficie sin cambiar la que ya está.
+>
+> La marca de **API provisional** se retiró en la Fase 7, que era el punto de estabilidad
+> declarado: el borde HTTP cerró las formas de `AuthContext`, de los puertos, de los
+> transportes y del emisor de tokens. Dejarla "una fase más por las dudas" habría sido el
+> mismo desliz que `REMOVED_IN = "6.0"` shippeado en 6.0.0.
 
 **Elegido: `Darwin`.** Es el único de los tres que es simultáneamente (a) inequívoco sobre
 qué hace, (b) libre de colisiones, y (c) lo bastante corto para que `ServerConfig.darwin`,
@@ -498,35 +506,47 @@ de una subclase `AuthenticatedCommand(Command)` con un campo `auth`.
 
 Por qué el sobre y no la subclase:
 
-- La subclase **no puede** llevar el actor en `@background_handler` (eventos) ni en
-  `@background_task` (funciones sueltas). Habría que hacer el sobre igual, más adelante, y
+- La subclase **no puede** llevar el actor en `@background_handler` (eventos), que es la mitad
+  del uso de background del framework. Habría que hacer el sobre igual, más adelante, y
   `AuthenticatedCommand` quedaría como API pública a deprecar — exactamente el error que
   este repo ya cometió con `REMOVED_IN = "6.0"` shippeado en 6.0.0.
-- El costo real del sobre es chico y **aditivo**. Verificado: los 5 transportes tratan el
+- El costo real del sobre es chico y **aditivo**. Verificado: los transportes tratan el
   payload como opaco (`procrastinate_adapter.py:36`, `celery_adapter.py:133`,
   `postgres_bus.py:58-63`, `redis_bus.py:60-63`, `rabbitmq.py:88`). Los únicos lectores de
   estructura son `PydanticSerializer` y dos peeks de `__type__`.
+
+**Qué cubre y qué no.** Cubre `Command` (incluido `@background_command`) y
+`@background_handler`, o sea los dos caminos que pasan por el serializer. **No cubre
+`@background_task`**, y es una limitación estructural, no un pendiente: en una tarea genérica
+el payload **es** el dict de kwargs con el que el worker llama a `task_func(**payload)`, así
+que una clave `__meta__` colisionaría con un parámetro y rompería la llamada; y no hay
+objeto-mensaje al que atar el grant. Una tarea que necesita saber quién la originó recibe ese
+dato como **parámetro explícito**. (El único productor de tareas en el árbol es el scheduler
+de cron, que no tiene actor de usuario.)
 
 Los dos métodos nuevos son **concretos** en el ABC, así que ninguna implementación existente
 de `AbstractSerializer` se rompe:
 
 ```python
+# hexcore/domain/cqrs/serializer.py
 class AbstractSerializer(abc.ABC):
     @abc.abstractmethod
-    def serialize(self, message: t.Any) -> dict: ...      # sin tocar
+    def serialize(self, message: t.Any) -> dict[str, t.Any]: ...     # sin tocar
 
-    # Concretos: agregar un abstractmethod rompería a todo el que tenga un serializer propio.
-    def serialize_envelope(self, message: t.Any, metadata: t.Mapping | None = None) -> dict:
+    # Concretos: un abstractmethod rompería a todo el que tenga un serializer propio.
+    def serialize_envelope(self, message, metadata=None) -> dict[str, t.Any]:
         payload = self.serialize(message)
+        if metadata is None:
+            metadata = collect_envelope_metadata(message)     # el registro de proveedores
         if metadata:
-            payload["__meta__"] = dict(metadata)
+            payload[ENVELOPE_METADATA_KEY] = dict(metadata)
         return payload
 
-    def deserialize_envelope(self, data: dict) -> tuple[t.Any, dict]:
-        metadata = data.get("__meta__") or {}
-        # Un payload viejo SIN `__meta__` tiene que seguir deserializando: es la razón de
-        # que estos métodos sean concretos.
-        return self.deserialize({k: v for k, v in data.items() if k != "__meta__"}), metadata
+    def deserialize_envelope(self, data) -> tuple[t.Any, dict[str, t.Any]]:
+        # Un payload viejo SIN `__meta__` tiene que seguir deserializando: es la razón de que
+        # estos métodos sean concretos. Y la clave se **saca** antes de delegar, en vez de
+        # confiar en que `deserialize` la ignore: un serializer estricto es legítimo.
+        ...
 ```
 
 Payload resultante:
@@ -539,27 +559,65 @@ Payload resultante:
 }
 ```
 
+**El núcleo no sabe nada de identidad.** `hexcore/domain/cqrs/envelope.py` es un punto de
+extensión con dos registros por clave: *proveedores* (`(message) -> valor | None`, consultados
+al encolar) y *restauradores* (`AbstractEnvelopeRestorer`, consultados en el worker). Darwin
+registra los suyos bajo la clave `"auth"` en `configure_identity()`, y `reset_identity()` los
+deregistra. **Sin nadie registrado el payload queda byte a byte idéntico** al que el framework
+generaba antes — es lo que hace que esto sea aditivo y no un cambio rompedor, y hay un test
+que lo asserta comparando `serialize_envelope()` con `serialize()`.
+
+Una clave del sobre **sin** restaurador registrado no se ejecuta: lanza `RuntimeError` con la
+línea de cableado que falta. El caso real es un worker al que le falta `configure_identity()`,
+y ejecutar ahí correría el handler sin la autoridad que el mensaje traía.
+
+`AbstractEnvelopeRestorer.restore` es un context manager **asíncrono**, y las dos cosas
+importan: context manager porque el `reset` del `ContextVar` tiene que ocurrir aunque el
+handler lance —si no, un job que falla le filtra su contexto al siguiente del mismo worker— y
+asíncrono porque la revalidación va contra el almacén.
+
 **El detalle crítico: el grant va atado al mensaje.** El payload firmado incluye
-`cid = command_id` (que todo `Command` ya tiene) y `mt = __type__`. La verificación rechaza
-si no coinciden.
+`cid = command_id` (o `event_id`) y `mt = build_fqn(type(message))`. La verificación rechaza si
+no coinciden. `mt` se calcula sobre el **tipo del objeto ya reconstruido**, no sobre el
+`__type__` del payload: así el chequeo no depende del formato del serializer, y manipular
+`__type__` produce otra clase cuyo FQN tampoco coincide.
 
 Sin ese binding, el ataque es: capturar el sobre de un `DeleteAccount` legítimo y
 re-adjuntarlo a un `TransferFunds`. El sobre verifica —está bien firmado— y el worker
 ejecuta la transferencia con la autoridad del grant de borrado. Es escalación de privilegios
-a un `LPUSH` de distancia.
+a un `LPUSH` de distancia. `cid` cubre la otra mitad: dos `TransferFunds` son del mismo tipo,
+así que sin el id el sobre de una transferencia de $10 sirve para una de $1.000.000.
+
+**El sobre no es un JWT, a propósito.** Se firma con HMAC-SHA256 usando
+`IdentityConfig.secret_key`, no con la clave del JWKS, y el formato es distinto del de un
+token. Un JWT invita a que alguien lo presente como credencial en un endpoint, y este valor no
+es una credencial de portador: no lo emite un login, no lo ve un cliente, y vale sólo adjunto
+al mensaje al que se ató. El input del MAC lleva una etiqueta de dominio, así que el mismo
+secreto usado en otro protocolo no puede producir una falsificación cruzada. Lleva `v` desde el
+día uno: el sobre tiene TTL, así que cuando el formato cambie va a haber sobres de los dos
+formatos en la cola durante la ventana del deploy.
+
+**El `transport` restaurado es siempre `"worker"`**, nunca el original. Un job de background no
+está sirviendo un request con cookie, y el código que ramifica por transporte —el chequeo
+anti-CSRF— tiene que poder distinguirlo. **Y `AuthContext.user` no viaja**: es el modelo
+extendido de la app, de tipo arbitrario y sin garantía de ser serializable. Un handler de
+background que lo necesite lo carga con `subject_id`.
 
 **El worker re-valida contra la base.** Verificar la firma y el `exp` no alcanza: entre el
-encolado y la ejecución la sesión puede haberse revocado. El consumer chequea que la fila de
-`session` esté viva. Un TTL de 24 h en el sobre sin este chequeo son 24 h de ejecución con
-una sesión revocada.
+encolado y la ejecución la sesión puede haberse revocado. El restaurador chequea que la fila de
+`session` esté viva (`is_live_at`, que cubre revocada, consumida y vencida). Un TTL de 24 h en
+el sobre sin este chequeo son 24 h de ejecución con una sesión revocada. Sólo se revalida
+cuando el actor **tiene** `session_id`: un `SystemPrincipal` no tiene sesión revocable, su
+autoridad es el cableado del proceso.
 
 ```python
 # hexcore/infrastructure/workers/consumer.py
 message, metadata = self._serializer.deserialize_envelope(payload)
-context = self._auth_codec.verify(metadata.get("auth"), message)  # firma + cid + mt + exp
-await self._sessions.assert_live(context.actor.session_id)        # y la fila de session
-with auth_scope(context), worker_execution():
-    await self._command_bus.dispatch(message)
+# El scope va por fuera de `worker_execution()`: si el sobre no verifica, el mensaje no
+# llega ni a entrar al bus.
+async with restored_envelope_scope(metadata, message):   # firma + cid + mt + exp + la fila
+    with worker_execution():
+        await self._command_bus.dispatch(message)
 ```
 
 ⚠️ **Trampa verificada, y hay un test que la fija.** No se puede ramificar sobre
@@ -788,8 +846,11 @@ class AccessTokenClaims(BaseModel):
 
 ### 6.2 Algoritmo y claves
 
-- **`EdDSA` (Ed25519)** por defecto. Firmas cortas, verificación rápida, sin parámetros que
+- **`Ed25519`** por defecto. Firmas cortas, verificación rápida, sin parámetros que
   configurar mal (a diferencia de RSA, donde el largo de clave es una decisión).
+  Se usa el identificador de curva y **no** el `EdDSA` genérico: RFC 9864 lo deprecó, y
+  `joserfc` emite un `SecurityWarning` si se usa. Nacer con un `alg` deprecado es deuda
+  caro de migrar, porque los tokens ya emitidos lo llevan en la cabecera.
 - **La verificación pinea la lista de algoritmos**, nunca lee el `alg` del token. `none` se
   rechaza siempre. Nunca se honra `jku`, `x5u` ni un `jwk` embebido.
 - Claves simétricas y asimétricas en almacenes **disjuntos**: es lo que evita la confusión
@@ -863,7 +924,7 @@ exactamente la carrera que `rate_limit` tenía y que se corrigió en la Fase 0.
 | Hash de contraseñas | **`argon2-cffi`** | Argon2id es el ganador del PHC y la recomendación de OWASP. Verifica hashes de bcrypt legados vía `passlib` sólo si hace falta migrar. |
 
 Extra nuevo: `[darwin]` = `fastapi`, `sqlalchemy`, `alembic`, `joserfc`, `argon2-cffi`.
-Se agrega a `all`. `[darwin-passkey]` suma `webauthn`.
+Se agrega a `all`. `[darwin-passkey]` suma `webauthn` (hecho, Fase 9).
 
 **No se agrega `freezegun` ni `time-machine`:** el reloj es un puerto `Clock` inyectado, así
 que los tests de TTL no necesitan parchear el tiempo global.
@@ -947,13 +1008,13 @@ hallazgos y el [CHANGELOG](../CHANGELOG.md).
 - `headers_for` en los exception handlers (RFC 6750).
 - Gate de tipado midiendo: `[tool.pyright]` strict, ratchet, baseline de **216 errores**.
 
-### Fase 1 — Convención de nombres de constraints
+### Fase 1 — Convención de nombres de constraints ✅ **IMPLEMENTADA**
 
 **Antes** de la primera tabla (§2.6): agregarla después es una migración rompedora.
 Modifica `orms/sqlalchemy/__init__.py`. Test: los nombres generados son estables y no
 dependen del backend.
 
-### Fase 2 — Dominio puro
+### Fase 2 — Dominio puro ✅ **IMPLEMENTADA**
 
 Sólo stdlib + pydantic. Sin SQL, sin crypto, sin HTTP.
 
@@ -970,7 +1031,7 @@ Tests: **el invariante de impersonación en los dos sentidos** (subject≠actor 
 → **extiende `tests/test_optional_dependencies.py`**: `("sqlalchemy", "hexcore.darwin")`,
 `("fastapi", "hexcore.darwin")`, `("joserfc", "hexcore.darwin")`, `("argon2", "hexcore.darwin")`.
 
-### Fase 3 — Persistencia
+### Fase 3 — Persistencia ✅ **IMPLEMENTADA**
 
 Las 6 tablas, con **las dos reglas verificadas por test** (§2.1) y el test de no-colisión.
 
@@ -979,12 +1040,12 @@ exactamente 6 tablas; renombrado vía mixin con retargeteo de FK; `create_identi
 idempotente; round-trip de tz-awareness; email duplicado → `IntegrityError` mapeado a
 `EmailAlreadyRegisteredError`.
 
-### Fase 4 — Crypto (**el núcleo de seguridad de la suite**)
+### Fase 4 — Crypto ✅ **IMPLEMENTADA** (**el núcleo de seguridad de la suite**)
 
 `hashing`, `keys`, `tokens`, `revocation`.
 
 Tests adversariales: **confusión de `alg`** (`none`; HS256 firmado con la clave pública
-Ed25519 como secreto HMAC; `RS256` con allowlist `["EdDSA"]`); **confusión de `typ`**
+Ed25519 como secreto HMAC; `RS256` con allowlist `["Ed25519"]`); **confusión de `typ`**
 (`rt+jwt` donde se exige `at+jwt`); `kid` desconocido/retirado/ausente + caché negativa
 contada bajo flood; `aud`/`iss` que no coinciden; `nbf` futuro y `exp` pasado con y sin el
 skew configurado; **rotación** (token de la clave anterior verifica en `verify_only`, falla
@@ -993,7 +1054,7 @@ en `retired`); **la regresión de `MemoryCache` como test ejecutable** (revocar,
 el TTL del backend); **timing** (el path de login hashea un dummy fijo cuando no hay fila, y
 se cuentan las llamadas a `hmac.compare_digest`).
 
-### Fase 5 — Aplicación + contenedor
+### Fase 5 — Aplicación + contenedor ✅ **IMPLEMENTADA**
 
 `configure_identity(...) -> IdentityContainer`, `get_identity_container()`,
 `reset_identity()`, `provide_*`. Comandos, queries, handlers.
@@ -1002,22 +1063,36 @@ Tests: sin configurar → `RuntimeError` con la remediación en el mensaje; init
 thread-safe; flujo completo sobre `sqlite_session` (sign-up → verify → sign-in → refresh →
 sign-out) y sus caminos de fallo.
 
-### Fase 6 — Propagación del actor + auditoría
+### Fase 6 — Propagación del actor ✅
 
-**Modifica el núcleo** (decisión de §3.3): `domain/cqrs/serializer.py` (+2 métodos
-concretos), `infrastructure/cqrs/pydantic_serializer.py`,
-`infrastructure/workers/consumer.py`, y los call sites de `serialize()` en los 5 transportes.
+**Modifica el núcleo** (decisión de §3.3). Nuevo: `domain/cqrs/envelope.py` (el punto de
+extensión: registros, `restored_envelope_scope`, `message_correlation_id`) y
+`darwin/infrastructure/envelope.py` (`AuthEnvelopeCodec`, `AuthEnvelopeRestorer`,
+`auth_envelope_provider`). Modificados: `domain/cqrs/serializer.py` (+2 métodos concretos),
+`darwin/application/container.py` (`envelope_codec()`, `envelope_restorer()`, y el registro en
+`configure_identity` / la baja en `reset_identity`), y los seis call sites —
+`in_memory_buses.py` (×2), `postgres_bus.py`, `redis_bus.py`, `rabbitmq.py`,
+`procrastinate.py` — más `workers/consumer.py` en sus tres rutas.
 
-Tests: round trip real (sellar → `PydanticSerializer` → `CQRSConsumer.process_command` sobre
-un bus de `build_test_buses()` → el handler ve el mismo actor **y** el mismo subject);
-**payload legado sin `__meta__` sigue deserializando** (la razón de que los métodos sean
+`pydantic_serializer.py` **no** se tocó: los dos métodos nuevos son concretos en el ABC y
+envuelven `serialize`/`deserialize`, así que hereda el comportamiento sin cambios.
+
+Tests (`test_cqrs_envelope.py`, 24 — el mecanismo pelado, sin Darwin; `test_darwin_envelope.py`,
+37): round trip real (sellar → `PydanticSerializer` → `CQRSConsumer.process_command` sobre un
+bus de `build_test_buses()` → el handler ve el mismo actor **y** el mismo subject, y el
+`transport` es `"worker"`); **payload legado sin `__meta__` sigue deserializando** y
+`serialize_envelope() == serialize()` sin proveedores (la razón de que los métodos sean
 concretos); sobre manipulado (un byte del payload, un byte de la firma, actor y subject
-swapeados) → `WorkerContextIntegrityError`; **grant re-adjuntado a otro comando → rechazado**
-(el binding `cid`/`mt` de §3.3); **la regresión de `IN_WORKER`** (assert de que
-`is_worker_execution()` es `False` dentro del middleware incluso despachado desde el
-consumer, documentando por qué no hay que consultarlo).
+swapeados, escalar los scopes editando el JSON, otro secreto de firma) →
+`WorkerContextIntegrityError`; **grant re-adjuntado a otro comando y a otra instancia del mismo
+comando → rechazado** (el binding `cid`/`mt`); sobre vencido y sobre fechado en el futuro, con
+la tolerancia de reloj; versión desconocida; sesión revocada, inexistente y ya rotada →
+rechazadas contra SQLite real; worker sin Darwin cableado → `RuntimeError` con remediación; y
+**la regresión de `IN_WORKER`** (assert de que `is_worker_execution()` es `False` dentro del
+middleware incluso despachado desde el consumer, y de que lo que sí está disponible es el
+contexto ambiental).
 
-### Fase 7 — Borde HTTP
+### Fase 7 — Borde HTTP ✅
 
 `transports`, `api/{middlewares,dependencies,routers}`, `lifespan` (`IdentityStep`,
 `JwksStep`, `SessionReaperStep`).
@@ -1043,49 +1118,1096 @@ capa `api` la acoplaría al módulo y rompería el contrato de dependencias opci
 MRO, así que registrarla como 400 haría que una excepción nueva sin mapear se tragara como
 400 en vez de aparecer como 500 en los tests.
 
-Tests: doble publicación ContextVar + `request.state` con `reset` en `finally` incluso si el
-endpoint lanza; el mismo endpoint por los dos transportes; atributos de cookie aserteados
-literalmente; **CSRF** (POST cross-origin con cookie válida → 403; `Origin` que coincide →
-200; sin `X-CSRF-Token` → 403; valor forjado por un subdominio → 403); 401 lleva
-`WWW-Authenticate` (usa el `headers_for` de la Fase 0); **fijación de sesión** (el token
-cambia en login, cambio de contraseña, alta de 2FA, e inicio y fin de impersonación —
-aserteado como desigualdad, por evento); **replay/carrera de revocación**; fuerza bruta sobre
-sign-in con el `rate_limit` ya corregido.
+Creados: `infrastructure/transports.py`, `infrastructure/api/{middlewares,dependencies,routers}.py`,
+`infrastructure/lifespan.py`, y `derive_csrf_token` en `infrastructure/hashing.py`.
 
-### Fase 8 — Plugins + el de referencia
+⚠️ **Un middleware de Starlette corre por fuera de `ExceptionMiddleware`**, así que lo que
+lanza **no** pasa por los handlers que `register_exception_handlers` instaló: saldría como un
+500 con el traceback en texto plano. `CsrfMiddleware` por eso **devuelve** la `JSONResponse`
+en vez de propagar `CsrfValidationError`, replicando a mano la forma del cuerpo de error del
+framework. Lo encontró el test, no la revisión.
 
-`HookMiddleware`, el registro, y `magic_link` como plugin de referencia.
-Modifica `cli.py` con `app.add_typer(darwin_cli, name="identity")` — el primer `add_typer` del
-repo. ⚠️ `hexcore/__init__.py` importa `cli` **eagerly**, así que ese módulo puede importar
-sólo `typer` + stdlib en el top level; todo import pesado va adentro del cuerpo del comando.
+**El valor anti-CSRF es derivado, no aleatorio** (`derive_csrf_token` = HMAC del `sid`). La
+cookie de CSRF no puede ser `HttpOnly` —el cliente tiene que leerla para devolverla en el
+header— así que un subdominio comprometido **puede escribirla**; con un valor aleatorio,
+escribe la cookie y manda el mismo valor en el header, pasando el double-submit con un valor
+que eligió él.
 
-Tests: nombre duplicado / `requires` faltante / ciclo / conflicto de tabla → cada uno su
-error al construir, nombrando al culpable. Hooks: mutación de `payload` llega al handler;
-`ShortCircuit` en `before` saltea el handler **y** los `before` restantes; una excepción que
-no es `ShortCircuit` propaga (falla cerrando).
+**`/auth/me` lee la fila del usuario**, y es la excepción deliberada al "cero DB en el camino
+caliente": el mail no viaja en el token porque es PII, y un access token que el cliente guarda
+no es el lugar para ponerla. La regla de no tocar la base vale para cada petición autenticada,
+no para el endpoint cuyo propósito es devolver los datos del usuario. Lo detectó un test que
+esperaba el mail en `/me`.
 
-### Fase 9 — El resto de los plugins
+Tests (`test_darwin_http.py`, 35, con `TestClient` sobre `create_app()`): doble publicación
+ContextVar + `request.state` con `reset` en `finally` incluso si el endpoint lanza; el mismo
+endpoint por los dos transportes (cookie sin tokens en el cuerpo, Bearer sin `Set-Cookie`, y
+`Vary` en las dos); atributos de cookie aserteados **literalmente sobre el header**
+(`__Host-`, `HttpOnly`, `Secure`, `SameSite=lax`, `Path=/`, sin `Domain`); **confusión de
+transporte en los dos sentidos** (cookie replayeada como Bearer y viceversa → 401); **CSRF**
+(POST cross-origin con cookie válida → 403; origen declarado + double-submit → 200; sin
+`X-CSRF-Token` → 403; valor forjado → 403; `GET` exento; Bearer exento; POST anónimo exento);
+401 lleva `WWW-Authenticate` y 403 **no** (usa el `headers_for` de la Fase 0); fijación de
+sesión; sign-out borra cookies **y** revoca; fuerza bruta sobre sign-in con el `rate_limit` ya
+corregido.
 
-`two_factor` → `oauth` → `impersonate` (**depende de la Fase 6**; techo de 60 min no
-renovable; refresh → 403; toda acción auditada con los dos principales) → `passkey` →
-`organization`.
+⚠️ **Nota de testing**: `rate_limit` usa `config.cache_backend`, que es un `MemoryCache`
+global del proceso. Una suite que pega en la ruta de login tiene que resetearlo por test, o
+los primeros pasan y del sexto en adelante todo da 429 — con el síntoma desconcertante de que
+cada test pasa aislado y falla en la suite.
 
-### Fase 10 — Kit de testing, docs, deprecaciones
+### Fase 8 — Plugins + el de referencia ✅
 
-`hexcore/darwin/testing/` con `FakeUserRepository`, `FakeClock`, `authenticated_context()`,
-`impersonated_client`.
+`domain/plugins.py` (el contrato), `application/plugins.py` (el registro),
+`application/hooks.py` (`HookMiddleware`), `plugins/magic_link/` (el de referencia) e
+`infrastructure/cli.py` (la sub-app de Typer).
 
-Cierra además el hueco detectado: `hexcore/testing/` **no tiene fake de repositorio ni de
-UoW**. Van al kit general, no al de Darwin, porque sirven mucho más allá de identidad.
+**El contrato es una clase abstracta con un solo miembro obligatorio: `name`.** Los siete
+métodos de aporte —`tables()`, `hooks()`, `middlewares()`, `http_middlewares()`, `routers()`,
+`startup_steps()`, `register_handlers()`— son **concretos** y devuelven vacío. Así un plugin
+declara nada más lo que aporta, y agregar un punto de extensión nuevo más adelante no rompe a
+ninguno existente. Con métodos abstractos, cada punto de extensión nuevo sería un cambio
+rompedor para todos los plugins del ecosistema.
 
-Deprecaciones: `domain/auth/value_objects.TokenClaims` → `AccessTokenClaims` y
-`domain/auth/permissions.PermissionsRegistry` → `RoleRegistry`, vía `deprecated_aliases`.
-Los dos están re-exportados en `hexcore/__init__.py` y en su `__all__`, así que se mueven
-detrás de un `__getattr__` de módulo: `from hexcore import TokenClaims` sigue funcionando
-(PEP 562 cubre los `from`-imports) y ahora avisa.
+**El registro valida al cablear, no en el primer request.** Cuatro errores, cada uno nombrando
+al culpable: nombre vacío o ausente, nombre duplicado, `requires` que apunta a un plugin que
+no está, y ciclo de dependencias (con el ciclo impreso, `a -> b -> c -> a`). Más el conflicto
+de mixins: dos plugins que aportan el mismo nombre de tabla se rechazan, porque si no el
+consumidor no puede saber cuál está componiendo y el diff de su migración dependería del orden
+de importación. `configure_identity` llama a `validate()`, igual que valida el modelo de
+usuario.
+
+**El orden de ejecución es topológico y determinista**: por `requires`, con
+`(priority, orden de registro)` como desempate. Si dependiera del hash de un set, el mismo
+cableado daría cadenas de hooks distintas entre corridas — y un bug que aparece una vez de cada
+tres no se diagnostica.
+
+**Los hooks son `(action, phase, handler, priority)` con comodines de `fnmatch`**, y los
+específicos corren **antes** que los de comodín: un hook de auditoría con `"*"` quiere ver el
+payload final, no el que llegó antes de que los específicos lo ajustaran. La acción sale de
+`@identity_action("user.sign_in")` o, si no está declarada, del nombre de la clase pasado a
+snake_case. Se declara explícitamente en todo lo que shippea Darwin porque derivarla ata el
+hook al nombre de la clase: renombrar el comando rompería en silencio los hooks de todos los
+plugins. `hooks_for(action, phase)` está memoizado — corre en cada mensaje, y sin cache cada
+uno pagaría un `fnmatch` por hook registrado.
+
+**Los hooks no mutan un `ctx` compartido: encadenan el payload.** Los mensajes son `frozen`,
+así que un hook que quiere cambiar algo devuelve una instancia nueva y el resultado alimenta al
+siguiente. Es el desvío deliberado de Better Auth, donde los hooks mutan un contexto y el orden
+se vuelve parte del contrato sin estar escrito en ningún lado.
+
+**`ShortCircuit` es el mecanismo de control de flujo**: en `before` saltea el handler **y los
+`before` que quedaban** (correrlos sería trabajo sobre una decisión ya tomada), y su `.result`
+se devuelve como resultado. Es con lo que un plugin responde por su cuenta: 2FA que exige el
+segundo factor, un bloqueo por país, una cuota agotada. En `after` el handler **ya corrió**, así
+que cortocircuitar reemplaza el resultado y no cancela el efecto — un plugin que quiera impedir
+la operación tiene que hacerlo en `before`.
+
+⚠️ **Cualquier otra excepción propaga, envuelta con el nombre del plugin, la fase y la acción.
+Falla cerrando.** Tragarla dejaría que un hook de autorización que explota se lea como uno que
+autorizó, que es el peor modo de falla posible para un sistema de plugins de auth.
+
+**`magic_link`, el de referencia.** Reusa la tabla `verification` con `purpose="magic_link"` en
+vez de aportar una propia: un magic link **es** un token de un solo uso con vencimiento,
+`attempts` y `consumed_at`, y una tabla equivalente le dejaría al consumidor dos migraciones y
+dos reapers para el mismo concepto. Canjearlo crea una sesión normal, así que revocación,
+rotación, transporte y CSRF funcionan sin saber que hubo un magic link. `POST /request`
+responde igual exista o no la cuenta —la diferencia va en si manda el mail— porque al revés
+sería un oráculo de enumeración en una ruta pública sin autenticación. El canje es **atómico**
+(`UPDATE ... WHERE consumed_at IS NULL RETURNING`), así que de dos clicks simultáneos
+exactamente uno gana; con un SELECT seguido de un UPDATE, "de un solo uso" sería falso
+justamente bajo concurrencia. Pedir uno nuevo invalida los pendientes: sin eso, cinco clicks en
+"reenviar" dejan cinco links válidos. TTL de 15 min, no 24 h: es una credencial de portador que
+queda en el buzón, en los logs del proveedor y en el historial del cliente. Y verifica el mail
+como efecto — quien probó que controla la casilla ya demostró lo que la verificación prueba.
+
+`session_response_body` (antes `_cuerpo`) **se hizo pública** por esto: el router del plugin
+devuelve la misma forma que `/auth/sign-in`, y que cada plugin armara su propio cuerpo dejaría
+que uno filtre los tokens en el cuerpo estando en modo cookie. Lo señaló pyright con
+`reportPrivateUsage`, que es exactamente para lo que sirve.
+
+**`hexcore/darwin/plugins/__init__.py` está vacío a propósito**: no hay discovery. Un plugin se
+registra escribiéndolo en el `PluginRegistry`, porque un plugin de auth que se activa solo por
+estar instalado es una superficie de ataque de cadena de suministro.
+
+**La sub-app de Typer** — el primer `add_typer` del repo: `identity_cli` con `generate-secret`,
+`generate-keys`, `create-tables`, `check-schema` (sale con 1, para poner en un pre-commit) y
+`plugins <módulo>` (imprime el orden resuelto, que es la única forma de confirmar que un plugin
+corre donde uno cree).
+
+⚠️ **`hexcore/__init__.py` importa `hexcore.infrastructure.cli` eagerly, y ese módulo hace
+`add_typer(identity_cli)`.** O sea que todo lo que `hexcore/darwin/infrastructure/cli.py`
+importe en el nivel superior se carga con cada `import hexcore`, en cualquier proceso, tenga o
+no los extras. Por eso ese módulo importa **sólo `typer` + stdlib** arriba y cada comando
+importa lo que necesita adentro de su cuerpo. Es el contrato más frágil de la fase, y lo
+custodian dos tests: uno lee el AST del módulo y otro cuenta los `hexcore.darwin.*` de
+`sys.modules` en un subproceso limpio.
+
+Tests (`test_darwin_plugins.py` 38, `test_darwin_magic_link.py` 27, `test_darwin_cli.py` 12):
+las cuatro validaciones del registro, cada una nombrando al culpable; orden topológico,
+transitividad, y los dos desempates; el registro vacío es *truthy* (sin `__bool__` explícito,
+un `if registro:` lo descartaría — el mismo defecto que `InMemoryTaskEnqueuer` documenta);
+comodines con `fnmatchcase` (`"User.*"` **no** matchea `user.sign_in`); específico antes que
+comodín aunque el comodín tenga prioridad menor; memoización de `hooks_for` aserteada contando
+llamadas, e invalidación al registrar; los cinco comportamientos de `ShortCircuit` y de la
+excepción que propaga; `HookMiddleware` compuesto en un `MiddlewarePipeline` real. De
+`magic_link`: el flujo completo contra SQLite; el token guardado como hash y no en claro
+(leyendo la fila por SQL, porque el repositorio no expone un `find` y no debería); **ocho
+canjes concurrentes del mismo token, exactamente uno gana**; reemitir invalida el anterior;
+vencido y justo-antes-de-vencer; el mail queda verificado; una cuenta bloqueada no entra por el
+link; y el borde HTTP con las dos respuestas indistinguibles y el rate limit frenando el cuarto
+pedido.
+
+Encontrado por los tests, no por la revisión: `generate-keys` llamaba
+`clave.model_dump(mode="json")` sobre un `SigningKey`, que **no es un modelo pydantic** —a
+propósito, para que un `model_dump()` accidental no volque la privada. El comando estaba roto
+en el único camino que importa. Ahora emite los dos JWK parseados, con el aviso por stderr para
+no ensuciar lo que se redirige al secret manager.
+
+### Fase 9 — El resto de los plugins ✅
+
+Los cinco: `two_factor` ✅, `oauth` ✅, `impersonate` ✅, `passkey` ✅, `organization` ✅.
+Con `magic_link` de la Fase 8, Darwin shippea **seis** plugins.
+
+#### `two_factor` ✅ — TOTP, y el punto de extensión del sign-in
+
+Es el primer plugin que **intercepta** un flujo del núcleo en vez de agregar uno al costado, y
+por eso es el que descubrió que el sistema de la Fase 8 tenía un hueco.
+
+⚠️ **El hueco: el router de identidad llama a los servicios directo, no despacha comandos.** Un
+plugin enganchado sólo al `HookMiddleware` —que es un middleware del bus— **no vería nunca un
+sign-in por HTTP**. Se cerró extrayendo el runner de hooks a `run_hooks(plugins, action, phase,
+payload)`, que ahora usan los dos caminos: el middleware para lo que pasa por el bus, y los
+servicios en sus puntos de extensión declarados.
+
+El punto de extensión es `SIGN_IN_AUTHENTICATED = "user.sign_in.authenticated"`, y corre en el
+único lugar donde un segundo factor puede exigirse: **la contraseña ya se validó y la sesión
+todavía no existe**. Antes no se sabe quién es el usuario; después ya hay un par de tokens
+emitido que habría que revocar — y el que se olvida de revocarlo dejó el 2FA en decorativo. Es
+una acción y no un evento porque un hook acá puede **abortar**: un evento se publica después del
+hecho y no tiene forma de impedirlo.
+
+`run_hooks` deja pasar los `IdentityError` **sin envolverlos**, y eso es lo que hace todo el
+mecanismo posible: el hook lanza `TwoFactorRequiredError` y el borde lo mapea a su status.
+Envolverlo en el `RuntimeError` de "el hook falló" convertiría el desafío en un 500. Cualquier
+otra excepción sí se envuelve y propaga: falla cerrando.
+
+**Punto de extensión nuevo en el contrato de plugin: `exception_status_map()`.** Las excepciones
+del plugin viven en el plugin —el núcleo no tiene por qué conocer los modos de falla del 2FA— y
+`create_app` mergea el mapa de los plugins entre el de identidad y el del consumidor. Sin esto,
+la excepción de un plugin saldría como un 500 con el traceback, o el consumidor tendría que
+mapearla a mano, que es pedirle que sepa los internos del plugin.
+
+**El sign-in se parte en dos, y el primer paso no emite nada.** La alternativa que se ve seguido
+—emitir una sesión "parcial" con scope reducido— pone en manos del cliente un token real que
+después hay que acordarse de restringir en cada endpoint, y el endpoint que se olvida es el que
+convierte el 2FA en decorativo. Acá el primer paso devuelve un 401 con un desafío y **cero**
+tokens, cero cookies, cero filas en `session`.
+
+**El desafío vive en `verification` con `purpose="two_factor"`**, no en un JWT: la tabla ya tiene
+el canje atómico, así que el desafío es de un solo uso y revocable sin escribir nada nuevo. Un
+desafío stateless sería replayeable durante todo su TTL. Lleva el `user_id` adelante separado por
+un punto (`{uuid}.{token}`) para poder canjearlo con `consume(identifier, purpose, hash)` sin
+agregarle al puerto un `consume_by_hash` que sacaría el identificador de la clave de canje. TTL
+de 5 minutos: lo que tarda alguien en buscar el teléfono.
+
+⚠️ **El desafío se consume ANTES de verificar el código.** Al revés, quien tenga el desafío podría
+probar códigos indefinidamente sobre el mismo; así, cada intento cuesta un desafío nuevo — o sea
+la contraseña.
+
+**TOTP en stdlib, sin `pyotp`.** El algoritmo son treinta líneas —contador de 8 bytes big-endian,
+HMAC-SHA1, truncado dinámico, módulo— y el HMAC lo hace la stdlib: una dependencia acá no compra
+corrección, compra superficie de cadena de suministro en el camino de autenticación. Mismo
+criterio que el códec del sobre firmado. SHA-1 **no es un desvío**: es lo que especifica la RFC
+4226 y lo único que implementan Google Authenticator, Authy y 1Password — y el uso de HMAC no
+depende de la resistencia a colisiones, que es lo único que SHA-1 tiene roto. Emitir con SHA-256
+daría códigos que la app del usuario no puede generar. El test del apéndice D de la RFC 4226 es
+el único que prueba que la implementación es correcta y no sólo autoconsistente.
+
+**Ventana de ±1 paso, y `verify_totp` devuelve el paso con el que matcheó, no un booleano.**
+Devolverlo es lo que permite persistirlo, y sin eso no hay defensa de replay: un código vale
+hasta 90 segundos, así que quien lo lee por encima del hombro o lo saca de un formulario de
+phishing lo puede volver a usar. `last_used_step` convierte "es válido" en "es válido y no se
+usó". El bucle recorre la ventana entera y **no corta al primer match**: salir temprano haría que
+el tiempo de respuesta diga qué paso acertó, o sea cuánto deriva el reloj del usuario.
+
+**El secreto TOTP no se puede hashear** —para verificar un código hay que recalcularlo— así que se
+cifra: **JWE compacto `dir` + `A256GCM` de `joserfc`**, que ya es dependencia del extra porque
+firma los tokens. Es AEAD, así que el texto cifrado está autenticado: alguien con escritura en la
+base no puede sustituir el secreto de un usuario por uno que él conoce sin que el descifrado
+falle. Un XOR con una clave derivada dejaría esa puerta abierta, y `cryptography` sería una
+dependencia nueva para algo que la que ya está resuelve. La clave se **deriva** de `secret_key`
+con una etiqueta propia: reusar el mismo material para cifrar secretos TOTP, firmar sobres y
+derivar valores anti-CSRF hace que romper uno rompa los tres.
+
+**Inscribir no activa.** `confirmed_at IS NULL` = inscripto e inactivo. Si inscribir activara el
+factor, el usuario que guardó mal el QR queda afuera en el siguiente login y sólo lo saca de ahí
+una intervención humana. **Desactivar exige un código válido**, y es la operación que más
+protección necesita, no menos: sin eso, quien roba una sesión con el 2FA ya pasado apaga el
+segundo factor y se queda con la cuenta. Y no se puede desactivar impersonando: sería la escalada
+más barata del sistema.
+
+`UNIQUE` sobre `user_id`, y no es cosmético: dos filas dejarían que el secreto de una inscripción
+abandonada siga sirviendo para entrar, y ningún flujo lo borraría nunca. `upsert` borra e inserta
+en vez de hacer `ON CONFLICT DO UPDATE` porque una re-inscripción **es** un factor nuevo:
+arrastrar el `last_used_step` o los `failed_attempts` del anterior dejaría al usuario nuevo
+bloqueado por los intentos del viejo.
+
+`MAX_FAILED_ATTEMPTS = 5`: un OTP de 6 dígitos con ventana ±1 deja 3 códigos válidos de 10⁶, o sea
+3 en un millón por intento — con 20 intentos por ventana y reintentos indefinidos el ataque cierra
+en horas. 5 y no 3 porque un usuario con el reloj corrido falla dos veces legítimamente. El techo
+se chequea **antes de calcular nada**: seguir verificando regala intentos, y calcular el HMAC
+igual haría que el tiempo diga si la fila existe.
+
+Lo que el plugin **no** hace, a propósito: no aporta códigos de respaldo. Un código de respaldo es
+una credencial de un solo uso y alta entropía, o sea exactamente lo que `verification` ya modela,
+así que va como un plugin aparte que dependa de este.
+
+`VerificationPurpose` gana `"two_factor"`. Los propósitos de los plugins se enumeran en el núcleo
+igual que `"magic_link"`, y no porque el núcleo los conozca: es el tipo de una columna y un
+`Literal` no se extiende desde afuera. Tiparla `str` perdería la garantía justo donde importa,
+porque el propósito es parte de la clave de canje.
+
+Tests (`test_darwin_two_factor.py`, 71): el vector de la RFC 4226; estabilidad dentro del paso y
+cambio al siguiente; la ventana de ±1 y el rechazo a dos pasos; `after_step`; basura de todos los
+largos; tolerancia a espacios y guiones; el `issuer` dos veces en la URI. Del cifrado: ida y
+vuelta, el secreto ausente del texto cifrado, nonce distinto por llamada, otra clave no descifra,
+y **alterar un byte hace fallar el descifrado** (la propiedad AEAD). De los flujos: inscribir no
+activa y el sign-in sigue en un paso; confirmar activa; el primer paso **no deja ninguna fila en
+`session`**; contraseña mala sigue dando `InvalidCredentialsError` (el hook corre después);
+desafío de un solo uso; el desafío se consume aunque el código sea malo; reemitir invalida el
+anterior; vencido; el desafío de otro no sirve; seis desafíos malformados dan 401 y no 500;
+**el mismo código no sirve dos veces**; **ocho canjes concurrentes, gana uno**; el paso siguiente
+sí sirve; el techo de intentos bloquea incluso al código correcto; un código válido resetea los
+intentos; desactivar exige código. Del borde: el 401 sin cookies, el flujo completo por HTTP
+(login → estado → inscribir → confirmar → login parcial → canje), 409 del plugin llegando por
+`exception_status_map()`, y el rate limit frenando el canje número once. Y dos tests de que el
+punto de extensión **no es de `two_factor`**: un bloqueo por país corta el sign-in igual, y un
+hook con un bug no deja entrar a nadie.
+
+#### `oauth` ✅ — Authorization Code + PKCE, y la vinculación que no se hace sola
+
+Reusa la tabla `account` del núcleo, que ya está diseñada para esto: `provider_id` +
+`account_id` con `UNIQUE`, más las seis columnas de tokens. Aporta una tabla propia sólo para el
+`state` en vuelo.
+
+⚠️ **La decisión que más importa: por default NO se vincula por coincidencia de mail.** Es la toma
+de cuentas más común de OAuth. Si Ana tiene cuenta local con `ana@ejemplo.com` y el flujo trae una
+identidad de proveedor con ese mail, vincularlas automáticamente deja que cualquiera que consiga
+registrar `ana@ejemplo.com` en *cualquier* IdP configurado entre a su cuenta — y hay IdPs que no
+verifican el mail, u otros donde se puede cambiar sin re-verificar. El default es
+`LinkPolicy.NEVER`, y la coincidencia produce un 409 que le dice al usuario que inicie sesión con
+su método actual y vincule desde los ajustes. La vinculación explícita es la única segura.
+
+`VERIFIED_EMAIL` existe para despliegues con un único IdP corporativo, y exige **las dos**
+verificaciones —la del proveedor y la de la cuenta local— porque cada una sola deja una mitad del
+agujero abierta. `ANY_EMAIL` es la insegura, disponible sólo para migraciones desde sistemas que
+ya lo hacían, con la advertencia puesta en el código.
+
+**PKCE es obligatorio y `S256`, nunca `plain`.** `plain` manda el verificador en la URL de
+autorización, o sea que cualquiera que vea esa URL —historial, log de proxy, `Referer`— puede
+canjear el código. La RFC 7636 permite `plain` sólo para clientes que no pueden hacer SHA-256, que
+en Python no existen.
+
+**Por qué el `state` tiene tabla propia y no reusa `verification`.** Necesita guardar el
+`code_verifier` de PKCE, el `redirect_uri` con el que se inició, y a qué usuario se vincula;
+`verification` tiene un `value_hash` y nada más. Y el verificador **no puede** viajar en el
+`state` —que es lo que permitiría meterlo en la tabla genérica— porque el `state` va en la URL:
+un verificador en la URL anula PKCE por completo. Guardarlo del lado del servidor es toda la
+protección.
+
+El `state` se guarda **hasheado** (viaja por la URL y queda en logs del proveedor), es de un solo
+uso vía `UPDATE ... WHERE consumed_at IS NULL RETURNING`, está atado al `provider_id` —un `state`
+de Google no se canjea en el callback de GitHub— y **se consume antes de hablar con el
+proveedor**, así que un `state` inválido no gasta una llamada de red contra un tercero. Un canje
+fallido **igual lo consume**: es un vale de un solo uso para *intentar*, y dejarlo vivo permitiría
+reintentar indefinidamente.
+
+**El `redirect_uri` se valida dos veces**: contra una allowlist al iniciar, y contra el guardado
+en el callback. El proveedor ya valida el suyo, pero eso no cubre dos URIs ambas registradas: sin
+el segundo chequeo, un flujo iniciado para una se puede completar en la otra. Con la allowlist
+vacía no se valida —deliberado, para desarrollo— y un `StartupStep` lo avisa por log en el
+arranque en vez de fallar.
+
+**El perfil sale del `userinfo`, no del `id_token`.** Verificar un `id_token` bien exige traer y
+cachear el JWKS de cada proveedor y validar `iss`/`aud`/firma; usarlo sin verificar es peor que no
+usarlo, porque viene del mismo canal que un atacante controlaría. El `userinfo` da lo mismo sobre
+un canal ya autenticado con un access token que el proveedor emitió recién.
+
+**`email_verified` por default es `False`**, y un proveedor que no lo informa se trata como no
+verificado. GitHub lo marca `False` **siempre**, porque `/user` no informa el campo: asumirlo
+sería tomar la palabra de algo que el proveedor no dice. Un usuario creado por OAuth copia el
+valor del proveedor y no asume `True`: esa afirmación después la usan otros flujos, como el reset
+de contraseña.
+
+**Los tokens del proveedor se guardan cifrados** con `SecretBox` (JWE `dir` + `A256GCM`, AEAD,
+clave derivada por etiqueta). Son credenciales de otro sistema: un dump que las entregue en claro
+es un incidente en la API del tercero además del propio, y el usuario ni se enteraría de que su
+cuenta de Google quedó expuesta por una base nuestra. El cifrado se **factorizó** de
+`two_factor`: `SecretBox` con `label` es la pieza reusable, y `TotpSecretCipher` quedó como una
+subclase de cuatro líneas que fija su etiqueta. Cada propósito tiene su etiqueta y por lo tanto su
+clave.
+
+**Desvincular se niega a dejar la cuenta sin ningún método de acceso.** Desvincular el único
+proveedor de un usuario que no tiene contraseña lo deja afuera de su propia cuenta, y ese botón
+está a un click en cualquier pantalla de ajustes. Y una identidad ya vinculada a otra cuenta **no
+se mueve**: moverla dejaría a la primera sin su método de acceso.
+
+**A quién se vincula sale del `state`**, fijado al iniciar el flujo, y no del callback — que lo
+controla en parte quien maneja el navegador. Ni vincular ni desvincular se permiten estando
+impersonado: sería tomarle la cuenta a la persona que estás impersonando.
+
+Los proveedores son **datos y una función**: tres URLs, el client, los scopes y cómo se lee el
+`userinfo`. No hay una clase por proveedor con métodos sobreescribibles, porque lo único que varía
+de verdad es la forma del JSON. Vienen preconfigurados Google, GitHub, Microsoft, GitLab y
+Discord, como **funciones** —necesitan `client_id` y `client_secret`, y una constante con los
+campos vacíos invita a olvidarse de llenar uno—. Las URLs se exigen HTTPS (por HTTP viajarían en
+claro el `code` y el `client_secret`), con `localhost` permitido para desarrollo. Google pide
+`access_type=offline` por default: sin eso **no devuelve refresh token**, y el access token
+guardado deja de servir en una hora sin forma de renovarlo — el detalle que hace que la
+integración parezca funcionar en el test y falle al día siguiente. No hay descubrimiento por
+`.well-known`: sería una llamada de red en el arranque contra un tercero, y las URLs de los
+proveedores grandes no cambian.
+
+El cliente HTTP está detrás de un puerto (`AbstractOAuthHttpClient`) con un adaptador de `httpx`
+en el extra nuevo **`[darwin-oauth]`**. El puerto no es ceremonia: los 69 tests ejercitan el flujo
+completo con un doble que puede *mentir* —devolver un mail que no verificó, un `account_id`
+distinto, un 400— sin levantar un servidor ni necesitar el extra. El adaptador pone timeout
+explícito (sin él `httpx` espera indefinidamente y un proveedor colgado ocupa workers),
+`follow_redirects=False` (un `token_url` que redirige mandaría el `client_secret` a otro host),
+`Accept: application/json` (GitHub responde form-urlencoded si no se le pide), y **no propaga el
+cuerpo de error del proveedor** al usuario: puede traer el `client_id` o un fragmento del secreto.
+
+⚠️ **El callback devuelve JSON, no un redirect al frontend.** Un redirect con los tokens en el
+fragmento o en la query los deja en el historial del navegador y en el `Referer` de la página
+siguiente.
+
+El puerto y la entidad del `state` viven en `domain.py` y no en `repository.py`, y eso lo
+descubrió `tests/test_optional_dependencies.py`: `repository.py` importa sqlalchemy en el nivel
+superior, así que tenerlos ahí hacía que importar el servicio exigiera el extra `[sql]`.
+
+Tests (`test_darwin_oauth.py`, 69): PKCE en el rango de la RFC, el desafío no revela el
+verificador, `S256` fijo. De los proveedores: los cinco preconfigurados se arman, el secreto no
+aparece en el `repr`, HTTP se rechaza y `localhost` se permite, `email_verified` normaliza el
+string `"true"`, GitHub nunca lo marca verificado, dos proveedores con el mismo `id` se rechazan.
+Del inicio: la URL lleva los ocho parámetros de la spec, **el verificador no está en la URL** y el
+desafío de la URL corresponde al verificador guardado, el `state` va hasheado, un
+`redirect_uri` fuera de la allowlist se rechaza. Del callback: crea la primera vez y entra la
+segunda, el canje recibe el verificador y el secreto, el perfil sale del `userinfo` con el access
+token, `email_verified` se respeta. Del `state`: un solo uso, inventado, **no se llama al
+proveedor con un `state` malo**, vencido, `redirect_uri` que no coincide, y **ocho callbacks
+concurrentes donde gana uno**. De la vinculación: **el test de la toma de cuentas** (Ana tiene
+cuenta, el atacante trae su mail, no entra) y que el rechazo no deja nada vinculado a medias; las
+dos verificaciones de `VERIFIED_EMAIL` por separado; `ANY_EMAIL` documentada como lo que es; a
+quién se vincula sale del `state` (probado con dos usuarios); una identidad ajena no se mueve. De
+los tokens: se guardan cifrados, se descifran para llamar a la API, el vencimiento sale del
+`expires_in`, y sin refresh token no explota. De desvincular: no deja la cuenta sin acceso, con
+contraseña sí se puede. Del borde: las siete rutas, el 404 del proveedor no configurado, el 409
+del mail coincidente llegando por `exception_status_map()`, y el flujo de vinculación completo por
+HTTP. Más un test de que `oauth` y `two_factor` conviven en el mismo registro sin chocar tablas ni
+mapas.
+
+#### `impersonate` ✅ — el plugin que justifica los dos principales
+
+Es el plugin que existe para probar que la decisión central de Darwin era la correcta: que
+`AuthContext` tenga **dos** principales —`actor`, quien ejecuta, y `subject`, a quién afecta— en
+vez de un `user_id` con un flag al costado. Con eso, una impersonación es una sesión normal con los
+dos campos distintos, y todo el resto —revocación, transporte, CSRF, auditoría, el sobre que cruza
+la cola— funciona sin saber que hay una impersonación en curso.
+
+**No aporta ninguna tabla.** La fila de `session` ya lleva `actor_user_id`, `subject_user_id`,
+`impersonation_reason`, `impersonation_granted_by` e `impersonation_expires_at` desde la Fase 3,
+justamente para que este plugin no tuviera que inventar nada. Lo que agrega es la **autorización**
+y los tres endpoints.
+
+**La política es un puerto, no una lista de scopes.** Un scope alcanza para "¿puede impersonar?" y
+no para "¿puede impersonar *a esta persona*?", que es la pregunta que importa: un agente de soporte
+que puede entrar como cualquier cliente no debería poder entrar como el CTO. El default
+—`ScopeImpersonationPolicy`— cubre el caso común y cierra las cuatro puertas, en este orden:
+
+1. **No hay cadenas.** Si A impersona a B y desde ahí impersona a C, la auditoría de la segunda
+   dice que el actor es B — que nunca hizo nada. Es la forma más barata de borrar la traza, y por
+   eso se corta antes que cualquier otro chequeo.
+2. **No se impersona a uno mismo.** No es peligroso, pero produciría una sesión con
+   `actor == subject` marcada como impersonada, que es exactamente el estado que el validador de
+   `AuthContext` prohíbe.
+3. **El actor necesita el scope**, consultado del actor y nunca del subject.
+4. **El sujeto puede estar protegido**: por tener él mismo el permiso de impersonar (escalada
+   lateral con la traza borrada, protegido por default) o por tener un scope de la lista de
+   protegidos.
+
+⚠️ **Una sesión impersonada NO se puede refrescar, y ese es el mecanismo que hace real el techo de
+60 minutos.** El chequeo está en `SessionService.refresh` —es una propiedad del núcleo, porque la
+fila ya sabe si es impersonada— y va **antes** de `consume_for_rotation`: consumir la fila y
+después rechazar dejaría la sesión inutilizable por lo que le queda de hora. Sin este rechazo, el
+techo sería "60 minutos por rotación", o sea ninguno: el operador extendería la sesión
+indefinidamente sin volver a pedir permiso ni dejar un segundo registro de auditoría.
+`IMPERSONATION_CAP` pasó a ser una constante nombrada, con el porqué del número en su comentario.
+
+**Impersonar no presta permisos.** Los scopes del token impersonado son los del **actor**: el
+operador ve lo que el otro ve y puede hacer lo que él mismo puede hacer. Si fueran los del subject,
+impersonar a un admin daría los permisos del admin, y la política que protege a los admins sería
+la única defensa — una capa donde tendría que haber dos.
+
+**La sesión del operador no se toca.** Empezar no la revoca, así que terminar es descartar el token
+de impersonación: no hay que reconstruir nada, y si el operador cierra la pestaña la impersonación
+muere sola con su techo. Sin esta propiedad, "volver" sería un segundo intercambio que puede fallar
+a mitad de camino.
+
+**La política decide antes de que exista cualquier sesión.** Si autorizara después de crearla, un
+rechazo dejaría una sesión impersonada huérfana que hay que revocar — y el camino de limpieza es
+el que falla. Hay un test que cuenta las filas de `session` antes y después de un rechazo.
+
+**Un principal de sistema no puede impersonar**: `"cron:cerrar-registros"` no es una persona, no
+tiene fila en `user`, y no hay a quién responsabilizar del acceso.
+
+Los comandos **no llevan `actor_id`**: sale del contexto ambiental. Un campo que el llamador
+rellena es un campo que el llamador puede mentir, y acá mentirlo sería impersonar en nombre de
+otro. Que el contexto llegue al worker lo resuelve el sobre firmado de la Fase 6 — y hay un test
+que lo comprueba de punta a punta, incluido que re-adjuntar el sobre a otro mensaje no verifica.
+
+`describe()` **lee la fila de `session`**, y es la segunda excepción deliberada al "cero DB en el
+camino caliente" después de `/auth/me`. El motivo y el vencimiento real no viajan en el token: el
+motivo es texto de largo arbitrario, y el vencimiento del techo sería un claim más pagado en cada
+petición para un caso raro. Es una lectura por carga de página, no por request.
+
+El `StartupStep` del plugin **avisa si no hay sink de auditoría**. Avisa y no falla —la auditoría
+es opcional en el resto de Darwin, y hacerla obligatoria acá rompería un despliegue que
+funciona— pero una impersonación sin auditoría es exactamente lo que este plugin promete que no
+pasa, así que el aviso va en el arranque y no en un docstring.
+
+Tests (`test_darwin_impersonate.py`, 48): las cuatro puertas de la política, cada una por
+separado; la protección de impersonadores apagable, con el test documentando qué se pierde; una
+política propia; un `extra` mal formado que no da 500 ni pase libre. De los requisitos: sin
+contexto, motivo vacío en tres formas, sujeto inexistente con el error genérico, principal de
+sistema. De la sesión: los dos principales en la fila, el techo de una hora, `act`/`sub`/`imp` en
+el token, **impersonar no presta permisos**, el contexto reconstruido consulta al actor, y la
+sesión del operador sobrevive. Del refresh: se rechaza, **el rechazo no consume la fila** ni
+dispara la detección de reuso, y una sesión normal sí se rota. De la auditoría: inicio y fin con
+los dos principales, el `operator_session_id` para poder correlacionar, y que un rechazo no deja
+sesión. Del sobre: el contexto impersonado cruza la cola con los dos principales, sale con
+`transport="worker"`, y no verifica re-adjuntado a otro mensaje. Del borde: el flujo completo, 403
+sin el scope, 401 sin sesión, 422 con motivo vacío, 409 al impersonarse a sí mismo, 409 al
+terminar una sesión normal, y **403 al refrescar impersonando**.
+
+Encontrado por un test, no por la revisión: `/{user_id}` estaba declarado **antes** de `/stop`, y
+FastAPI resuelve las rutas en orden de registro — así que `POST /auth/impersonate/stop` matcheaba
+la ruta paramétrica e intentaba parsear `"stop"` como UUID, devolviendo 422 en vez de terminar la
+impersonación.
+
+#### `passkey` ✅ — WebAuthn, y lo único que se guarda es público
+
+Es el plugin con la mejor propiedad de seguridad del módulo, y la propiedad es esta: **lo que se
+guarda es público**. No hay nada en `darwin_passkey` que un atacante con un dump de la base pueda
+usar para autenticarse, ni acá ni en otro sitio.
+
+| Método | Qué se guarda | Un dump sirve para… |
+| :-- | :-- | :-- |
+| Contraseña | hash de Argon2id | atacar por diccionario, offline |
+| TOTP | secreto compartido, cifrado | generar códigos, si además tenés la clave de la app |
+| **Passkey** | **clave pública** | **nada** |
+
+Y encima el navegador la ata al origen, así que un sitio clonado no puede reenviar la aserción. Es
+la razón por la que este plugin es el único de Darwin que no tiene ningún secreto que proteger.
+
+**Por qué acá hay una dependencia y en `two_factor` no.** El TOTP son treinta líneas de `hmac` y
+aritmética: una librería no compra corrección, compra superficie de cadena de suministro. WebAuthn
+es lo contrario —CBOR, claves COSE, cuatro formatos de attestation, cadenas de certificados, un
+contador de firmas— y escribirlo a mano sería criptografía propia en el camino de autenticación. Va
+`py_webauthn` en el extra nuevo **`[darwin-passkey]`**, detrás de un puerto.
+
+⚠️ **El contador de firmas es la única señal de compromiso que WebAuthn da**, y el puerto existe
+sobre todo para poder probarla: con hardware real, un contador que no avanza es imposible de
+reproducir. Muchas implementaciones lo descartan porque "algunos autenticadores no lo incrementan";
+acá se distingue el autenticador que **nunca** lo usa (contador 0 siempre, se acepta) del que lo
+usaba y dejó de avanzar (se rechaza y no se abre la sesión). El chequeo es sobre la **regresión**,
+no sobre que el número sea mayor que cero. Y el contador **no sube si la firma no valida**: subirlo
+antes de verificar dejaría que una firma inválida desincronice al autenticador legítimo — negación
+de servicio contra una cuenta, gratis.
+
+**El desafío se guarda en claro, y a diferencia del resto de Darwin eso es lo correcto.** Un
+desafío WebAuthn es un nonce público: viaja al navegador y vuelve, y conocerlo no permite
+autenticarse porque hace falta la clave privada del autenticador. No es un token de sesión. Hubo
+una primera versión que lo hasheaba —copiando el patrón de `verification`— y tenía un defecto de
+diseño: con el desafío hasheado, el `expected_challenge` que el verificador compara tiene que salir
+del `clientDataJSON` del propio cliente (el hash sólo sirve para *encontrar* la fila), así que la
+comparación queda entre un valor y sí mismo. Sigue siendo sólida —el hash coincidió, o sea que el
+valor es el que el servidor emitió— pero es circular de leer, y un chequeo de seguridad que hay que
+razonar dos veces para ver que sirve es un chequeo que alguien va a "simplificar". Guardándolo en
+claro, el `expected_challenge` sale de la fila y la comparación es la que el protocolo pide.
+
+Dos tablas y no una: las credenciales viven para siempre y los desafíos viven treinta segundos.
+Juntas darían una tabla donde el 99% de las filas son basura de un minuto atrás.
+
+**El `user_id` sale del desafío, nunca del cuerpo del request.** Aceptarlo del cliente dejaría
+registrar una credencial propia en la cuenta de otro — toma de cuenta directa, en un endpoint que
+parece administrativo. Y si el desafío se emitió para un usuario concreto, la credencial tiene que
+ser suya: sin ese chequeo, alguien pide un desafío "para Ana" y lo completa con su propia
+credencial, y la firma valida.
+
+`excludeCredentials` va siempre con lo que el usuario ya tiene: sin eso el navegador le ofrece
+registrar de nuevo una credencial existente y el flujo falla al guardar, con un error de base en
+vez de un mensaje. Una credencial ya registrada **no se mueve** de cuenta: si es de otro, moverla le
+saca un método de acceso; si es del mismo, sobreescribir el contador reiniciaría la detección de
+clonado.
+
+**Borrar la última credencial se rechaza si no hay otro método de acceso** —contraseña o proveedor
+vinculado, consultado en `account`, el mismo chequeo que hace `oauth.unlink`. El botón está a un
+click en cualquier pantalla de ajustes y el usuario que lo aprieta no tiene forma de volver.
+Borrar la de otro devuelve el **mismo** error que "no existe": un 403 distinto le confirmaría a
+quien prueba ids que la credencial existe.
+
+Del adaptador: **`origins` es obligatorio** —es el chequeo anti-phishing, y se exige al construir,
+no al primer login—; `attestation="none"` por default (pedir attestation obliga a mantener cadenas
+de certificados de fabricante y rechaza autenticadores de plataforma válidos);
+`residentKey="preferred"` (`required` rechazaría llaves que sirven como segundo factor, y
+`preferred` habilita igual el login sin usuario declarado en las que pueden); y el detalle del
+error **va al log, no a la respuesta** — `py_webauthn` dice exactamente qué chequeo falló, y
+devolverlo es darle a quien prueba el camino para el siguiente intento.
+
+`POST /auth/passkey/authenticate/options` **no revela si la cuenta existe**: un mail desconocido
+devuelve opciones sin `allowCredentials`, la misma forma exacta que el flujo sin mail. El resumen
+que sale al cliente **no lleva `credential_id` ni `public_key`**: no son secretos, pero no le
+sirven a la interfaz, y menos respuesta es menos superficie. Registrar y borrar **no se permiten
+estando impersonado**: registrar una credencial propia en la cuenta de la persona que estás
+impersonando es tomarle la cuenta, y de forma permanente.
+
+Un `StartupStep` avisa si el `rp_id` es `localhost`: es lo correcto en desarrollo —el único host
+que los navegadores aceptan sin HTTPS— y shippearlo a producción deja el login roto para todos, con
+un error del navegador que no dice qué está mal.
+
+Tests (`test_darwin_passkey.py`, 65): base64url en las tres direcciones. Del registro: el flujo
+completo, **el `user_id` sale del desafío**, `excludeCredentials`, credencial ya registrada,
+credencial de otro que no se mueve, verificación fallida que no guarda. Del desafío: se guarda en
+claro con el valor exacto, **el `expected_challenge` sale de la fila** (lo asevera el autenticador
+falso, así que si el servicio le pasara el del cliente el test falla), un solo uso, registro↔login
+en los dos sentidos, vencido, inventado, seis respuestas corruptas que dan 401 y no 500, y **ocho
+logins concurrentes donde gana uno**. Del contador: avanza, **no avanza → corta**, retrocede →
+corta, el que nunca lo usa se acepta tres veces seguidas, el que lo usaba y volvió a 0 se rechaza,
+y no sube si la firma no valida. De la autenticación: abre la sesión, con usuario limita las
+credenciales ofrecidas, sin usuario descubre quién es, la credencial de otro no completa un desafío
+dirigido, una desconocida no entra, una sin id se rechaza. Del ciclo de vida: listar por usuario,
+borrar con contraseña, **no borrar la última sin otro método**, con dos sí, la de otro da
+not-found. Del adaptador real: sin `origins` no se construye, sin `rp_id` tampoco, las opciones son
+válidas y el desafío de la URL corresponde, dos desafíos no se repiten, y una respuesta basura da
+el error genérico. Del borde: el flujo completo por HTTP, el resumen sin la credencial, el mail
+desconocido indistinguible, 401 sin sesión, **401 con contador clonado**, 409 al borrar la última,
+404 con una inexistente. Más un test de que los cuatro plugins conviven en un registro con sus
+cinco mixins sin chocar.
+
+#### `organization` ✅ — multi-tenancy, y las invariantes que casi nadie sostiene
+
+Tres tablas —`organization`, `member`, `invitation`— y una jerarquía de tres roles: `owner` >
+`admin` > `member`. **No hay un sistema de permisos por organización**, y es deliberado: HexCore ya
+tiene `RoleRegistry` para que el consumidor declare su modelo de autorización, y un segundo sistema
+adentro del plugin le daría dos lugares donde mirar cuando algo no autoriza. Lo que el plugin
+garantiza es **quién puede administrar a quién**; qué puede hacer un `member` en tu producto es
+tuyo.
+
+`OrgRole.rank` existe porque el orden alfabético de `admin` < `member` < `owner` es exactamente el
+equivocado: un `>` sobre los nombres pasaría los tests por casualidad en algunos pares. Y
+`outranks` es **estricto**: un par no administra a un par.
+
+⚠️ **Invariante 1: una organización nunca queda sin `owner`.** Sacar o degradar al último la vuelve
+inadministrable —nadie puede invitar, nadie puede cambiar roles— y salir de ahí requiere un `UPDATE`
+a mano en producción.
+
+La primera implementación contaba los owners en la base y después actualizaba, con un comentario que
+decía que contar en la base era lo que hacía la operación segura. **Eso era falso, y lo demostró un
+test**: contar y después escribir sigue siendo check-then-act, y dos degradaciones concurrentes
+—cada una viendo "hay 2 owners"— dejaron la organización con **cero**. La corrección es meter la
+condición adentro del `WHERE` del `UPDATE`/`DELETE`, como subconsulta correlacionada `EXISTS`: una
+sola sentencia, y la decisión la toma la base. Es el mismo patrón que `consume_for_rotation` y
+`consume_step`, y el episodio deja claro que "la consulta va a la base" no es lo mismo que "la
+operación es atómica". `count_by_role` sigue existiendo pero quedó marcado como **informativo**:
+sirve para mostrarle al usuario "sos el único owner" antes de que apriete el botón, no para decidir.
+
+⚠️ **Invariante 2: nadie asciende a alguien por encima de sí mismo, ni actúa sobre un par o un
+superior.** Tres chequeos, cada uno cerrando una escalada: no se invita con un rol mayor al propio
+(un `admin` que invita un cómplice como `owner` es la escalada más barata del modelo, y pasa por un
+endpoint que suena inofensivo), no se asciende uno mismo, y no se degrada ni se saca a un par ni a
+un superior.
+
+⚠️ **Invariante 3: la invitación está atada al mail, y el mail tiene que estar verificado.**
+Reenviar el link de invitación es exactamente lo que la gente hace; sin el chequeo, quien lo reciba
+entra con el rol que se le había dado a otro. Y sin exigir la verificación, alguien registra una
+cuenta con el mail del invitado y le roba la invitación **sin acceso a la casilla**. El mail se
+chequea **antes** de consumir la invitación: consumirla primero y rechazar después la gastaría, y el
+invitado legítimo tendría que pedir otra por un intento que no era suyo.
+
+El token de invitación se guarda **hasheado** —el link viaja por mail y queda en el buzón, en los
+logs del proveedor y en el historial del cliente— y se canjea con un `UPDATE ... WHERE status =
+'pending' RETURNING`: sin eso, dos aceptaciones concurrentes crearían dos membresías y el `UNIQUE`
+rechazaría la segunda con un error de base en vez de con un mensaje. Revocar **marca** la fila y no
+la borra: una invitación revocada es información de auditoría — dice que alguien invitó y después se
+arrepintió, y `invited_by` dice quién.
+
+**`require_role` es una lectura por operación con alcance de organización, y no va en el token.** Un
+`org_role` en el access token queda obsoleto cuando alguien degrada a un `admin`, y seguiría
+valiendo hasta que el token venza — que es exactamente lo que no se quiere de un cambio de permisos.
+
+**El `owner` se crea en el mismo flujo que la organización**, no en un paso aparte: una organización
+sin `owner` es inadministrable desde el segundo cero, y dos pasos separados garantizan que alguna
+vez uno falle en el medio. **El slug no se puede cambiar**: rompe cada link guardado, cada bookmark
+y cada integración que lo tenga fijo, así que el campo no está en el cuerpo del `PATCH`.
+
+**Irse uno mismo no requiere ningún rol** —salvo ser el último `owner`—: nadie tiene que pedir
+permiso para dejar de trabajar en un lugar. Y **la lista de miembros exige ser miembro**: un
+endpoint que la devuelve sin chequear es una fuente de datos para prospección y para ingeniería
+social. Aceptar una invitación **no se permite impersonando**: metería a la persona impersonada en
+una organización sin que se enterara.
+
+Tests (`test_darwin_organization.py`, 80): el orden de los roles, y un test que documenta que el
+alfabético sería el equivocado; nueve casos de `slugify` y que nunca deja caracteres de URL. De
+crear: el creador queda `owner`, slug propio, slug repetido, metadata, y que el slug no se mueve al
+actualizar. De autorización: no-miembro, `member` que no llega a `admin`, `owner` que llega a todo,
+la lista de miembros que no es pública. De invitar: el flujo completo, **el token hasheado**, un
+`member` que no puede invitar, **un `admin` que no puede invitar como `owner`**, hasta su propio
+nivel sí, miembro existente, normalización del mail, techo de miembros. De aceptar: **reenviar el
+link no sirve**, el rechazo no gasta la invitación, **un mail sin verificar no acepta**, un solo
+uso, vencida, token inventado, y **ocho aceptaciones concurrentes donde gana una**. De revocar:
+invalida, deja rastro con `invited_by`, dos veces falla, la de otra organización da el mismo error
+que "no existe". Del último owner: no se degrada, no se saca, con dos uno se puede ir, **dos
+degradaciones concurrentes dejan al menos uno**, borrar la organización entera sí se permite. De la
+jerarquía: un `admin` no se asciende, no degrada a un par, no degrada al `owner`, sí administra a un
+`member`, no saca a otro `admin`. De irse: solo sí, no-miembro no, un `member` no saca a otro,
+sacar y volver a invitar funciona. De multi-tenancy: la misma persona con roles distintos en dos
+organizaciones. Del borde: el flujo completo por HTTP, **que `/organizations/invitations/accept` no
+choque con la ruta paramétrica** (tienen la misma cantidad de segmentos), 401 sin sesión, 403 de
+no-miembro, 409 de slug repetido, 409 al degradar al último owner, las pendientes sin el token, y
+que el `PATCH` ignore un slug mandado. Más un test de que **los seis plugins conviven** en un
+registro con sus siete mixins y sus 29 excepciones mapeadas.
+
+### Fase 10 — Kit de testing y deprecaciones ✅
+
+Tres entregas: los dos dobles genéricos que le faltaban a `hexcore/testing/`, el kit de Darwin, y
+la deprecación de `hexcore.domain.auth`.
+
+#### El kit genérico: `FakeRepository` y `FakeUnitOfWork`
+
+Van al kit general y no al de Darwin porque sirven mucho más allá de identidad. `sqlite_engine`
+sigue siendo el correcto cuando lo que se prueba **es** la persistencia —una consulta, un
+constraint, una migración—; esto es para cuando lo que se prueba es la lógica que está arriba.
+
+Un doble de prueba tiene un modo de falla propio y peor que el de cualquier otro código: **si es
+más permisivo que la implementación, hace pasar tests que deberían fallar.** Las tres decisiones
+salen de ahí:
+
+1. **Guarda copias profundas, no las entidades que le pasaron.** Sin eso, mutar la entidad después
+   de guardarla cambia lo guardado, y el test pasa por una aliasing que en producción no existe —
+   el repositorio real serializa a la base. Es el falso positivo más común de un repositorio en
+   memoria, y la copia es *profunda* porque con una superficial una lista adentro se seguiría
+   compartiendo, que es el caso donde pasa desapercibido.
+2. **El `rollback` deshace de verdad**, restaurando cada repositorio a su punto de guardado. Un
+   doble que sólo cuenta la llamada hace que los tests de transaccionalidad pasen sin probar nada.
+3. **No auto-descubre repositorios**: los recibe explícitos. El descubrimiento por nombre de clase
+   es justamente el mecanismo que Darwin evita —`_repository_key_from_class_name` levanta
+   `ValueError` ante una colisión— y replicarlo en un doble traería el mismo problema a los tests.
+
+`get_by_id` **lanza** en vez de devolver `None`, para que el test lo vea ahí y no tres líneas
+después con un `AttributeError`. Y `calls` / `count_calls` existen para aseverar que un caso de uso
+no consultó dos veces lo mismo — el bug de rendimiento que un test contra una base no muestra.
+
+#### El kit de Darwin: `hexcore/darwin/testing/`
+
+Los tests de Darwin del propio framework corren contra SQLite, y ahí es lo correcto: parte de lo
+que prueban es la atomicidad de las sentencias. Un consumidor no está probando eso — está probando
+*su* caso de uso, que además pasa por auth. Para eso, levantar un motor, crear seis tablas y
+borrarlas es tiempo y ceremonia por nada.
+
+**Los seis dobles de los puertos** mantienen la propiedad que importa: las operaciones que la
+seguridad exige atómicas siguen siendo de un solo paso. `consume`, `consume_for_rotation` y
+`bump_token_generation` chequean y escriben sin ceder el control, así que de dos canjes concurrentes
+gana exactamente uno — igual que el `UPDATE ... RETURNING` real. Un fake que las partiera en dos
+haría que los tests de replay pasen y el código real falle. `FakeUserRepository.add` **lanza** con
+un mail repetido, igual que el `UNIQUE`; `FakeRevocationList` **vence de verdad**, porque la real
+guarda el vencimiento adentro del valor (`MemoryCache.set()` ignora `expire` y nunca desaloja) y un
+fake que no venciera esconderia ese bug.
+
+`PlainTextHasher` no hashea, y existe por una razón medible: Argon2id tarda ~100 ms **a propósito**,
+así que una suite con cincuenta sign-ins paga cinco segundos en KDF. El prefijo `plain$` está para
+que un `grep` en un dump encuentre inmediatamente si alguien lo cableó en producción. Y cuenta las
+llamadas a `hash_dummy`, que es lo que permite aseverar que el camino de "mail inexistente" iguala
+el tiempo — el chequeo que evita la enumeración de usuarios.
+
+**`authenticated_context()` y `impersonated_context()`** construyen el `AuthContext` directo, sin
+pasar por ningún flujo: es para probar lo que está *aguas abajo* de la autenticación, y emitir un
+token para eso acopla el test a la capa de crypto sin motivo. ⚠️ `impersonated_context()` existe
+porque armarlo a mano falla: `AuthContext` se niega a existir si `subject != actor` sin
+`Impersonation`, y el `Impersonation` exige `reason` no vacío y `expires_at > granted_at`. El primer
+intento de todo el mundo termina en un `ValidationError` que hay que leer dos veces — fricción
+deliberada en producción y ruido en un test. Hay un test que **documenta ese fallo** para que el
+motivo del helper quede escrito.
+
+**`configure_test_identity()`** cablea el módulo entero sin base y sin crypto lenta, pero emite
+tokens **de verdad**: `StaticKeyStore` con una Ed25519 generada. Falsear la firma haría que un test
+de confusión de `alg` no pruebe nada. Y `create_test_user()` pasa por el `sign_up` real, porque
+sembrar sólo el `User` deja alguien que existe y no puede iniciar sesión — el error más común al
+usar el kit, y el motivo de que haya una función en vez de una nota.
+
+Encontrado por un test: `configure_test_identity(users=...)` era ambiguo. `users` era el nombre del
+parámetro de siembra **y** la clave del puerto en `**overrides`, así que pasar un repositorio propio
+sembraba un repositorio como si fuera una lista de usuarios y el error salía tres capas abajo. La
+siembra pasó a `seed_users=`; `users=` es el puerto, igual que en `configure_identity`.
+
+Las fixtures (`identity_container`, `identity_clock`, `identity_audit`, `identity_users`) resetean
+el contenedor **y** el `cache_backend`: los dos son globales del proceso, y un test que no limpia le
+deja su estado al siguiente — con el síntoma peor de todos, que cada test pasa aislado y la suite
+falla apuntando a un archivo que no tiene nada que ver.
+
+#### La deprecación de `hexcore.domain.auth`
+
+`TokenClaims` → `hexcore.darwin.AccessTokenClaims` y `PermissionsRegistry` →
+`hexcore.darwin.RoleRegistry`. Los dos estaban re-exportados **eager** en `hexcore/__init__.py`, y
+pasaron detrás de un `__getattr__` de módulo: `from hexcore import TokenClaims` sigue funcionando
+—PEP 562 cubre los `from`-imports, y hay un test que lo verifica— y ahora avisa.
+
+⚠️ **No se aliasan a su reemplazo**, y esa es la decisión. `deprecated_aliases` resuelve el alias al
+nuevo nombre, que sirve cuando los dos apuntan a lo mismo; acá no. `TokenClaims` tiene `client_id`
+obligatorio, un default mutable en `scopes` y **no tiene `sid`** —sin el cual la revocación es
+imposible por construcción, porque no hay a qué fila apuntar—; `AccessTokenClaims` tiene otros
+campos y otros invariantes. Devolver el nuevo donde el usuario espera el viejo rompería su código en
+la línea siguiente. Lo que hace falta es que el viejo **siga funcionando y avise**, y para eso está
+el helper nuevo `deprecated_lazy_names`: avisa y devuelve lo viejo, cargado perezosamente porque el
+`from` eager es justamente lo que se está sacando.
+
+`warn_deprecated` ganó un parámetro `since`. Hardcodeaba `"5.0"`, así que un aviso nuevo mentía sobre
+cuándo empezó el margen — y el margen es la única información accionable del mensaje. Los alias
+pre-5.0 siguen diciendo 5.0; esto dice 7.0.
+
+Tests (`test_testing_kit.py` 55, más 11 en `test_deprecations.py`): del repositorio genérico, que
+guarda copias en los dos sentidos y que la copia es profunda, la paginación, el orden de inserción
+determinista, el conteo de llamadas. Del UoW, que el `rollback` **deshace de verdad**, que vuelve al
+último `commit` y no al inicio, que el `__aexit__` con excepción rollbackea y sin excepción no, que
+`add_repository` re-toma el punto de guardado, y el despacho de eventos. De los contextos: los tres
+helpers, que **armarlo a mano falla**, que los scopes son del actor, que el `system_context` no es un
+superusuario. De los fakes de Darwin: el índice por mail y que un cambio de mail saca la entrada
+vieja, que `add` repetido lanza, que `bump_token_generation` y `consume` son atómicos bajo
+`asyncio.gather`, que el canje filtra por `purpose`, y que la denylist vence. Del cableado: el
+sign-in completo **sin tocar disco**, que el token que sale verifica de verdad, que la rotación y la
+**detección de reuso** funcionan con los fakes, que un usuario sembrado no tiene contraseña, que la
+auditoría se puede aseverar, que un puerto se puede reemplazar y que el reloj es controlable. Y de
+la deprecación: que importar `hexcore` **no** avisa, que el acceso sí, que devuelve el objeto viejo
+y no el reemplazo, que el `from`-import avisa, que siguen en `__all__`, que el aviso dice 7.0, que un
+typo sigue dando `AttributeError`, y que el reemplazo existe y tiene lo que al viejo le faltaba.
 
 ⚠️ Las docs son ejecutables: [`tests/test_documentation_examples.py`](../tests/test_documentation_examples.py)
 corre los bloques `Uso::`.
+
+---
+
+### Fase 11 — El empaquetado: un extra por decisión ✅
+
+**Objetivo.** Que instalar Darwin no obligue a instalar lo que el despliegue no usa, y que la
+frontera sea verificada en vez de convenida.
+
+**Nueve extras, y el criterio es uno solo:** si el consumidor puede decidir no tenerlo, es un
+extra.
+
+| Extra | Qué trae | Paquetes que suma |
+| :-- | :-- | :-- |
+| `[darwin]` | El núcleo. Dominio, servicios, tokens, transportes, sistema de plugins. **Sin almacenamiento.** | `fastapi`, `joserfc`, `argon2-cffi` |
+| `[darwin-sqlalchemy]` | El almacenamiento en SQL, con las migraciones. | `sqlalchemy`, `alembic`, `asyncpg`, `aiosqlite` |
+| `[darwin-beanie]` | El almacenamiento en MongoDB. | `beanie` (arrastra `pymongo`) |
+| `[darwin-magic-link]` | Login por link de un solo uso. | — |
+| `[darwin-two-factor]` | TOTP (RFC 6238). | — |
+| `[darwin-oauth]` | Authorization Code + PKCE. | `httpx` |
+| `[darwin-impersonate]` | "Entrar como", auditado y con techo de vida. | — |
+| `[darwin-passkey]` | WebAuthn. | `webauthn` |
+| `[darwin-organization]` | Organizaciones, miembros e invitaciones. | — |
+
+**Por qué el almacenamiento va separado y no un solo extra con los dos.** Un despliegue elige
+**un** backend. El que elige Mongo no tiene por qué instalar SQLAlchemy, Alembic y asyncpg: son
+~15 MB y una superficie de cadena de suministro que no usa. Y al revés igual.
+
+**Por qué cada plugin tiene extra propio incluso cuando no suma paquetes.** Cuatro de los seis
+—`magic-link`, `two-factor`, `impersonate`, `organization`— corren con la stdlib más el núcleo,
+así que hoy declaran cero dependencias nuevas. El extra igual gana su lugar, y ninguna de las tres
+razones es cosmética:
+
+1. Es el nombre estable donde una dependencia futura entra sin cambiarle el comando de instalación
+   al consumidor. `[darwin-passkey]` no tenía `webauthn` hasta que lo tuvo.
+2. Hace que `pip install 'hexcore[darwin-two-factor]'` **funcione**. Cada extra de plugin arrastra
+   `hexcore[darwin]`; sin esa autorreferencia, ese comando instalaba el paquete sin `joserfc` ni
+   `argon2` y el primer import del plugin explotaba.
+3. Documenta la superficie en el único lugar que el consumidor lee antes de instalar. Un plugin
+   ausente de esa lista es un plugin que nadie encuentra.
+
+**Lo que el extra deliberadamente no hace es exigir un backend.** Los cinco plugins que guardan
+algo necesitan uno de los dos, y "uno de dos" no se expresa en metadata de empaquetado: un extra
+con los dos instalaría SQLAlchemy al que eligió Mongo, que es justo lo que la separación evita. La
+elección es del consumidor y se resuelve en runtime, con un error que nombra el extra que falta.
+
+#### La selección del backend: explícita primero, detectada después, y con dos se niega
+
+`hexcore/darwin/infrastructure/orms/selection.py` es el único módulo que sabe que los dos backends
+existen. `resolve_storage_backend(preferido)` toma `IdentityConfig.storage` —o
+`HEXCORE_DARWIN_STORAGE`—; si no hay preferencia, detecta con `importlib.util.find_spec`.
+
+Con **los dos instalados y sin preferencia declarada, se niega a elegir.** Elegir por una regla
+implícita —orden alfabético, orden de instalación— hace que el backend dependa de qué más haya en
+el entorno, y el síntoma es una app que arranca contra una base vacía en vez de fallar.
+
+El contenedor importa el módulo de repositorios recién cuando se lo piden, y busca **nombres
+neutros**: `UserRepository`, `SessionRepository`, `AccountRepository`, `VerificationRepository`,
+`AuditSink`. Cada backend los expone como alias al final de su módulo. Los plugins usan el mismo
+mecanismo por `plugin_repositories(nombre)`, que distingue "este plugin no tiene ese backend" de
+"el paquete no está instalado" — dos errores con arreglos distintos.
+
+#### El acoplamiento que quedaba: `VerificationPurpose`
+
+`verification` es la tabla que los plugins reusan en vez de aportar una propia, y su `purpose` era
+un `t.Literal` que enumeraba `"magic_link"` y `"two_factor"`. Eso metía dos nombres de plugin en el
+dominio del núcleo, y el comentario que lo acompañaba defendía la decisión: un `Literal` no se
+puede extender desde afuera, así que abrirlo a `str` parecía perder la garantía justo donde
+importa.
+
+Era falso, y vale la pena ser explícito sobre por qué: **el `Literal` nunca fue lo que daba la
+garantía.** Lo que impide canjear un código de reset en el flujo de verificar mail es que el
+`purpose` va en el `WHERE` del `consume` —una condición de la consulta, verificada en cada canje—
+y no una anotación que existe sólo antes de compilar. El tipo cerrado era una réplica de la
+garantía real, no la garantía.
+
+Así que `VerificationPurpose` es `str`, y cada plugin declara su constante (`MAGIC_LINK_PURPOSE`,
+`TWO_FACTOR_PURPOSE`). Donde el valor **sí** entra desde afuera el tipo sigue cerrado:
+`IssueVerificationCode.purpose` es `CoreVerificationPurpose`, un `Literal` con los tres propósitos
+del núcleo, porque ahí el valor llega de un cuerpo HTTP y aceptar cualquier string dejaría pedir un
+código con `purpose="password_reset"` por el endpoint de verificar mail para canjearlo después en
+el flujo de reset. Un plugin que emite códigos propios expone su propio comando.
+
+#### Testing
+
+[`tests/test_darwin_storage_selection.py`](../tests/test_darwin_storage_selection.py) y
+[`tests/test_darwin_plugin_decoupling.py`](../tests/test_darwin_plugin_decoupling.py).
+
+La frontera se prueba **bloqueando**, con un `MockFinder` en `sys.meta_path` de un subproceso —la
+técnica de [`tests/test_optional_dependencies.py`](../tests/test_optional_dependencies.py)— y no
+mirando `sys.modules`. La razón es que `import hexcore` arrastra sqlalchemy por su cuenta
+(`hexcore/__init__.py` importa `BaseSQLAlchemyRepository` eager), así que preguntar quién está
+cargado no distingue "Darwin lo importó" de "ya estaba". Bloquear responde la pregunta que importa:
+¿el núcleo es instalable sin esto?
+
+Lo que queda fijado: que el núcleo importa con los dos backends bloqueados y con los seis plugins
+bloqueados; que cada plugin importa con los otros cinco bloqueados; que cada backend expone los
+cinco nombres neutros —al que le falta uno, falla recién cuando alguien usa ese repositorio, que
+puede ser meses después—; que las ocho combinaciones de `(preferencia, instalados)` resuelven o
+fallan como corresponde; que ningún módulo del núcleo importa un plugin y ningún plugin importa a
+otro, leído del texto porque un import diferido dentro de un método no se ejecuta al importar el
+módulo; que la correspondencia plugin ↔ extra es total **en las dos direcciones**, porque un plugin
+sin extra es un plugin que nadie encuentra y un extra sin plugin es un comando de instalación que
+miente; y que `[all]` contiene las dependencias de los nueve, porque `[all]` es lo que corre en CI
+y lo que le falte no se testea.
+
+---
+
+### Fase 12 — Que el esquema llegue a Alembic y a `init_beanie` ✅
+
+**Objetivo.** Cerrar el peor modo de falla del módulo, que es el único que no da un error: una tabla
+que existe en la base y está ausente de `Base.metadata` hace que el próximo
+`alembic revision --autogenerate` le emita `op.drop_table`. Con datos adentro.
+
+Eran cinco agujeros, y conviene tenerlos separados porque cada uno se arreglaba en otro lado.
+
+| # | Agujero | Consecuencia |
+| :-- | :-- | :-- |
+| 1 | El comentario del `env.py` generado decía "y las tablas de identidad cuando uses el modulo" | Falso. `ensure_framework_models_loaded()` importa **un** módulo: `cron_sql` |
+| 2 | El `env.py` generado no llamaba a `ensure_identity_schema_loaded()` | `op.drop_table` sobre las seis tablas del núcleo |
+| 3 | `ensure_identity_schema_loaded()` cargaba sólo los modelos del núcleo | `op.drop_table` sobre las siete tablas de los cuatro plugins con esquema |
+| 4 | `init_identity_documents` no cubría los plugins | En Mongo no es una migración perdida: `CollectionWasNotInitialized` en la primera consulta |
+| 5 | `IdentityStep`, la red de contención, verificaba sólo el núcleo | El aviso que tenía que agarrar los cuatro anteriores tampoco los veía |
+
+#### El contrato de nombre neutro, otra vez
+
+Juntar los esquemas sin que el núcleo nombre a los plugins pedía lo mismo que resolver los
+repositorios: **un nombre igual en todos**. Cada plugin ya tenía su constante propia
+(`TWO_FACTOR_MODELS`, `OAUTH_MODELS`, …), que sirve para nada si quien las junta tiene que
+conocerlas de antemano.
+
+Así que cada plugin con esquema expone un alias:
+
+- `PLUGIN_MODELS` en `plugins/{nombre}/orms/sqlalchemy/models.py`
+- `PLUGIN_DOCUMENTS` en `plugins/{nombre}/orms/beanie/repository.py`
+
+Es el mismo mecanismo que `UserRepository` o `PasskeyRepository`, y por el mismo motivo. Del lado
+del núcleo entran por `plugin_schema_module(plugin, backend=…, module=…)`, que devuelve `None`
+—y no lanza— cuando el plugin no tiene esquema: `magic_link` reusa `verification` e `impersonate`
+no guarda nada aparte, así que "sin esquema" es el caso normal y no un plugin incompleto. Es la
+diferencia deliberada con `plugin_repositories`, que **sí** lanza: allá el consumidor pidió ese
+repositorio explícitamente, y su ausencia es un error de cableado.
+
+#### Por qué el default no descubre los plugins
+
+`ensure_identity_schema_loaded(plugins=[…])` exige la lista, y eso es a propósito. La tentación es
+descubrir con `installed_plugins()`, y no sirve: **los seis plugins viven en la misma
+distribución**, así que están todos en disco tengas el extra o no. Descubrir por presencia le
+crearía `darwin_passkey` a quien nunca usó passkeys.
+
+La única fuente honesta de "qué plugins usa este despliegue" es la lista que el consumidor le pasa
+a `configure_identity`. En el `env.py` no hay contenedor todavía, así que ahí hay que repetirla —y
+el `env.py` generado lleva una `DARWIN_PLUGINS: list[str] = []` con el comentario que explica qué
+pasa si le falta uno.
+
+Repetir una lista es una fuente de olvidos, y por eso el arreglo no termina ahí.
+
+#### La red de contención: `IdentityStep` verifica lo activo
+
+Al arrancar sí hay contenedor, así que la lista puede ser exacta: `container.plugins.names` **es**
+lo activo. `IdentityStep._verificar_esquema` compara `Base.metadata` contra el núcleo más los
+modelos de los plugins activos, y loguea un error que nombra las tablas que faltan **y la lista
+que hay que copiar al `env.py`**.
+
+Esa es la división: la función del `env.py` no puede adivinar y por eso pregunta; el paso de
+arranque no necesita adivinar y por eso verifica. Descubrir que faltaba una tabla revisando el
+diff de una migración es demasiado tarde para confiar en que alguien lo revise.
+
+La verificación va envuelta en `try`: un plugin de terceros puede llamarse cualquier cosa y no
+tener paquete bajo `hexcore.darwin.plugins`, y que un chequeo que existe para avisar sea lo que
+impide arrancar es peor que que no avise.
+
+#### Mongo: el mismo agujero, un síntoma distinto
+
+`identity_documents(plugins=[…])` e `init_identity_documents(plugins=[…])`. En Mongo esto **no** es
+una comodidad para las migraciones: un `Document` que `init_beanie` no vio no funciona, así que
+omitir un plugin activo lo deja fallando en la primera consulta.
+
+Y los plugins van en **esa misma** llamada, no en una suya: `init_beanie` no acumula —la segunda
+llamada sobre la misma base reemplaza el registro de la primera— así que inicializar el núcleo y
+después cada plugin dejaría funcionando sólo al último. Por eso `plugins=` es un parámetro y no una
+función aparte.
+
+#### El orden de las tablas es la seguridad de FK
+
+`identity_tables(plugins=…)` pone las del núcleo primero y las de los plugins al final.
+`drop_identity_tables` invierte la lista completa, así que las de los plugins se borran primero —
+el único orden que funciona, porque referencian a `darwin_user`. Un test lo verifica creando y
+**borrando** contra un motor de verdad: un test que sólo crea no detecta el orden equivocado.
+
+#### Testing
+
+[`tests/test_darwin_schema_registration.py`](../tests/test_darwin_schema_registration.py).
+
+Se verifica contra el `Base.metadata` real y no contra la lista de módulos importados, porque el
+metadata es lo que decide si `--autogenerate` crea o dropea. Del `env.py` generado se saca el
+template del AST —correr `_setup_alembic` arranca `alembic init` por subproceso y escribe en
+disco— y se le comprueba que llame a la función, que el fragmento **parsee**, que el import de
+Darwin sea opcional para un proyecto que no usa identidad, que el orden sea framework → identidad
+→ consumidor, y que la afirmación falsa ya no esté.
+
+Un hallazgo del propio test de desacoplamiento: juntar los esquemas hace que el núcleo importe
+`plugins/storage.py`, que está bajo `plugins/` pero es del núcleo. La primera versión del chequeo
+excluía el prefijo `hexcore.darwin.plugins.` y quedaba sin dientes; ahora compara contra la lista
+de los seis, con un test que verifica que el propio resolvedor no nombre a nadie. Y `_imports_de`
+pasó a leer el AST en vez de escanear líneas, por dos razones opuestas: alcanza los imports
+diferidos dentro de un método —que ningún test de humo encuentra pero que igual exigen el paquete
+instalado— y deja de contar los bloques `Uso::` de los docstrings, que es el falso positivo que
+delató el problema.
+
+---
+
+### Fase 13 — Ningún plugin fuerza un backend ✅
+
+**Objetivo.** Que usar un plugin no obligue a instalar SQLAlchemy. La separación en extras
+declaraba eso; el código no lo cumplía, y por dos causas que no tenían nada que ver entre sí.
+
+#### Causa 1: `validate()` importaba mixins de SQLAlchemy
+
+`PluginRegistry.validate()` llamaba a `plugin.tables()` para detectar dos plugins que aportan un
+mixin homónimo. `tables()` devuelve mixins de SQLAlchemy, y `validate()` corre en **todo**
+`configure_identity`. El resultado, verificado bloqueando el paquete:
+
+```
+configure_identity(cfg, plugins=PluginRegistry([TwoFactorPlugin()]))
+  -> _validar_tablas()
+  -> plugin.tables()
+  -> ImportError: bloqueado: sqlalchemy
+```
+
+Un despliegue en Mongo no podía **registrar** `two_factor`. Y no había forma de esquivarlo: la
+validación es del registro y vale para los dos backends, así que no puede depender de uno.
+
+La observación que resuelve el problema es que el chequeo necesita **nombres**, no objetos. Así que
+`DarwinPlugin` gana `contributed_tables`: una tupla de `ClassVar` con los mismos nombres que
+devuelve `tables()`, declarada sin importar nada. Es el mismo criterio que `name`, `requires` y
+`priority` — metadata que describe al plugin sin cargar su implementación.
+
+`tables()` queda como lo que siempre fue: **el punto de extensión del backend de SQL**. Llamarlo
+importa sqlalchemy a propósito, y lo llama el consumidor que está declarando sus modelos concretos,
+que por definición ya tiene el extra. Lo que no puede pasar es que lo llame el framework.
+
+En Mongo no hay contraparte que el plugin declare: sus documentos son concretos, y
+`identity_documents(plugins=[...])` los junta por `PLUGIN_DOCUMENTS` (Fase 12).
+
+#### El fallback, que lo destapó un test preexistente
+
+`contributed_tables` duplica las claves de `tables()`, así que puede desincronizarse — hay un test
+que verifica que coincidan en los seis. Pero el problema serio es otro, y lo encontró
+`test_dos_plugins_con_el_mismo_mixin_se_rechazan` al ponerse rojo: **es opcional**, y un plugin de
+terceros escrito antes de que existiera sólo implementa `tables()`. Saltearlo lo dejaba fuera del
+chequeo de homónimos en silencio, que es peor que el import — porque el conflicto que el chequeo
+existe para encontrar volvía a aparecer como un error dentro del framework.
+
+Así que `_nombres_de_tablas` prefiere la declaración y **cae a `tables()`** cuando no hay,
+envuelto en `try/ImportError`. Las tres ramas tienen la propiedad correcta:
+
+| Plugin | Backend instalado | Qué pasa |
+| :-- | :-- | :-- |
+| Declara | cualquiera | Validado, sin importar nada |
+| No declara | sí | Validado leyendo `tables()` |
+| No declara | no | Se saltea |
+
+La última rama es la única salida honesta: no se pueden leer los nombres de un módulo que no está,
+y hacer fallar el arranque por no poder correr una validación es peor que no correrla.
+
+#### Causa 2: `api/__init__.py` arrastraba sqlalchemy a todo el borde HTTP
+
+Preexistente y del framework, no de Darwin, pero es la que rompía más:
+
+```
+from hexcore.infrastructure.api.rate_limit import rate_limit
+  -> ejecuta hexcore/infrastructure/api/__init__.py
+  -> from .utils import build_query_endpoint
+  -> from sqlalchemy.ext.asyncio import AsyncSession
+  -> ImportError
+```
+
+El import de `utils` es legítimo: construye endpoints de query sobre SQL. El problema es que
+importar **cualquier** submódulo del paquete ejecuta su `__init__`, que es semántica de Python y no
+algo que se pueda esquivar desde afuera. Y los routers de los seis plugins usan `rate_limit`, así
+que un despliegue en Mongo no podía montar un magic link.
+
+De los diez submódulos de `api`, sólo `utils` importa sqlalchemy en el nivel superior — `health` y
+`lifespan` ya lo hacían adentro de sus funciones. Así que los dos nombres de `utils` pasan a
+resolverse por `__getattr__` de módulo (PEP 562), memoizado en `globals()`, con un bloque
+`if t.TYPE_CHECKING` que mantiene el tipado: pyright los resuelve contra la definición real y en
+runtime el módulo es perezoso. `__all__` no cambia, y un typo sigue dando `AttributeError` y no
+`ImportError`.
+
+#### Un tercer hallazgo: detectar no puede lanzar
+
+`installed_backends()` usaba `importlib.util.find_spec` sin envolver, y `find_spec` **puede lanzar**
+en vez de devolver `None` — la documentación lo dice para el paquete padre ausente, y también pasa
+con un finder en `sys.meta_path` que levanta `ImportError`, que es justo la técnica con la que los
+tests de frontera simulan un paquete no instalado. Una función cuya única pregunta es "¿está?" no
+puede tener una tercera respuesta: si no se puede determinar, no está.
+
+#### Testing
+
+[`tests/test_darwin_backend_neutrality.py`](../tests/test_darwin_backend_neutrality.py).
+
+Con SQLAlchemy bloqueado: los seis plugins se instancian y responden a los seis puntos de extensión
+neutros; el registro valida y devuelve los siete nombres de mixins; los seis routers se construyen;
+`configure_identity` resuelve el backend a `beanie` **solo**, cablea los cuatro repositorios, los
+dos servicios y el repositorio de `two_factor`; y el borde HTTP se importa.
+
+Y con Beanie bloqueado, lo mismo sobre SQLAlchemy — incluido que `tables()` **sí** funcione ahí,
+que es el backend que lo soporta. La simetría no es adorno: un test que sólo bloqueara sqlalchemy
+pasaría igual si todo el módulo hubiera pasado a depender de Mongo, y "desacoplado" no puede
+significar "acoplado al otro".
+
+Nota sobre la técnica: los bloques de código del subproceso se dedentan **uno por uno**. Un literal
+indentado dentro de un método y un fragmento generado a columna cero no comparten prefijo, así que
+un solo `dedent` sobre la concatenación no saca nada y el subproceso muere con `IndentationError` —
+que es exactamente lo que pasó al escribirlo.
 
 ---
 
@@ -1098,17 +2220,18 @@ corre los bloques `Uso::`.
 | `hexcore/infrastructure/api/rate_limit.py` | ✅ **Hecho (Fase 0):** XFF, atomicidad. | 0 | fix |
 | `hexcore/infrastructure/api/exception_handlers.py` | ✅ **Hecho (Fase 0):** `headers_for`. Fase 7 sólo mergea el mapa de Darwin. | 0 / 7 | aditivo |
 | `hexcore/infrastructure/repositories/orms/sqlalchemy/__init__.py` | `naming_convention` completa (§2.6). | 1 | fix |
-| `hexcore/domain/cqrs/serializer.py` | +2 métodos **concretos** para el sobre. Ninguna subclase existente se rompe. | 6 | aditivo |
-| `hexcore/infrastructure/cqrs/pydantic_serializer.py` | Override por simetría. | 6 | aditivo |
-| `hexcore/infrastructure/workers/consumer.py` | Verifica el sobre, re-chequea la sesión, rehidrata el ContextVar. | 6 | aditivo |
-| `infrastructure/cqrs/{rabbitmq,postgres_bus,redis_bus,procrastinate}.py`, `task_queues/*` | `serialize()` → `serialize_envelope()`. ~1 línea cada uno. | 6 | aditivo |
-| `hexcore/infrastructure/api/app.py` | `AppFeatures` += `auth_context`, `csrf` (default **off**); orden de middlewares; merge del mapa. | 7 | aditivo |
+| `hexcore/domain/cqrs/envelope.py` | ✅ **Hecho (Fase 6):** archivo nuevo. El punto de extensión del sobre — registros por clave, `restored_envelope_scope`, `message_correlation_id`. Stdlib puro, sin saber nada de identidad. | 6 | aditivo |
+| `hexcore/domain/cqrs/serializer.py` | ✅ **Hecho (Fase 6):** +2 métodos **concretos** para el sobre. Ninguna subclase existente se rompe. | 6 | aditivo |
+| `hexcore/infrastructure/cqrs/pydantic_serializer.py` | ✅ **Sin cambios.** Se planeaba un override por simetría y no hace falta: hereda los métodos concretos, que envuelven `serialize`/`deserialize`. | 6 | — |
+| `hexcore/infrastructure/workers/consumer.py` | ✅ **Hecho (Fase 6):** `deserialize_envelope` + `restored_envelope_scope` en las tres rutas. `process_task` queda afuera (§3.3). | 6 | aditivo |
+| `application/cqrs/in_memory_buses.py`, `infrastructure/cqrs/{rabbitmq,postgres_bus,redis_bus,procrastinate}.py` | ✅ **Hecho (Fase 6):** `serialize()` → `serialize_envelope()` en los seis sitios de encolado, y restauración en los cuatro consumos. `task_queues/*` **no** se toca: tratan el payload como opaco. | 6 | aditivo |
+| `hexcore/infrastructure/api/app.py` | ✅ **Hecho (Fase 7):** `AppFeatures` += `auth_context`, `csrf` (default **off**); los dos middlewares de Darwin se registran **antes** de `RequestIDMiddleware` (o sea corren adentro, así que `get_request_id()` ya está poblado); `_con_darwin()` mergea `IDENTITY_EXCEPTION_STATUS_MAP` y la fábrica de `WWW-Authenticate`, importándolos **dentro de la función** para no acoplar la capa `api` a Darwin en tiempo de import. | 7 | aditivo |
 | `hexcore/infrastructure/cli.py` | `app.add_typer(darwin_cli, name="identity")`; `ensure_identity_schema_loaded()` en el `env.py` generado. | 8 | aditivo |
 | `hexcore/infrastructure/repositories/orms/sqlalchemy/utils.py` | `import_all_models`: `iter_modules` → `walk_packages` (§5.3). Arregla un `DROP TABLE` latente que ya afecta a `hexcore_cron_jobs`. | 8 | fix |
 | `hexcore/domain/auth/*`, `hexcore/__init__.py` | Absorbidos y deprecados. | 10 | deprecación |
 | `hexcore/_deprecation.py` | ✅ **Hecho (Fase 0):** `REMOVED_IN` → 7.0. | 0 | fix |
 | `pyproject.toml` | Extras `darwin`, `darwin-passkey`, agregados a `all`. | 2 / 9 | aditivo |
-| `tests/test_optional_dependencies.py` | Filas nuevas en las fases 2, 3, 4 y 9. ⚠️ `argon2-cffi` se importa como `argon2`. | 2-9 | aditivo |
+| `tests/test_optional_dependencies.py` | Filas nuevas en las fases 2, 3, 4, 6 y 9. ⚠️ `argon2-cffi` se importa como `argon2`. ⚠️ **No** se puede chequear contra `pydantic`: no es opcional — `hexcore/__init__.py` lo importa eager, así que esconderlo rompe cualquier import del paquete. | 2-9 | aditivo |
 | `hexcore/testing/{fakes,fixtures}.py` | `FakeUnitOfWork` + `FakeRepository` genéricos. | 10 | aditivo |
 
 **Nada de `hexcore/domain/cqrs/` ni `hexcore/application/cqrs/` cambia excepto el sobre del

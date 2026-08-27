@@ -398,10 +398,25 @@ Regeneralo:
     uv run python scripts/gen_stubs.py --write
 ```
 
-### 4.5 Tests de tipo: hoy hay **cero**
+### 4.5 Tests de tipo ✅ implementados
 
-Cero ocurrencias de `assert_type`, `reveal_type`, `pyright` o `py.typed` bajo `tests/`. El
-diseño:
+No había ninguno: cero ocurrencias de `assert_type`, `reveal_type`, `pyright` o `py.typed`
+bajo `tests/`. Ahora `tests/typing/` (chequeado por Pyright, no ejecutado) más
+`tests/test_typing_gate.py` (12 tests, marker `typing`).
+
+**La medición que justifica todo el apartado**, con Pyright sobre el mismo archivo antes y
+después de generar los stubs:
+
+| símbolo | antes | después |
+| :-- | :-- | :-- |
+| `hexcore.sql.Base` | `Any` | `type[Base]` |
+| `hexcore.sql.SqlAlchemyUnitOfWork` | `Any` | `type[SqlAlchemyUnitOfWork]` |
+| `hexcore.sql.NAMING_CONVENTION` | `Any` | `dict[str, str]` |
+| `hexcore.cqrs.Command` | `Any` | `type[Command]` |
+| `hexcore.cqrs.HandlerRegistry` | `Any` | `type[HandlerRegistry]` |
+| `hexcore.fastapi.create_app` | `Any` | la firma completa, con todos sus kwargs |
+
+El diseño:
 
 ```python
 # tests/typing/test_facades_no_tipan_any.py
@@ -452,10 +467,10 @@ Se copian los triggers y el filtro de rama base de `pytest.yml`, incluido el det
 
 | Job | Qué hace | Fase |
 | :-- | :-- | :-- |
-| **`typecheck`** | pyright strict + anotaciones `::error file=,line=::` + **ratchet** | **0 ✅** |
+| **`typecheck`** | pyright strict + anotaciones `::error file=,line=::` + **ratchet** + `pytest -m typing` | **0 ✅** |
 | **`typing-ok`** | Agregador de nombre fijo para branch protection | **0 ✅** |
+| **`stubs-drift`** | Regenera y difea. El más rápido: no importa hexcore ni necesita extras | **T2 ✅** |
 | `packaging` | Wheel con `py.typed` + los `.pyi`; `twine check` | **0 ✅** (en `pytest.yml`) |
-| `stubs-drift` | Regenera y difea. El más rápido: no importa hexcore ni necesita extras | 3 |
 | `stub-quality` | `--verifytypes` con umbral de completeness que sólo sube | 3 |
 | `no-extras-import` | Instala **sin extras** y asegura que todo módulo núcleo importa | 5 |
 | `extras-matrix` | 9 patas: `none` + cada extra + `all` | 5 |
@@ -562,7 +577,7 @@ Cada fase termina con master en verde.
 | :-- | :-- | :-- |
 | **T0 ✅** | `[tool.pyright]` strict sin reglas nuevas; ratchet; baseline de 216; `typing.yml` con `typecheck` + `typing-ok`; `ruff` a dev | **Ninguno.** El gate pasa por definición el día uno. |
 | **T1 ✅** | `[build-system]`, `package-data`, `packages.find`, borrar el `__init__.py` raíz, `tests/test_packaging.py` | Medio → **verificado.** `uv sync` ahora instala el proyecto; se confirmó que `hexcore.__file__` sigue apuntando al repo. |
-| **T2** | `hexcore/_lazy.py`; los `.pyi` generados de las 3 fachadas; `tests/typing/`; jobs `stubs-drift` + `stub-quality` | Bajo. Un `.pyi` no puede romper runtime. |
+| **T2 ✅** | Los `.pyi` generados de las 3 fachadas (`scripts/gen_stubs.py`), `tests/typing/`, `tests/test_typing_gate.py`, job `stubs-drift`. **Verificado con Pyright: los 126 exports pasaron de `Any` a tipos reales.** | Bajo, como se esperaba. Un `.pyi` no puede romper runtime. |
 | **T3** | `hexcore/capabilities.py` + `_extras.require_extra`; reemplazar las 3 sondas; declarar `starlette` en `[api]` y `pymongo` en `[mongo]` | Bajo. |
 | **T4** | Los 7 idiomas, **de menor a mayor radio**: E (62 err) → A en `types.py`/`base.py`/`utils.py` (~15) → C en `uow` → **B en `implementations.py` (64 err), el último** | B es el riesgoso: crea 2 archivos, borra ~180 líneas y cambia lo que resuelve `hexcore.sql.SqlAlchemyRepository`. Va último, contra un baseline ya limpio, con los 4 contratos de §3.3 verificados. |
 | **T5** | `test_optional_dependencies.py` derivado de la matriz; jobs `no-extras-import` + `extras-matrix` | Medio: va a encontrar fugas reales. `continue-on-error` por un PR. |

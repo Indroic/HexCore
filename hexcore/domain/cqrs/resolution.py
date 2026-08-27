@@ -27,7 +27,11 @@ def resolve_dotted(fqn: str) -> t.Any:
     Raises:
         LookupError: Si no se puede resolver ningún prefijo válido.
     """
-    if not fqn or not isinstance(fqn, str):
+    # El `isinstance` es redundante para el checker —`fqn` está anotado `str`— y se queda
+    # igual: acá entran valores que vienen de `getattr(handler, "__cqrs_handler_name__")` y
+    # de la configuración, o sea de lugares donde nadie garantizó el tipo. La anotación
+    # describe el contrato; esta línea lo defiende cuando el llamador no lo cumple.
+    if not fqn or not isinstance(fqn, str):  # pyright: ignore[reportUnnecessaryIsInstance]
         raise LookupError(f"FQN inválido: {fqn!r}")
 
     parts = fqn.split(".")

@@ -7,11 +7,10 @@ from __future__ import annotations
 
 import logging
 import typing as t
-from typing import TYPE_CHECKING
 
 from hexcore.domain.cqrs.cron import ILockProvider
 
-if TYPE_CHECKING:
+if t.TYPE_CHECKING:
     import asyncpg
 
 logger = logging.getLogger(__name__)
@@ -90,8 +89,12 @@ class PostgresLockProvider(ILockProvider):
         ON {self.table_name} (expires_at)
         """
         try:
-            await self.pool.execute(create_table) # type: ignore
-            await self.pool.execute(create_index) # type: ignore
+            # `asyncpg.Pool.execute` y `.fetchrow` no vienen anotados, así que cada llamada
+            # se reporta `Unknown`. Los `pyright: ignore` de este módulo son eso y sólo eso —
+            # deuda de asyncpg— y van estrechados a la regla exacta para que el día que la
+            # librería tipe, el gate lo diga en vez de dejarlos ahí para siempre.
+            await self.pool.execute(create_table)  # pyright: ignore[reportUnknownMemberType]
+            await self.pool.execute(create_index)  # pyright: ignore[reportUnknownMemberType]
         except Exception as e:
             logger.error(f"Error creando tabla de locks en Postgres: {e}")
             raise
@@ -109,7 +112,7 @@ class PostgresLockProvider(ILockProvider):
         WHERE expires_at < NOW() - ($1 || ' seconds')::interval
         """
         try:
-            await self.pool.execute(query, str(self.purge_grace_seconds)) # type: ignore
+            await self.pool.execute(query, str(self.purge_grace_seconds))  # pyright: ignore[reportUnknownMemberType]
             self._acquisitions_since_purge = 0
         except Exception as e:
             logger.warning(f"Error purgando locks expirados de Postgres: {e}")
@@ -145,7 +148,7 @@ class PostgresLockProvider(ILockProvider):
         
         try:
             # fetchrow returns a record if RETURNING gave something, else None
-            result = await self.pool.fetchrow(query, lock_key, str(ttl_seconds)) # type: ignore
+            result = await self.pool.fetchrow(query, lock_key, str(ttl_seconds))  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
             acquired = result is not None
         except Exception as e:
             if self.on_error == "raise":
@@ -185,6 +188,6 @@ class PostgresLockProvider(ILockProvider):
         """
         query = f"DELETE FROM {self.table_name} WHERE lock_key = $1"
         try:
-            await self.pool.execute(query, lock_key) # type: ignore
+            await self.pool.execute(query, lock_key)  # pyright: ignore[reportUnknownMemberType]
         except Exception as e:
             logger.error(f"Error intentando liberar lock de Postgres para {lock_key}: {e}")

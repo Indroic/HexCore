@@ -8,7 +8,16 @@ import logging
 import typing as t
 from contextlib import AsyncExitStack, asynccontextmanager
 
-from hexcore.config import LazyConfig
+if t.TYPE_CHECKING:
+    # `run_worker` anota su parámetro como `"aio_pika.abc.AbstractRobustConnection"` y el
+    # nombre no estaba importado en ninguna parte. Como la anotación es un string, nadie la
+    # evalúa al definir la función y el módulo importaba igual — pero `t.get_type_hints()`
+    # sobre `run_worker` levanta `NameError`, y para el checker el parámetro no tiene tipo.
+    #
+    # Va bajo `TYPE_CHECKING` porque este módulo tiene que importarse sin `[rabbitmq]`: el
+    # import de verdad lo hace `_conectar`, que es quien necesita el paquete.
+    import aio_pika
+
 
 logger = logging.getLogger("hexcore.workers.rabbitmq")
 

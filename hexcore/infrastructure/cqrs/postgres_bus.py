@@ -11,6 +11,7 @@ import typing as t
 
 from hexcore.domain.cqrs.buses import AbstractEventBus
 from hexcore.domain.cqrs.context import is_worker_execution, local_execution
+from hexcore.domain.cqrs.envelope import restored_envelope_scope
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
 from hexcore.domain.events import DomainEvent
 
@@ -55,7 +56,7 @@ class PostgresEventBus(AbstractEventBus):
         self._event_types_by_name[fqn] = event_type
 
     async def publish(self, event: DomainEvent) -> None:
-        payload = self._serializer.serialize(event)
+        payload = self._serializer.serialize_envelope(event)
         json_payload = json.dumps(payload)
         
         async with self.pool.acquire() as conn:
@@ -105,27 +106,31 @@ class PostgresEventBus(AbstractEventBus):
             if not event_type:
                 return
 
-            event = self._serializer.deserialize(payload_dict)
+            event, metadata = self._serializer.deserialize_envelope(payload_dict)
             handlers = self._handlers.get(event_type, [])
             
             # Si ya estamos dentro de un worker, el mensaje viene de la cola:
             # ejecutar en vez de reencolar (ver hexcore.domain.cqrs.context).
             in_worker = is_worker_execution()
-            for handler in handlers:
-                is_background = (
-                    getattr(handler, "__cqrs_background_handler__", False)
-                    and not in_worker
-                )
-                if is_background:
-                    queue_name = getattr(handler, "__cqrs_queue__", "default")
-                    if not self.enqueuer:
-                        raise RuntimeError(f"El handler asíncrono {handler.__name__} requiere un enqueuer.")
+            # El sobre se restaura una vez para todos los handlers locales: el evento cruzó
+            # un proceso, así que sin esto el handler de este lado no sabe a nombre de quién
+            # actúa. El payload que se reencola sigue llevando el sobre intacto.
+            async with restored_envelope_scope(metadata, event):
+                for handler in handlers:
+                    is_background = (
+                        getattr(handler, "__cqrs_background_handler__", False)
+                        and not in_worker
+                    )
+                    if is_background:
+                        queue_name = getattr(handler, "__cqrs_queue__", "default")
+                        if not self.enqueuer:
+                            raise RuntimeError(f"El handler asíncrono {handler.__name__} requiere un enqueuer.")
 
-                    handler_ref = getattr(handler, "__cqrs_handler_name__", f"{handler.__module__}.{handler.__name__}")
-                    await self.enqueuer.enqueue_handler(handler_ref, payload_dict, queue_name)
-                else:
-                    with local_execution():
-                        await handler(event)
+                        handler_ref = getattr(handler, "__cqrs_handler_name__", f"{handler.__module__}.{handler.__name__}")
+                        await self.enqueuer.enqueue_handler(handler_ref, payload_dict, queue_name)
+                    else:
+                        with local_execution():
+                            await handler(event)
                     
         except Exception as e:
             logger.error(f"Error parseando o ejecutando evento de PostgreSQL NOTIFY: {e}")

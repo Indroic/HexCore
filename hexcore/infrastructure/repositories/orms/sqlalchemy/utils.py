@@ -55,8 +55,8 @@ def to_model(
 def _get_relationship_names(model: t.Type[BaseModel[t.Any]]) -> list[str]:
     return [
         key
-        for key, attr in model.__mapper__.all_orm_descriptors.items()  # type: ignore
-        if isinstance(getattr(attr, "property", None), RelationshipProperty)  # type: ignore
+        for key, attr in model.__mapper__.all_orm_descriptors.items()
+        if isinstance(getattr(attr, "property", None), RelationshipProperty)
     ]
 
 
@@ -425,6 +425,82 @@ async def logical_delete(
         await save_entity(session, entity, model_cls)
 
 
-def import_all_models(package: types.ModuleType) -> t.Any:
-    for _, module_name, _ in pkgutil.iter_modules(package.__path__):
-        importlib.import_module(f"{package.__name__}.{module_name}")
+def import_all_models(package: types.ModuleType) -> list[str]:
+    """
+    Importa **recursivamente** todo submódulo de `package`, para poblar `Base.metadata`.
+
+    La usa el `env.py` que genera `hexcore init`, justo antes de
+    `target_metadata = Base.metadata`. Todo modelo que no se importe acá queda **ausente**
+    del metadata, y un modelo ausente del metadata es una tabla que
+    `alembic revision --autogenerate` va a querer **dropear**.
+
+    Antes usaba `pkgutil.iter_modules`, que **no** recorre subpaquetes: un modelo en
+    ``models/billing/invoice.py`` nunca se importaba. Con `walk_packages` se recorre todo
+    el árbol.
+
+    Los paquetes que fallan al importar no se tragan en silencio: se relanzan. Un
+    `ImportError` acá significa que un modelo no va a estar en el metadata, y descubrirlo
+    en la migración —cuando ya emitió el `DROP TABLE`— es demasiado tarde.
+
+    Returns:
+        Los nombres de los módulos importados, en orden. Útil para verificar en un test
+        que la migración ve lo que tiene que ver.
+
+    Uso::
+
+        import myapp.models as models
+
+        import_all_models(models)
+        target_metadata = Base.metadata
+    """
+    importados: list[str] = []
+    # `prefix` hace que `walk_packages` devuelva nombres absolutos ya listos para importar.
+    # Sin él, un subpaquete devuelve su nombre relativo y `import_module` lo resuelve mal.
+    for _, module_name, _ in pkgutil.walk_packages(
+        package.__path__, prefix=f"{package.__name__}."
+    ):
+        importlib.import_module(module_name)
+        importados.append(module_name)
+    return importados
+
+
+def ensure_framework_models_loaded() -> list[str]:
+    """
+    Importa los modelos que **HexCore** define, para que entren en `Base.metadata`.
+
+    La otra mitad del mismo problema. `import_all_models` recorre el paquete del
+    consumidor, pero el framework también declara tablas (hoy `hexcore_cron_jobs`; más
+    adelante las de identidad) y nada las importaba. El resultado es una tabla que existe
+    en la base, no está en el metadata, y a la que `--autogenerate` le emite
+    ``op.drop_table`` sin avisar.
+
+    Escenario concreto, y no es hipotético:
+
+        CronSeedStep(create_tables=True)   ->  hexcore_cron_jobs existe en la base
+        CronJobModel nunca fue importado   ->  ausente de Base.metadata
+        alembic revision --autogenerate    ->  op.drop_table("hexcore_cron_jobs")
+
+    Sólo importa los módulos cuyo extra esté instalado: sin `[sql]` no hay `Base`, así que
+    tampoco hay metadata que poblar.
+
+    Returns:
+        Los nombres de los módulos de framework importados.
+
+    Uso, en el `env.py`::
+
+        ensure_framework_models_loaded()
+        import_all_models(models)
+        target_metadata = Base.metadata
+    """
+    candidatos = ("hexcore.infrastructure.cqrs.cron_sql",)
+
+    importados: list[str] = []
+    for module_name in candidatos:
+        try:
+            importlib.import_module(module_name)
+        except ImportError:
+            # El extra no está instalado, así que ese modelo no puede existir en la base
+            # de este proyecto. No es un error.
+            continue
+        importados.append(module_name)
+    return importados

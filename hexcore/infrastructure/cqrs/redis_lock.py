@@ -6,11 +6,10 @@ from __future__ import annotations
 
 import logging
 import typing as t
-from typing import TYPE_CHECKING
 
 from hexcore.domain.cqrs.cron import ILockProvider
 
-if TYPE_CHECKING:
+if t.TYPE_CHECKING:
     from redis.asyncio import Redis
 
 logger = logging.getLogger(__name__)

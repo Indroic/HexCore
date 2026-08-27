@@ -90,6 +90,48 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "WorkerDied": ("hexcore.infrastructure.workers.runner", "WorkerDied"),
     "is_worker_execution": ("hexcore.domain.cqrs.context", "is_worker_execution"),
     "worker_execution": ("hexcore.domain.cqrs.context", "worker_execution"),
+    # ── El sobre que cruza la cola ────────────────────────────────────────────
+    "ENVELOPE_METADATA_KEY": ("hexcore.domain.cqrs.envelope", "ENVELOPE_METADATA_KEY"),
+    "AbstractEnvelopeRestorer": (
+        "hexcore.domain.cqrs.envelope",
+        "AbstractEnvelopeRestorer",
+    ),
+    "EnvelopeMetadataProvider": (
+        "hexcore.domain.cqrs.envelope",
+        "EnvelopeMetadataProvider",
+    ),
+    "register_envelope_metadata_provider": (
+        "hexcore.domain.cqrs.envelope",
+        "register_envelope_metadata_provider",
+    ),
+    "register_envelope_restorer": (
+        "hexcore.domain.cqrs.envelope",
+        "register_envelope_restorer",
+    ),
+    "unregister_envelope_key": (
+        "hexcore.domain.cqrs.envelope",
+        "unregister_envelope_key",
+    ),
+    "clear_envelope_registry": (
+        "hexcore.domain.cqrs.envelope",
+        "clear_envelope_registry",
+    ),
+    "registered_envelope_keys": (
+        "hexcore.domain.cqrs.envelope",
+        "registered_envelope_keys",
+    ),
+    "collect_envelope_metadata": (
+        "hexcore.domain.cqrs.envelope",
+        "collect_envelope_metadata",
+    ),
+    "restored_envelope_scope": (
+        "hexcore.domain.cqrs.envelope",
+        "restored_envelope_scope",
+    ),
+    "message_correlation_id": (
+        "hexcore.domain.cqrs.envelope",
+        "message_correlation_id",
+    ),
     # ── Cron ──────────────────────────────────────────────────────────────────
     "CronJobDefinition": ("hexcore.domain.cqrs.cron", "CronJobDefinition"),
     "ICronJobRepository": ("hexcore.domain.cqrs.cron", "ICronJobRepository"),
@@ -123,7 +165,12 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "DeserializationError": ("hexcore.domain.cqrs.exceptions", "DeserializationError"),
 }
 
-__all__ = sorted(_EXPORTS)
+# `sorted(...)` no es una expresión que Pyright pueda evaluar, así que avisa que la
+# lista de exports puede estar incompleta. Acá no lo está: el `__all__` **literal** que
+# el checker usa de verdad vive en el `.pyi` generado, y `tests/test_typing_gate.py`
+# verifica que coincida con éste. Se suprime la regla puntual, con motivo, en vez de
+# duplicar 126 nombres a mano en el fuente.
+__all__ = sorted(_EXPORTS)  # pyright: ignore[reportUnsupportedDunderAll]
 
 
 def __getattr__(name: str) -> t.Any:

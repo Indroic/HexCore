@@ -46,8 +46,9 @@ await cqrs.run_procrastinate_worker(
 - [Utilidades de test](#utilidades-de-test)
 - [Repositorios y entidades](#repositorios-y-entidades)
 - [Configuración](#configuración)
+- [Darwin: identidad](#darwin-identidad)
 - [Templates de proyecto (CLI)](#templates-de-proyecto-cli)
-- [Versiones y soporte](#versiones-y-soporte) ← **todo lo anterior a 5.0 está deprecado**
+- [Versiones y soporte](#versiones-y-soporte) ← **la API anterior a 5.0 se eliminó en 7.0**
 - [Guía de migración a 5.x](#guía-de-migración-a-5x)
 - [Contribuir](#contribuir)
 
@@ -70,6 +71,16 @@ módulos que las necesitan sólo las importan cuando los usás.
 | `[redis]` | redis | `RedisEventBus`, `RedisLockProvider`, `RedisCache` |
 | `[procrastinate]` | Procrastinate | `ProcrastinateEnqueuer`, `run_procrastinate_worker` |
 | `[rabbitmq]` | aio-pika | `RabbitMQEventBus` y su worker |
+| `[celery]` | Celery | `CeleryEnqueuer`, `run_in_worker_loop` |
+| `[darwin]` | FastAPI, joserfc, argon2-cffi | Darwin: dominio, servicios, tokens, transportes, plugins. **Sin almacenamiento.** |
+| `[darwin-sqlalchemy]` | `hexcore[darwin]` + SQLAlchemy, Alembic, asyncpg, aiosqlite | Almacenamiento de identidad en SQL |
+| `[darwin-beanie]` | `hexcore[darwin]` + Beanie | Almacenamiento de identidad en MongoDB |
+| `[darwin-magic-link]` | `hexcore[darwin]` | Login por link de un solo uso |
+| `[darwin-two-factor]` | `hexcore[darwin]` | TOTP (RFC 6238) con códigos de respaldo |
+| `[darwin-oauth]` | `hexcore[darwin]` + httpx | Authorization Code + PKCE |
+| `[darwin-impersonate]` | `hexcore[darwin]` | «Entrar como» otro usuario, auditado |
+| `[darwin-passkey]` | `hexcore[darwin]` + webauthn | WebAuthn |
+| `[darwin-organization]` | `hexcore[darwin]` | Organizaciones, miembros e invitaciones |
 | `[all]` | todo lo anterior | — |
 
 ```sh
@@ -95,8 +106,8 @@ import hexcore.sql as sql       # init_engine, session_scope, uow_scope, Base, D
 ```
 
 Las fachadas exponen **sólo los nombres canónicos** (`AbstractCommandBus`,
-`AbstractSerializer`, …). Los alias históricos `I*` siguen importables por su ruta de siempre,
-pero están deprecados — ver [Versiones y soporte](#versiones-y-soporte).
+`AbstractSerializer`, …). Los alias históricos `I*` **se eliminaron en 7.0** — ver
+[Versiones y soporte](#versiones-y-soporte) para la tabla de reemplazos.
 
 ---
 
@@ -121,6 +132,13 @@ pero están deprecados — ver [Versiones y soporte](#versiones-y-soporte).
 | Entrypoint del worker | `cqrs.run_cqrs_worker()`, `cqrs.run_procrastinate_worker()` | — |
 | Cron editable en caliente | `cqrs.DynamicScheduler`, `cqrs.SqlAlchemyCronJobRepository` | `sql` |
 | Locks distribuidos | `cqrs.RedisLockProvider`, `cqrs.PostgresLockProvider` | `redis` / `sql` |
+| Identidad y autenticación | `darwin.configure_identity()`, `darwin.build_identity_router()` | `darwin` + `darwin-sqlalchemy` o `darwin-beanie` |
+| Login sin contraseña (magic link) | `MagicLinkPlugin` | `darwin-magic-link` |
+| Segundo factor (TOTP) | `TwoFactorPlugin` | `darwin-two-factor` |
+| OAuth (Google, GitHub, …) | `OAuthPlugin` | `darwin-oauth` |
+| Impersonación auditada | `ImpersonatePlugin` | `darwin-impersonate` |
+| Passkeys (WebAuthn) | `PasskeyPlugin` | `darwin-passkey` |
+| Organizaciones y miembros | `OrganizationPlugin` | `darwin-organization` |
 | Testear todo lo anterior | `hexcore.testing` | — |
 
 ---
@@ -891,6 +909,232 @@ HexCore no ejecuta I/O ni resuelve la configuración en import time, así que po
 
 ---
 
+## Darwin: identidad
+
+Darwin es el módulo de identidad nativo de HexCore. Registro, verificación de mail, login,
+sesiones con refresh rotativo, revocación, impersonación auditada, y un sistema de plugins
+que agrega segundo factor, OAuth, magic links, passkeys y organizaciones sin que el núcleo
+los conozca. Todo sale de un solo import:
+
+```python
+from hexcore.darwin import (
+    IdentityConfig,
+    build_identity_router,
+    configure_identity,
+    identity_startup_steps,
+)
+```
+
+El arranque completo con SQL:
+
+```python
+from hexcore.darwin import (
+    IdentityConfig,
+    build_identity_router,
+    configure_identity,
+    identity_startup_steps,
+)
+from hexcore.fastapi import build_lifespan, create_app, SqlEngineStep, AppFeatures
+
+cfg = IdentityConfig()                         # defaults razonables; ver campos abajo
+configure_identity(cfg)                        # una vez, al arrancar
+
+app = create_app(
+    features=AppFeatures(auth_context=True, csrf=True),
+    lifespan=build_lifespan(SqlEngineStep(), *identity_startup_steps()),
+    routers=[build_identity_router()],
+)
+```
+
+`configure_identity(config, **componentes)` se llama una vez al arrancar. Los componentes
+son los puertos a inyectar (`users=`, `clock=`, `key_store=`, `plugins=`, …); sin ellos, el
+contenedor usa los defaults de producción. `identity_startup_steps()` devuelve la lista de
+pasos para desempaquetar en `build_lifespan`: `IdentityStep` —que valida configuración,
+resuelve el backend de almacenamiento y levanta las llaves de firma— y `SessionReaperStep`
+—que purga sesiones expiradas en background—. `build_identity_router()` devuelve un
+`APIRouter` para `create_app(routers=[...])`.
+
+Cada plugin tiene extra propio incluso cuando no suma paquetes (cuatro de los seis corren con
+stdlib más el núcleo). Los extras existen por tres razones: son el nombre estable donde una
+dependencia futura entra sin cambiarle el comando de instalación al consumidor
+(`[darwin-passkey]` no tenía `webauthn` hasta que lo tuvo); hacen que
+`pip install 'hexcore[darwin-two-factor]'` funcione, porque cada extra de plugin arrastra
+`hexcore[darwin]`; y documentan la superficie en el único lugar que el consumidor lee antes
+de instalar. Lo que el extra deliberadamente **no** hace es exigir un backend de
+almacenamiento: «uno de dos» no se expresa en metadata de empaquetado, así que la elección se
+resuelve en runtime con `resolve_storage_backend`, que da un error nombrando el extra que
+falta.
+
+### El router del núcleo
+
+`build_identity_router(prefix="/auth", tags=("auth",), sign_in_rate_limit=(5, 300), include_sign_up=True)`
+monta: `POST /sign-up` (201), `POST /verify-email`, `POST /sign-in`, `POST /refresh`,
+`POST /sign-out`, `POST /sign-out-everywhere`, `GET /me`, `GET /sessions`.
+
+Un solo endpoint por operación sirve los dos transportes. El endpoint resuelve el transporte
+una vez y le delega la emisión: el cliente web recibe `Set-Cookie` y ningún token en el
+cuerpo; el cliente nativo recibe los tokens en el cuerpo y ningún `Set-Cookie`. Duplicar las
+rutas duplicaría también los chequeos de seguridad, y la copia que se olvida de uno es la que
+se explota.
+
+El `sign_in_rate_limit` default usa `on_backend_error="deny"` — al revés que el default de
+`rate_limit` del framework, y a propósito: un Redis caído no debería convertirse en
+credential stuffing ilimitado.
+
+> **`POST /sign-up` es un oráculo de enumeración** si lo dejás público tal cual: responde 409
+> cuando el mail ya existe. Sirve el caso administrativo; el público conviene escribirlo en
+> la app, donde la respuesta es siempre la misma y la diferencia va en el mail que se manda.
+
+### Dualidad de transporte
+
+El token va atado al transporte (`aud`/`tt` distinto), así que una cookie no se puede
+replayear como Bearer esquivando CSRF y `SameSite`. `CookieTransport` usa cookies `__Host-`
+con `HttpOnly`, `Secure` y `SameSite=Lax`, más chequeo anti-CSRF explícito. `BearerTransport`
+devuelve los tokens en el cuerpo y espera `Authorization: Bearer <token>`.
+`TransportResolver` decide cuál aplica mirando el request.
+
+### JWT + DB híbrido
+
+El access token es un JWT con `exp` corto (minutos). No se toca la base para validarlo — sólo
+se verifican firma, `exp`, audience y transporte. La revocación opera en tres capas:
+
+1. `exp` corto: el token vive poco; si se lo roban, se lo roba por poco.
+2. Denylist de `sid` en `ICache`: `SignOut` bloquea el `sid` y un token vigente de esa sesión
+   se rechaza la próxima vez, sin esperar a que expire.
+3. Contador de generación por usuario: `SignOutEverywhere` incrementa el contador, y todos
+   los tokens emitidos con la generación anterior se rechazan sin enumerarlos.
+
+El refresh token **sí** toca la base: rota la sesión atómicamente y hace detección de reuso.
+Un refresh robado revoca la familia entera en el primer intento.
+
+El algoritmo está pineado por allowlist, nunca por el `alg` del token. `joserfc` sobre
+`pyjwt` justamente porque su API obliga a pasar la lista de algoritmos permitidos: el default
+seguro es estructural, no documental.
+
+### Actor vs Subject
+
+La sesión persiste `actor_user_id` **y** `subject_user_id`, no un solo `user_id`.
+`AuthContext` expone `actor` (quien ejecuta) y `subject` (a quién afecta). Es lo que hace
+auditable la impersonación: un contexto impersonado sin los dos principales no se puede
+construir, porque la validación del modelo lo rechaza. Fuera de una impersonación, actor y
+subject son el mismo usuario.
+
+### El actor cruza la cola
+
+Cuando un comando se encola durante un request autenticado, el actor viaja en un sobre firmado
+(`AuthEnvelopeCodec`) atado al mensaje (`cid`, `mt`). El worker **re-valida la fila de
+`session`** en vez de confiar en el `exp`: un token válido en el momento del encolado puede
+estar revocado para cuando el worker lo procesa. `IdentityConfig.worker_context_ttl` (default:
+24 h) acota la ventana.
+
+### Backends de almacenamiento
+
+`IdentityConfig.storage` acepta `"sqlalchemy"`, `"beanie"` o `None`. Cuando es `None`, se
+detecta por los extras instalados. La detección **se niega si están los dos instalados**: es
+ambiguo y adivinar sería peor. Los repositorios se resuelven por **contrato de nombre
+neutro**: cada backend expone `UserRepository`, `SessionRepository`, `AccountRepository`,
+`VerificationRepository` con el mismo nombre, así que el núcleo nunca nombra un backend.
+
+### Alembic y `ensure_identity_schema_loaded`
+
+**Si usás SQL, esto es lo más importante que podés leer.** `ensure_identity_schema_loaded(plugins=[...])`
+hay que llamarlo desde el `env.py` de Alembic, y hay que pasarle la lista de plugins activos.
+Si falta un plugin ahí, `alembic revision --autogenerate` emite `op.drop_table` sobre sus
+tablas — las crea, las ve, las borra. `IdentityStep` verifica al arrancar y loguea la lista
+exacta que hay que copiar.
+
+El `env.py` que genera la CLI ya lleva una `DARWIN_PLUGINS: list[str] = []` con el
+comentario. Llenalo con los nombres de tus plugins activos:
+
+```python
+# env.py — fragmento relevante
+from hexcore.darwin import ensure_identity_schema_loaded
+
+DARWIN_PLUGINS: list[str] = ["two_factor", "passkey"]  # los que uses
+ensure_identity_schema_loaded(plugins=DARWIN_PLUGINS)
+```
+
+Lo mismo aplica con el esquema SQL de cada plugin: `PLUGIN_MODELS` (SQL) y
+`PLUGIN_DOCUMENTS` (Beanie) exponen sus modelos para que Alembic los vea.
+
+### Plugins
+
+Los plugins se registran en un `PluginRegistry` que se pasa a `configure_identity`. Cada
+plugin aporta —según lo que necesite— un router, comandos CQRS, hooks sobre los flujos del
+núcleo, y opcionalmente tablas propias.
+
+```python
+from hexcore.darwin import PluginRegistry, configure_identity, IdentityConfig
+from hexcore.darwin.plugins.two_factor import TwoFactorPlugin
+from hexcore.darwin.plugins.magic_link import MagicLinkPlugin
+
+plugins = PluginRegistry([
+    TwoFactorPlugin(issuer="Mi App"),
+    MagicLinkPlugin(),
+])
+configure_identity(IdentityConfig(), plugins=plugins)
+```
+
+Los routers de los plugins se montan aparte del del núcleo:
+
+```python
+app = create_app(
+    features=AppFeatures(auth_context=True, csrf=True),
+    lifespan=build_lifespan(SqlEngineStep(), *identity_startup_steps()),
+    routers=[build_identity_router(), *plugins.routers()],
+)
+```
+
+**`MagicLinkPlugin`** — login por link de un solo uso. Reusa la tabla `verification` del
+núcleo (no aporta tabla propia). `POST /request` responde igual exista o no el mail: al revés
+sería un oráculo de enumeración en una ruta sin autenticación. El default limita a 3 pedidos
+cada 15 minutos por IP; sin eso, la ruta es un amplificador de mail gratuito. El TTL del link
+es de 15 minutos — corto a propósito, porque es una credencial de portador que viaja por mail
+y queda en el historial del cliente y en los logs del proveedor.
+
+**`TwoFactorPlugin`** — TOTP como segundo factor, con el sign-in partido en dos pasos. Un
+hook en `user.sign_in.authenticated` corre con la contraseña ya validada y la sesión todavía
+no creada, y lanza `TwoFactorRequiredError` sin emitir nada. El TOTP es `hmac` de la stdlib
+y el cifrado del secreto reusa el JWE de `joserfc`. El rate limit del endpoint de canje
+(`(10, 300)`) **no se apaga**: es la ruta donde se prueban códigos de 6 dígitos, y el techo
+por fila (`MAX_FAILED_ATTEMPTS`) sólo protege a un usuario inscripto — el límite por IP es lo
+que corta a quien rota entre cuentas.
+
+**`OAuthPlugin`** — Authorization Code con PKCE obligatorio (`S256`, nunca `plain`). Reusa la
+tabla `account` del núcleo y aporta una tabla propia sólo para el `state` en vuelo. Por
+default **no vincula por coincidencia de mail** (`LinkPolicy.NEVER`): es la toma de cuentas
+más común de OAuth. `allowed_redirect_uris` **hay que declararlo en producción**: sin la
+lista no se valida nada, y un `redirect_uri` libre deja que un atacante se lleve el código de
+la víctima.
+
+**`ImpersonatePlugin`** — «entrar como» otro usuario. No aporta tabla: la fila de `session`
+ya lleva `actor_user_id`, `subject_user_id`, `impersonation_reason` e
+`impersonation_expires_at` desde la Fase 3. La sesión impersonada tiene un techo de 60
+minutos no renovable (el núcleo rechaza el refresh), no hay cadenas (impersonar estando
+impersonando está prohibido), y `has_scope` consulta al actor, nunca al subject: impersonar
+no presta permisos. `rate_limit` existe aunque la ruta esté autenticada: si un operador queda
+comprometido, el límite convierte «impersonar a toda la base» en algo que tarda y se nota.
+
+**`PasskeyPlugin`** — WebAuthn. Lo que se guarda es la clave pública: un dump de la base no
+sirve para autenticarse ni acá ni en otro sitio, y el origen está atado por el navegador.
+Cambiar el `rp_id` **invalida todas las credenciales registradas**, porque el navegador las
+ata al dominio. El contador de firmas se usa para detectar autenticadores clonados: un
+contador que dejó de avanzar (pero antes sí lo hacía) rechaza la autenticación y corta la
+sesión. `origins` es obligatorio con el verificador por defecto.
+
+**`OrganizationPlugin`** — organizaciones, miembros con tres roles (`owner` > `admin` >
+`member`), e invitaciones. Las tres invariantes que sostiene: una organización nunca queda sin
+`owner` (contado en la base, no en memoria, para resistir peticiones concurrentes); nadie
+asciende a alguien por encima de sí mismo ni actúa sobre un par o un superior; y la
+invitación está atada al mail verificado del invitado (sin eso, reenviar el link le da el rol
+a cualquiera que lo reciba).
+
+Para el detalle de arquitectura y el plan de desarrollo completo, ver
+[`docs/ARCHITECTURE_DARWIN.md`](./docs/ARCHITECTURE_DARWIN.md). Para el sistema de tipos y
+los stubs generados, [`docs/ARCHITECTURE_TYPING.md`](./docs/ARCHITECTURE_TYPING.md).
+
+---
+
 ## Templates de proyecto (CLI)
 
 ```sh
@@ -910,14 +1154,25 @@ estructura de migraciones con Alembic.
 
 | Serie | Estado | Qué significa |
 | :-- | :-- | :-- |
-| **6.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. |
-| **5.x** | ⛔ **Deprecada** | Misma superficie de API que 6.x. Migrar es actualizar la versión. |
+| **7.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. Trae Darwin, elimina la superficie anterior a 5.0 y corrige los defectos de CORS y rate limiting. |
+| **6.x** | ⛔ **Deprecada** | Sigue funcionando pero no recibe correcciones. Incluye los defectos de seguridad de CORS y rate limiting corregidos en 7.0, y los alias anteriores a 5.0 todavía presentes. |
+| **5.x** | ⛔ **Deprecada** | Misma superficie de API que 6.x. Migrar a 6.x era actualizar la versión; a 7.x hay que sacar los alias `I*`. |
 | **4.x** | ⛔ **Deprecada** | Aplicación **parcial**: le faltan el fix del event loop de Celery, las fachadas y la documentación alineada. |
 | **3.x** | ⛔ **Deprecada** | Aplicación **parcial**: tiene las correcciones P0/P1 pero ninguna de las factories de FastAPI. |
 | **2.x** | ⛔ **Deprecada** | Contiene los bugs silenciosos corregidos en 5.x (ver abajo). |
 | **1.x** | ⛔ **Deprecada** | Sin soporte de ningún tipo. |
 
-**Todo lo anterior a 5.0 está deprecado. Migrá a 6.x.**
+**Todo lo anterior a 7.0 está deprecado. Migrá a 7.x.**
+
+Los alias anteriores a 5.0 avisaban que se eliminaban "en 6.0". 6.0.0 salió sin eliminarlos —
+se prefirió mover la fecha antes que romper retroactivamente a quien ya había actualizado
+confiando en que seguían. **En 7.0 se eliminan de verdad**, con dos majors completos de aviso
+acumulados. La tabla de reemplazos está más abajo.
+
+> La fila de la serie 7.x se agrega al publicarla: `tests/test_documentation_examples.py`
+> verifica que la serie marcada como activa sea la de `pyproject.toml`, así que la tabla y la
+> versión no pueden desincronizarse. Ese test es el que detectó que 6.0.0 salió con 5.x todavía
+> marcada como activa.
 
 3.0.0 y 4.0.0 existen sólo porque el trabajo se mergeó por fases y cada merge disparó un bump
 automático: **no son releases pensadas para usarse**, son cortes intermedios de la misma
@@ -944,12 +1199,15 @@ de error, así que un proyecto puede estar afectado sin saberlo.
 | `asyncio.run()` por tarea en Celery | `Event loop is closed` con un `AsyncEngine` compartido |
 | `HandlerRegistry` decía ser thread-safe sin ningún lock | Doble instanciación del handler bajo concurrencia |
 
-La superficie de API de v1/v2 **sigue funcionando** en 5.x —los alias de retrocompatibilidad no
-se han borrado— pero está deprecada, emite `DeprecationWarning` y se eliminará en **6.0**.
+La superficie de API de v1/v2 **se eliminó en 7.0**. Estuvo deprecada y emitiendo
+`DeprecationWarning` desde 5.0, o sea dos majors completos de aviso.
 
-### API deprecada y su reemplazo
+Si venís de 6.x o anterior y usabas alguno de estos nombres, el reemplazo es mecánico: son
+renombres, no cambios de comportamiento.
 
-| Deprecado (v1/v2) | Usá en su lugar |
+### API removida y su reemplazo
+
+| Removido en 7.0 (era v1/v2) | Usá en su lugar |
 | :-- | :-- |
 | `ICommandBus`, `IQueryBus`, `IEventBus` | `AbstractCommandBus`, `AbstractQueryBus`, `AbstractEventBus` |
 | `ICommandHandler`, `IQueryHandler` | `AbstractCommandHandler`, `AbstractQueryHandler` |
@@ -964,7 +1222,12 @@ se han borrado— pero está deprecada, emite `DeprecationWarning` y se eliminar
 | `reset_sqlalchemy_engine()` | `dispose_engine()` |
 | `MiddlewareConfig` | **Eliminado en 3.0.** Era código muerto: nunca se leía. |
 
-Para ver qué estás usando, corré tus tests con los warnings visibles:
+Pasar `event_dispatcher=` a `ServerConfig` **falla con un error que dice qué usar**, en vez de
+ignorarse en silencio: pydantic descarta los kwargs que no conoce, y quedarte con el bus por
+defecto sin enterarte se manifestaría mucho después como "mis eventos no llegan".
+
+Si todavía estás en 6.x, corré tus tests con los warnings visibles para ver qué te falta migrar
+antes de subir a 7.0:
 
 ```sh
 python -m pytest -W "default::DeprecationWarning"
@@ -1107,6 +1370,8 @@ Hay un conjunto de skills para extender HexCore en VS Code y entornos compatible
 ## Referencias
 
 - [DOCS.md](./DOCS.md) — guía de arranque y documentación de clases y funciones.
+- [docs/ARCHITECTURE_DARWIN.md](./docs/ARCHITECTURE_DARWIN.md) — arquitectura del módulo de identidad.
+- [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md) — sistema de tipos y stubs.
 - [CHANGELOG.md](./CHANGELOG.md) — historial de cambios.
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — pautas de colaboración.
 - [SECURITY.md](./SECURITY.md) — política de seguridad.

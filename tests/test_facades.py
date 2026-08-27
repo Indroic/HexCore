@@ -69,8 +69,11 @@ def test_resolution_is_cached_in_module_globals(facade_name):
 @pytest.mark.filterwarnings("ignore::DeprecationWarning")
 def test_cqrs_facade_exposes_only_the_canonical_names():
     """
-    S4: un solo nombre por concepto en la superficie que enseña la documentación. Los
-    alias `I*` siguen existiendo en su módulo, pero no aquí.
+    S4: un solo nombre por concepto en la superficie que enseña la documentación.
+
+    Los alias `I*` **se eliminaron en 7.0**, así que ya no están ni en la fachada ni en su
+    módulo de origen. La cobertura de la remoción está en `test_deprecations.py`; acá sólo se
+    fija que la fachada expone el canónico.
     """
     import hexcore.cqrs as cqrs
 
@@ -78,10 +81,10 @@ def test_cqrs_facade_exposes_only_the_canonical_names():
     for legacy in ("ICommandBus", "IQueryBus", "IEventBus", "ISerializer", "IMiddleware"):
         assert legacy not in cqrs.__all__, f"{legacy} no debería estar en la fachada"
 
-    # Pero el alias sigue importable por su ruta de siempre.
-    from hexcore.domain.cqrs.buses import ICommandBus
+    import hexcore.domain.cqrs.buses as buses
 
-    assert ICommandBus is cqrs.AbstractCommandBus
+    with pytest.raises(AttributeError):
+        buses.ICommandBus
 
 
 def test_cqrs_facade_covers_the_smart_routing_workflow():

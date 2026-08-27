@@ -2,7 +2,7 @@ from __future__ import annotations
 import typing as t
 from uuid import uuid4, UUID as PythonUUID
 from datetime import datetime, UTC
-from sqlalchemy import UUID, DateTime, Boolean
+from sqlalchemy import UUID, DateTime, Boolean, MetaData
 
 from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
 
@@ -12,8 +12,35 @@ from hexcore.domain.base import BaseEntity
 T = t.TypeVar("T", bound=BaseEntity)
 
 
+#: Convención de nombres de constraints.
+#:
+#: SQLAlchemy sólo trae `ix` por defecto, así que uniques, checks, FKs y PKs quedaban con
+#: el nombre que les asignara el backend. Eso trae dos problemas concretos:
+#:
+#: - **SQLite no puede dropear un constraint sin nombre**, así que una migración de bajada
+#:   que lo intente falla y no hay forma de escribirla a mano.
+#: - Los nombres difieren entre backends, así que la misma migración no se comporta igual
+#:   en el SQLite de desarrollo que en el PostgreSQL de producción.
+#:
+#: Se declara **antes** de la primera tabla que use uniques o FKs —las de identidad—
+#: porque agregarla después es en sí una migración rompedora: hay que renombrar todo
+#: constraint ya existente, y para eso hace falta poder nombrarlos, que es justamente lo
+#: que falta.
+#:
+#: `ix` se deja **exactamente** como el default de SQLAlchemy a propósito. Cambiarlo haría
+#: que el próximo `--autogenerate` de todo proyecto existente quisiera renombrar cada
+#: índice que ya tiene, y no compra nada.
+NAMING_CONVENTION: dict[str, str] = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_N_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
+
+
 class Base(DeclarativeBase):
-    pass
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
 class BaseModel(Base, t.Generic[T]):
