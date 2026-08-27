@@ -111,10 +111,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Veredicto
+        # La expresión va por `env:` y no interpolada adentro del `run:`. GitHub rechazaba el
+        # workflow **entero** con `RESULTS='${{ join(needs.*.result, " ") }}'`: las comillas
+        # dobles adentro de la expresión, dentro de un string del shell, dentro de un bloque
+        # literal de YAML, le rompían el parser. El síntoma era el peor posible — un run que
+        # falla en 0 s, sin un solo job, sin log y sin anotación, o sea sin nada que leer.
+        #
+        # Pasarla por `env:` la saca del texto del comando, que ademas es la forma recomendada:
+        # una expresión interpolada directo en un `run:` es una inyección esperando un valor
+        # con comillas.
+        env:
+          RESULTADOS: ${{ join(needs.*.result, ' ') }}
         run: |
-          RESULTS='${{ join(needs.*.result, " ") }}'
-          echo "Resultados: $RESULTS"
-          for result in $RESULTS; do
+          echo "Resultados: $RESULTADOS"
+          for result in $RESULTADOS; do
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
               echo "::error::El gate de tipado falló. Mirá qué job está en rojo: cada uno imprime su propia remediación."
               exit 1
