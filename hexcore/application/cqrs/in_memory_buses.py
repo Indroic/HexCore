@@ -65,10 +65,21 @@ class InMemoryCommandBus(AbstractCommandBus):
                     "pero el InMemoryCommandBus no tiene configurado un 'enqueuer' o 'serializer'."
                 )
 
+            # Se ligan a locales **después** de la guarda de arriba, y no se leen de `self`
+            # adentro del closure. Dos motivos, y el segundo no es de tipado: el checker no
+            # propaga el estrechamiento de un atributo hacia una función anidada —entre el
+            # chequeo y la llamada, `self._serializer` podría reasignarse—, y esa misma
+            # posibilidad es un error de verdad, porque el dispatcher corre más tarde. Ligar
+            # acá captura lo que se verificó.
+            serializer, enqueuer = self._serializer, self._enqueuer
+
             async def background_dispatcher(cmd: Command) -> None:
                 queue_name = getattr(cmd_type, "__cqrs_queue__", "default")
-                payload = self._serializer.serialize(cmd) # type: ignore
-                await self._enqueuer.enqueue_command(cmd_type.__name__, payload, queue=queue_name) # type: ignore
+                # `serialize_envelope` y no `serialize`: agrega el sobre de metadata
+                # ambiental (quién está autenticado) para que el worker pueda restaurarlo.
+                # Sin proveedores registrados el payload es idéntico al de antes.
+                payload = serializer.serialize_envelope(cmd)
+                await enqueuer.enqueue_command(cmd_type.__name__, payload, queue=queue_name)
                 logger.debug("[SmartRouting] Comando %s enrutado a background (queue=%s)", cmd_type.__name__, queue_name)
 
             await self._pipeline.execute(command, background_dispatcher)
@@ -161,14 +172,18 @@ class InMemoryEventBus(AbstractEventBus):
                         "pero el InMemoryEventBus no tiene configurado un 'enqueuer' o 'serializer'."
                     )
                 
+                # Mismo motivo que en `InMemoryCommandBus.dispatch`: se capturan los valores
+                # ya verificados en vez de releer `self` cuando el dispatcher corra.
+                serializer, enqueuer = self._serializer, self._enqueuer
+
                 async def background_dispatcher(
                     evt: t.Any,
                     _h: t.Callable[..., t.Awaitable[None]] = event_handler,
                 ) -> None:
                     handler_name = getattr(_h, "__cqrs_handler_name__")
                     queue_name = getattr(_h, "__cqrs_queue__", "default")
-                    payload = self._serializer.serialize(evt) # type: ignore
-                    await self._enqueuer.enqueue_handler(handler_name, payload, queue=queue_name) # type: ignore
+                    payload = serializer.serialize_envelope(evt)
+                    await enqueuer.enqueue_handler(handler_name, payload, queue=queue_name)
                     logger.debug("[SmartRouting] EventHandler %s enrutado a background (queue=%s)", handler_name, queue_name)
                     
                 await self._pipeline.execute(event, background_dispatcher)

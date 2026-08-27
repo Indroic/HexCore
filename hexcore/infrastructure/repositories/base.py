@@ -1,10 +1,16 @@
 from __future__ import annotations
 import abc
 import typing as t
-try:
+
+if t.TYPE_CHECKING:
+    # Bajo `TYPE_CHECKING` y no en un `try/except ImportError` con una clase vacía de
+    # respaldo, que es como estaba. `AsyncSession` acá sólo aparece en anotaciones, y con
+    # `from __future__ import annotations` esas anotaciones son strings que nadie evalúa en
+    # runtime: el import nunca hacía falta. Lo que sí hacía la clase vacía era ganarle la
+    # resolución del nombre a la real —Pyright analiza las dos ramas y se queda con la
+    # última—, así que `self.session` tipaba como un objeto sin métodos y todo repositorio
+    # que la usara reportaba un `AsyncSession` incompatible con el `AsyncSession` de verdad.
     from sqlalchemy.ext.asyncio import AsyncSession
-except ImportError:
-    class AsyncSession: ... # type: ignore
 
 from hexcore.domain.base import BaseEntity
 from hexcore.domain.repositories import IBaseRepository

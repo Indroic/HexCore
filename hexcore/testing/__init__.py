@@ -17,11 +17,14 @@ from .fakes import (
     RecordedEnqueue,
 )
 from .helpers import build_test_buses, override_cqrs
+from .repositories import FakeRepository, FakeUnitOfWork
 
 __all__ = [
     "InMemoryTaskEnqueuer",
     "RecordedEnqueue",
     "FakeLockProvider",
+    "FakeRepository",
+    "FakeUnitOfWork",
     "override_cqrs",
     "build_test_buses",
 ]

@@ -107,12 +107,45 @@ def shutdown_worker_loop(timeout: float = 5.0) -> None:
     _LOOP.shutdown(timeout)
 
 if t.TYPE_CHECKING:
-    try:
-        from celery import Celery
-    except ImportError:
-        Celery = t.Any
-        
+    # Sin el `try/except ImportError: Celery = t.Any` que estaba acá. Ver el comentario
+    # equivalente en `procrastinate_adapter.py`: bajo `TYPE_CHECKING` el import nunca corre,
+    # así que el respaldo no evitaba ningún error de runtime — sólo hacía que Pyright
+    # resolviera `Celery` a `Any` y degradara las firmas con el extra instalado.
+    from celery import Celery
+
     from hexcore.infrastructure.workers.consumer import CQRSConsumer
+
+
+class _CeleryApp(t.Protocol):
+    """
+    Lo único que HexCore le pide a una app de Celery: mandar tareas y registrarlas.
+
+    Celery viene con anotaciones parciales — `send_task` y `task` tienen los parámetros sin
+    tipo, así que cada llamada nuestra se reportaba como `Unknown` aunque el extra estuviera
+    instalado, y `@app.task` como un decorador que "oscurece el tipo de la función". No es
+    algo que se arregle de nuestro lado del import: los tipos que faltan son los de ellos.
+
+    Lo que sí podemos hacer es declarar **qué forma usamos**, que es esto. El protocolo es
+    estructural, así que una `Celery` de verdad lo satisface sin registrarse en ningún lado,
+    y si mañana cambian la firma de `send_task` el `cast` deja de ser cierto en un solo lugar
+    —acá— en vez de en cada llamada.
+
+    Deliberadamente angosto: dos métodos, y sólo los argumentos que pasamos. Un protocolo que
+    copiara la firma entera de Celery sería otra copia que mantener, y volvería a traer los
+    `Unknown` que existe para sacar.
+    """
+
+    def send_task(
+        self,
+        name: str,
+        *,
+        kwargs: dict[str, t.Any] | None = ...,
+        queue: str | None = ...,
+    ) -> object: ...
+
+    def task(
+        self, **opciones: t.Any
+    ) -> t.Callable[[t.Callable[..., t.Any]], t.Any]: ...
 
 
 class CeleryEnqueuer(ITaskEnqueuer):
@@ -125,10 +158,14 @@ class CeleryEnqueuer(ITaskEnqueuer):
 
     def __init__(self, app: "Celery") -> None:
         self.app = app
+        # `self.app` queda como la app de Celery, que es lo que el consumidor pasó y lo que
+        # espera encontrar. `_send` es la misma app vista por el protocolo, y es lo que usan
+        # los tres `enqueue_*`: la vista angosta va adentro, la ancha queda en la API.
+        self._send: "_CeleryApp" = t.cast("_CeleryApp", app)
 
     async def enqueue_command(self, command_name: str, payload: dict[str, t.Any], queue: str) -> None:
         await asyncio.to_thread(
-            self.app.send_task,
+            self._send.send_task,
             "hexcore.process_command",
             kwargs={"payload": payload},
             queue=queue,
@@ -145,7 +182,7 @@ class CeleryEnqueuer(ITaskEnqueuer):
 
     async def enqueue_handler(self, handler_name: str, payload: dict[str, t.Any], queue: str) -> None:
         await asyncio.to_thread(
-            self.app.send_task,
+            self._send.send_task,
             "hexcore.process_handler",
             kwargs={"handler_name": handler_name, "payload": payload},
             queue=queue,
@@ -153,7 +190,7 @@ class CeleryEnqueuer(ITaskEnqueuer):
 
     async def enqueue_task(self, task_name: str, payload: dict[str, t.Any], queue: str) -> None:
         await asyncio.to_thread(
-            self.app.send_task,
+            self._send.send_task,
             "hexcore.process_task",
             kwargs={"task_name": task_name, "payload": payload},
             queue=queue,
@@ -200,6 +237,8 @@ def register_hexcore_celery_tasks(
     Returns:
         True si se registraron las tareas, False si ya estaban registradas.
     """
+    registrable: "_CeleryApp" = t.cast("_CeleryApp", app)
+
     if not force and is_registered(app):
         logger.debug(
             "Las tareas de HexCore ya estaban registradas en esta app de Celery; "
@@ -207,17 +246,24 @@ def register_hexcore_celery_tasks(
         )
         return False
 
-    @app.task(name="hexcore.process_command", bind=True)
-    def process_command(self: t.Any, payload: dict[str, t.Any]) -> None:
+    # Los tres se registran por **efecto de lado** del decorador: `app.task(...)` las mete en
+    # el registro de la app y el nombre local no lo lee nadie.
+    @registrable.task(name="hexcore.process_command", bind=True)
+    def _process_command(self: t.Any, payload: dict[str, t.Any]) -> None:
         _LOOP.run(consumer.process_command(payload))
 
-    @app.task(name="hexcore.process_handler", bind=True)
-    def process_handler(self: t.Any, handler_name: str, payload: dict[str, t.Any]) -> None:
+    @registrable.task(name="hexcore.process_handler", bind=True)
+    def _process_handler(self: t.Any, handler_name: str, payload: dict[str, t.Any]) -> None:
         _LOOP.run(consumer.process_handler(handler_name, payload))
 
-    @app.task(name="hexcore.process_task", bind=True)
-    def process_task(self: t.Any, task_name: str, payload: dict[str, t.Any]) -> None:
+    @registrable.task(name="hexcore.process_task", bind=True)
+    def _process_task(self: t.Any, task_name: str, payload: dict[str, t.Any]) -> None:
         _LOOP.run(consumer.process_task(task_name, payload))
+
+    # Nombrarlas acá es lo que las separa de código muerto, para el checker y para quien lee.
+    # El prefijo con guion bajo no alcanza: `reportUnusedFunction` no exime los nombres
+    # privados como sí hace `reportUnusedVariable`.
+    _registradas = (_process_command, _process_handler, _process_task)
 
     try:
         _registered_apps[id(app)] = app

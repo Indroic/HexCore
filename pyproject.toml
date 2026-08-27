@@ -34,6 +34,97 @@ sql = ["sqlalchemy>=2.0.43", "alembic>=1.16.5", "asyncpg>=0.30.0", "aiosqlite>=0
 rabbitmq = ["aio-pika>=9.4.0", "pika>=1.3.2"]
 procrastinate = ["procrastinate>=3.0.0"]
 celery = ["celery>=5.4.0"]
+# ── Darwin, el modulo de identidad ──────────────────────────────────
+#
+# Un extra por unidad de decision del consumidor. Tres son de almacenamiento y seis son de
+# funcionalidad, y el criterio es el mismo en las nueve: si el consumidor puede decidir no
+# tenerlo, es un extra.
+#
+#   [darwin]              el nucleo. Dominio, servicios, tokens, transportes, plugins.
+#                         SIN almacenamiento: no sabe en que se guardan las cosas.
+#   [darwin-sqlalchemy]   el almacenamiento en SQL.
+#   [darwin-beanie]       el almacenamiento en MongoDB.
+#   [darwin-magic-link]   login por link de un solo uso.
+#   [darwin-two-factor]   TOTP (RFC 6238) con codigos de respaldo.
+#   [darwin-oauth]        Authorization Code + PKCE contra proveedores externos.
+#   [darwin-impersonate]  "entrar como" otro usuario, auditado y con techo de vida.
+#   [darwin-passkey]      WebAuthn.
+#   [darwin-organization] organizaciones, miembros e invitaciones.
+#
+# Por que el almacenamiento va separado y no un solo extra con los dos: un despliegue elige UN
+# backend, y el que elige Mongo no tiene por que instalar SQLAlchemy, Alembic y asyncpg — son
+# ~15 MB y una superficie de cadena de suministro que no usa. Y al reves igual.
+#
+# Por que cada plugin tiene extra propio incluso cuando no suma paquetes: cuatro de los seis
+# (`magic-link`, `two-factor`, `impersonate`, `organization`) corren con stdlib mas el nucleo,
+# asi que hoy declaran cero dependencias nuevas. El extra igual gana su lugar por tres razones,
+# y ninguna es cosmetica:
+#
+#   1. Es el nombre estable donde una dependencia futura entra sin cambiarle el comando de
+#      instalacion al consumidor. `[darwin-passkey]` no tenia `webauthn` hasta que lo tuvo.
+#   2. Hace que `pip install 'hexcore[darwin-two-factor]'` **funcione**: cada extra de plugin
+#      arrastra `hexcore[darwin]`, asi que pedir un plugin trae el nucleo que necesita. Sin la
+#      autorreferencia, ese comando instalaba un plugin sin nucleo — un import roto.
+#   3. Documenta la superficie en el unico lugar que el consumidor lee antes de instalar. Un
+#      plugin ausente de esta lista es un plugin que nadie encuentra.
+#
+# Lo que el extra deliberadamente **no** hace es exigir un backend de almacenamiento. Los cinco
+# plugins que guardan algo necesitan uno de los dos, y "uno de dos" no se expresa en metadata de
+# empaquetado: un extra con los dos instalaria SQLAlchemy al que eligio Mongo, que es justo lo
+# que la separacion evita. La eleccion es del consumidor y se resuelve en runtime
+# (`resolve_storage_backend`), con un error que nombra el extra que falta.
+#
+# La frontera es real y no una convencion: los puertos viven en `darwin/domain/ports.py` y en
+# el `domain.py` de cada plugin, y los adaptadores en `**/orms/{sqlalchemy,beanie}/`. Hay tests
+# que verifican que el nucleo importe con los seis plugins bloqueados, y que cada plugin importe
+# con los otros cinco bloqueados.
+#
+# `joserfc` sobre `pyjwt` porque su API obliga a pasar la lista de algoritmos permitidos: el
+# default seguro es estructural y no documental. `argon2-cffi` porque Argon2id es el ganador
+# del PHC y la recomendacion de OWASP. Ojo: el paquete se importa como `argon2`, no como
+# `argon2_cffi`.
+darwin = [
+    "fastapi>=0.116.1",
+    "joserfc>=1.0.0",
+    "argon2-cffi>=23.1.0",
+]
+# El almacenamiento en SQL. `alembic` va aca y no en `[sql]` porque las migraciones de las
+# tablas de identidad son parte de este backend.
+darwin-sqlalchemy = [
+    "hexcore[darwin]",
+    "sqlalchemy>=2.0.43",
+    "alembic>=1.16.5",
+    "asyncpg>=0.30.0",
+    "aiosqlite>=0.21.0",
+]
+# El almacenamiento en MongoDB. `beanie` arrastra `pymongo`.
+darwin-beanie = ["hexcore[darwin]", "beanie>=2.0.0"]
+# Reusa la tabla `verification` del nucleo, asi que no aporta tabla ni dependencia: el link es
+# un token de un solo uso, que es exactamente lo que esa tabla ya modela.
+darwin-magic-link = ["hexcore[darwin]"]
+# TOTP en `hmac` de la stdlib. RFC 6238 sobre RFC 4226 son unas treinta lineas —un HMAC, un
+# contador de a treinta segundos y un truncado— y meter `pyotp` por eso agregaria una
+# dependencia en el camino de autenticacion para no escribirlas.
+darwin-two-factor = ["hexcore[darwin]"]
+# Suma httpx: el flujo de Authorization Code necesita hablarle al endpoint de token del
+# proveedor. El cliente HTTP esta detras de un puerto, asi que los tests del flujo corren sin
+# el extra.
+darwin-oauth = ["hexcore[darwin]", "httpx>=0.27.0"]
+# Sin dependencias: la impersonacion es una sesion con dos principales, y el nucleo ya las
+# distingue desde la Fase 3 —`actor` y `subject` son columnas de `session`— porque una
+# impersonacion no auditable no tenia que poder construirse ni siquiera antes de que existiera
+# este plugin.
+darwin-impersonate = ["hexcore[darwin]"]
+# Suma py_webauthn, la unica dependencia criptografica mas alla de joserfc/argon2, y se
+# justifica: WebAuthn no son treinta lineas como el TOTP — hay CBOR, claves COSE, formatos de
+# attestation y un contador de firmas. Escribir eso a mano seria criptografia propia en el
+# camino de autenticacion. El verificador esta detras de un puerto, asi que los tests del flujo
+# corren sin el extra.
+darwin-passkey = ["hexcore[darwin]", "webauthn>=2.0.0"]
+# Sin dependencias: lo que el plugin necesita no son paquetes sino operaciones atomicas, y esas
+# las da el backend de almacenamiento (`EXISTS` correlacionado en el `WHERE` para SQL, miembros
+# embebidos para Mongo).
+darwin-organization = ["hexcore[darwin]"]
 all = [
     "fastapi>=0.116.1",
     "redis>=6.4.0",
@@ -45,7 +136,11 @@ all = [
     "aio-pika>=9.4.0", 
     "pika>=1.3.2",
     "procrastinate>=3.0.0",
-    "celery>=5.4.0"
+    "celery>=5.4.0",
+    "joserfc>=1.0.0",
+    "argon2-cffi>=23.1.0",
+    "httpx>=0.27.0",
+    "webauthn>=2.0.0"
 ]
 
 
@@ -66,6 +161,11 @@ dev = [
     # Requerido por fastapi.testclient (starlette.testclient) para los tests de la
     # capa API: create_app, middlewares, routing, health checks.
     "httpx>=0.27.0",
+    # Para leer los workflows en `tests/test_packaging.py`, que verifica que la matriz de
+    # extras de CI no se desincronice del `pyproject`. Ya venía instalado como transitivo de
+    # otro paquete, y por eso se declara: un test que se apoya en una dependencia que nadie
+    # pidió se rompe el día que el intermediario la suelta, y el error no señala la causa.
+    "pyyaml>=6.0",
 ]
 
 [tool.setuptools]
@@ -100,23 +200,38 @@ push = true
 # sino `scripts/typing_ratchet.py` contra `typing-baseline.json`: la deuda existente queda
 # congelada y sólo puede bajar.
 #
-# Las reglas que hacen falta para la limpieza posterior (`reportUnnecessaryTypeIgnoreComment`,
-# `reportMissingTypeStubs = "error"`, `enableTypeIgnoreComments = false`) se prenden en sus
-# fases, cada una **después** de que el código que gatean esté limpio. Prenderlas ahora
-# pondría master en rojo el primer día, y un gate rojo desde el arranque se termina
-# desactivando.
+# Las reglas que hacen falta para la limpieza posterior se prenden en sus fases, cada una
+# **después** de que el código que gatean esté limpio. Prenderlas antes pondría master en rojo
+# el primer día, y un gate rojo desde el arranque se termina desactivando.
+#
+# `reportUnnecessaryTypeIgnoreComment` ya está prendida: no quedan supresiones de más, y los
+# `# type: ignore` pelados pasaron a `# pyright: ignore[regla]` con la razón al lado. Prenderla
+# es lo que evita que la deuda vuelva por donde se fue — una supresión que dejó de hacer falta
+# es indistinguible de una que todavía tapa algo, y sin esta regla nadie se entera de cuál es
+# cuál. Las que faltan son `reportMissingTypeStubs = "error"` y `enableTypeIgnoreComments = false`.
 include = ["hexcore"]
 exclude = ["**/__pycache__", ".venv", "build", "dist"]
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
 reportMissingTypeStubs = "warning"
-reportUnnecessaryTypeIgnoreComment = "none"
+reportUnnecessaryTypeIgnoreComment = "error"
 
 [tool.pytest.ini_options]
 markers = [
     "anyio: mark test as an anyio test",
     "packaging: verifica la wheel construida (lento: construye de verdad)",
+    "typing: invoca pyright (lento: ~10s por corrida)",
+    "mongo: necesita un MongoDB real en HEXCORE_TEST_MONGO_URI",
 ]
-# Los tests de `packaging` construyen la wheel, así que no corren en la corrida normal.
-# Se piden explícito: `pytest -m packaging`. El workflow los corre en su propio job.
-addopts = "-m 'not packaging'"
+# `packaging` construye la wheel, `typing` invoca pyright y `mongo` necesita un servidor, así
+# que ninguno corre en la corrida normal. Se piden explícito: `pytest -m packaging`,
+# `pytest -m typing`, `pytest -m mongo`. El workflow los corre en sus propios jobs.
+#
+# `mongo` está deselecccionado y no salteado a propósito: el gate de CI exige **cero SKIPPED**
+# en la corrida normal —un salteo ahí significa que un extra no llegó al entorno— así que un
+# test que se saltea por falta de servidor rompería esa señal. Deseleccionarlo lo saca de la
+# cuenta sin apagar el gate.
+addopts = "-m 'not packaging and not typing and not mongo'"
+# `tests/typing/` no se colecta: esos archivos no se ejecutan, los chequea pyright vía
+# `tests/test_typing_gate.py`.
+norecursedirs = ["tests/typing"]

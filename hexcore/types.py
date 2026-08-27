@@ -1,10 +1,22 @@
 import typing as t
-from typing import Protocol
 from .domain.base import BaseEntity
-try:
+if t.TYPE_CHECKING:
     from .infrastructure.repositories.orms.sqlalchemy import BaseModel
-except ImportError:
-    class BaseModel(t.Generic[t.TypeVar("M")]): ... # type: ignore
+else:
+    # El respaldo hace falta **en runtime**: `RelationsType` es un `TypeAlias` y su lado
+    # derecho se evalúa al importar el módulo, así que `BaseModel` tiene que existir aunque
+    # no esté `[sql]`.
+    #
+    # Lo que no hace falta es que el checker lo vea. Con el `try/except` a secas, Pyright
+    # analizaba las dos ramas y se quedaba con la clase vacía, y de ahí salía el
+    # `# type: ignore` pelado que había acá: no tapaba un problema de runtime, tapaba el que
+    # generaba la propia guarda. Bajo `TYPE_CHECKING` el checker ve el import de verdad y el
+    # runtime conserva el respaldo — las dos cosas ciertas a la vez.
+    try:
+        from .infrastructure.repositories.orms.sqlalchemy import BaseModel
+    except ImportError:
+
+        class BaseModel(t.Generic[t.TypeVar("M")]): ...
 from .infrastructure.repositories.base import IBaseRepository
 from uuid import UUID
 
@@ -18,7 +30,7 @@ R = t.TypeVar("R")
 
 
 # Protocolo para resolvers asíncronos que aceptan visited como kwarg
-class AsyncResolver(Protocol[A]):
+class AsyncResolver(t.Protocol[A]):
     async def __call__(
         self, model: A, *, visited: t.Optional[set[str]] = None, **kwargs: t.Any
     ) -> t.Any: ...

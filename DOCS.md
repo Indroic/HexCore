@@ -28,6 +28,55 @@ HexCore organiza el código siguiendo los principios DDD y arquitectura hexagona
   - **models/**: Modelos SQLAlchemy (relacional).
   - **documents/**: Documentos Beanie (ODM para MongoDB).
 
+- **hexcore/darwin/** — módulo de identidad nativo.
+  ```
+  hexcore/darwin/
+    ├─ __init__.py          # fachada lazy (_EXPORTS + PEP 562)
+    ├─ __init__.pyi          # stubs generados (scripts/gen_stubs.py)
+    ├─ domain/
+    │   ├─ context.py        # AuthContext, Principal, current_auth, require_auth
+    │   ├─ entities.py       # User, IdentitySession, Account, Verification
+    │   ├─ events.py         # UserRegisteredEvent, SessionCreatedEvent, …
+    │   ├─ exceptions.py     # IdentityError, AuthenticationError, …
+    │   ├─ permissions.py    # Role, Permission, RoleRegistry
+    │   ├─ plugins.py        # DarwinPlugin, HookBinding, HookPhase, ShortCircuit
+    │   ├─ ports.py          # Abstract*Repository, AbstractClock, AbstractPasswordHasher
+    │   └─ value_objects.py  # Email, AccessTokenClaims, TokenPair, TokenType
+    ├─ application/
+    │   ├─ commands.py       # SignUp, SignIn, VerifyEmail, RefreshSession, …
+    │   ├─ config.py         # IdentityConfig, TokenConfig, CookieConfig, PasswordPolicy
+    │   ├─ container.py      # configure_identity, get_identity_container, reset_identity
+    │   ├─ hooks.py          # HookMiddleware, run_hooks
+    │   ├─ plugins.py        # PluginRegistry, PluginError
+    │   └─ services.py       # IdentityService, SessionService
+    ├─ infrastructure/
+    │   ├─ api/
+    │   │   ├─ dependencies.py  # provide_auth, require_authenticated, require_scopes, …
+    │   │   ├─ middlewares.py   # AuthContextMiddleware, CsrfMiddleware
+    │   │   └─ routers.py      # build_identity_router
+    │   ├─ orms/
+    │   │   ├─ selection.py     # resolve_storage_backend
+    │   │   ├─ sqlalchemy/      # modelos, mixins, repositorios, esquema
+    │   │   └─ beanie/          # documentos, repositorios, esquema
+    │   ├─ clock.py          # SystemClock, FixedClock
+    │   ├─ envelope.py       # AuthEnvelopeCodec, AuthEnvelopeRestorer
+    │   ├─ hashing.py        # Argon2PasswordHasher, hash_token, generate_token
+    │   ├─ keys.py           # SigningKey, AbstractKeyStore, StaticKeyStore
+    │   ├─ lifespan.py       # IdentityStep, SessionReaperStep, identity_startup_steps
+    │   ├─ revocation.py     # CacheRevocationList, GenerationGuard
+    │   ├─ tokens.py         # JoserfcTokenIssuer, JoserfcTokenVerifier
+    │   └─ transports.py     # CookieTransport, BearerTransport, TransportResolver
+    ├─ plugins/
+    │   ├─ storage.py        # resolve_storage_backend, plugin_repositories
+    │   ├─ magic_link/       # MagicLinkPlugin
+    │   ├─ two_factor/       # TwoFactorPlugin
+    │   ├─ oauth/            # OAuthPlugin
+    │   ├─ impersonate/      # ImpersonatePlugin
+    │   ├─ passkey/          # PasskeyPlugin
+    │   └─ organization/     # OrganizationPlugin
+    └─ testing/              # fixtures y fakes para tests de identidad
+  ```
+
 - **tests/**  
   Pruebas para cada módulo de dominio e infraestructura.
 
@@ -350,10 +399,129 @@ Esto configura la conexión con MongoDB y registra todos los modelos Beanie impl
 
 ---
 
-## 5. Referencias
+## 5. Darwin: referencia estructural
+
+Darwin, el módulo de identidad nativo, sigue la misma separación hexagonal del resto del
+framework: dominio puro sin dependencias, aplicación con puertos, e infraestructura con
+adaptadores intercambiables.
+
+### Puertos del dominio
+
+Los puertos viven en `hexcore.darwin.domain.ports` y definen los contratos que los backends
+implementan:
+
+- `AbstractUserRepository` — CRUD de usuarios, búsqueda por mail, conteo de generación.
+- `AbstractSessionRepository` — CRUD de sesiones, búsqueda por token, reuso, reaper.
+- `AbstractAccountRepository` — cuentas de proveedores externos (OAuth, passkeys).
+- `AbstractVerificationRepository` — tokens de un solo uso (verificación de mail, magic link,
+  desafíos de 2FA).
+- `AbstractRevocationList` — denylist de `sid` en caché para revocación inmediata.
+- `AbstractAuditSink` — registro de auditoría, opcional.
+- `AbstractClock` — reloj inyectable (producción: `SystemClock`; tests: `FixedClock`).
+- `AbstractPasswordHasher` — hashing de contraseñas (producción: `Argon2PasswordHasher`).
+
+Cada backend (`sqlalchemy`, `beanie`) expone repositorios con los mismos nombres
+(`UserRepository`, `SessionRepository`, `AccountRepository`, `VerificationRepository`), así
+que el núcleo y los servicios nunca nombran un backend concreto. Las implementaciones viven
+en `hexcore.darwin.infrastructure.orms.{sqlalchemy,beanie}.repositories`.
+
+### Resolución del backend
+
+`resolve_storage_backend(preferido)` en `hexcore.darwin.infrastructure.orms.selection`
+decide el backend. Si `IdentityConfig.storage` es `None`, detecta cuál extra está instalado.
+Si están los dos, **falla**: es ambiguo y adivinar sería peor. Si no hay ninguno, el error
+nombra los dos extras que se pueden instalar. Los cuatro caminos de error traen la remediación.
+
+Los plugins resuelven su backend preguntándole **al contenedor**, no detectando por su cuenta.
+Si cada uno detectara independientemente, un despliegue con los dos extras podría terminar con
+el núcleo en un backend y un plugin en el otro — y el síntoma es que el login funciona y el
+segundo factor no encuentra nada. `plugin_storage_backend()` y `plugin_repositories(plugin)`
+en `hexcore.darwin.plugins.storage` implementan esta resolución.
+
+### Contrato de nombre neutro de repositorios
+
+Cada plugin con almacenamiento propio (`two_factor`, `oauth`, `passkey`, `organization`)
+expone sus repositorios en:
+
+```
+hexcore.darwin.plugins.{plugin}.orms.{backend}.repository
+```
+
+El módulo se importa dinámicamente por `plugin_repositories(plugin)`, que resuelve el backend
+desde el contenedor. Si el plugin no implementa ese backend, el error dice cuáles implementa
+y sugiere pasar un repositorio propio.
+
+Los esquemas SQL y Beanie de los plugins se exponen como `PLUGIN_MODELS` (para Alembic) y
+`PLUGIN_DOCUMENTS` (para `init_beanie`) respectivamente. `installed_plugins()` descubre los
+plugins presentes leyendo el sistema de archivos — no una lista declarada — para no
+reintroducir el acoplamiento que la separación en extras sacó.
+
+### Inicialización de documentos Beanie de identidad
+
+`init_beanie` no acumula: la segunda llamada reemplaza el registro de la primera. Por eso los
+documentos de identidad y los de los plugins tienen que entrar en **la misma llamada** que los
+documentos de la aplicación. `init_identity_documents` es el helper que los junta:
+
+```python
+from hexcore.darwin.infrastructure.orms.beanie.schema import init_identity_documents
+
+# Sin plugins — sólo los seis documentos del núcleo:
+await init_identity_documents()
+
+# Con plugins:
+await init_identity_documents(plugins=["two_factor", "passkey"])
+```
+
+Si la aplicación tiene documentos propios, usá `identity_documents()` para obtener la lista
+y combinala con los tuyos en una sola llamada a `init_beanie`:
+
+```python
+from beanie import init_beanie
+from hexcore.darwin.infrastructure.orms.beanie.schema import identity_documents
+
+await init_beanie(
+    database=db,
+    document_models=[*identity_documents(plugins=["two_factor"]), MiDocumento, OtroDocumento],
+)
+```
+
+O declarativamente, con `hx.BeanieStep(documents=[...])` en el lifespan, pasándole la lista
+completa.
+
+### Esquema SQL y Alembic
+
+`ensure_identity_schema_loaded(plugins=[...])` registra los modelos de identidad en el
+`MetaData` de SQLAlchemy para que `alembic revision --autogenerate` los vea. Hay que llamarlo
+desde el `env.py` de Alembic con la lista de plugins activos. Si un plugin falta, Alembic
+genera `op.drop_table` sobre sus tablas. `IdentityStep` loguea al arrancar la lista exacta
+que hay que copiar.
+
+Los mixins (`UserMixin`, `SessionMixin`, `AccountMixin`, `VerificationMixin`, `AuditLogMixin`,
+`JwksMixin`) permiten que la aplicación componga su propio modelo de usuario extendiendo los
+campos que necesite:
+
+```python
+from hexcore.darwin import UserMixin, DEFAULT_USER_TABLE
+from hexcore.sql import Base
+
+class UserModel(UserMixin, Base):
+    __tablename__ = DEFAULT_USER_TABLE
+
+    # campos propios de tu app
+    display_name: Mapped[str | None]
+```
+
+`validate_user_model(model_cls)` verifica en runtime que el modelo cumpla el contrato mínimo
+(columnas requeridas, tipos, constraints). `IdentityStep` lo corre al arrancar.
+
+---
+
+## 6. Referencias
 
 - [CONTRIBUTING.md](./CONTRIBUTING.md): Pautas de colaboración.
 - [README.md](./README.md): Introducción arquitectónica.
 - [CHANGELOG.md](./CHANGELOG.md): Historial de cambios.
+- [docs/ARCHITECTURE_DARWIN.md](./docs/ARCHITECTURE_DARWIN.md): Arquitectura del módulo de identidad.
+- [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md): Sistema de tipos y stubs.
 
 ---

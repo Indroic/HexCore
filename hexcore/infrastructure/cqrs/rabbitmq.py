@@ -9,6 +9,7 @@ import logging
 import typing as t
 
 from hexcore.domain.cqrs.buses import AbstractEventBus
+from hexcore.domain.cqrs.envelope import restored_envelope_scope
 from hexcore.domain.cqrs.middleware import NextHandler
 from hexcore.application.cqrs.pipeline import MiddlewarePipeline
 from hexcore.domain.cqrs.serializer import AbstractSerializer
@@ -85,7 +86,7 @@ class RabbitMQEventBus(AbstractEventBus):
         assert self._exchange is not None
         
         # Serializamos usando el pipeline y serializer configurado
-        data = self._serializer.serialize(event)
+        data = self._serializer.serialize_envelope(event)
         body = json.dumps(data).encode("utf-8")
         
         message = aio_pika.Message(
@@ -137,7 +138,7 @@ class RabbitMQEventBus(AbstractEventBus):
                 payload = json.loads(message.body.decode("utf-8"))
                 # Nos aseguramos que lleve el __type__ si el serializer lo requiere, 
                 # o el serializer sabrá reconstruirlo. Idealmente el serializer CQRS asume dict genérico
-                event = self._serializer.deserialize(payload)
+                event, metadata = self._serializer.deserialize_envelope(payload)
                 
                 # Ejecutamos todos los handlers concurrentemente o secuencialmente
                 # En un bus robusto, el fallo de un handler no debería ocultar a otros, pero si falla, 
@@ -151,9 +152,15 @@ class RabbitMQEventBus(AbstractEventBus):
                     # Usamos el pipeline del bus
                     await self._pipeline.execute(evt, base_handler)
 
-                await asyncio.gather(*(
-                    _execute_with_pipeline(handler, event) for handler in handlers
-                ))
+                # El sobre se restaura una vez para todos los handlers: el evento cruzó un
+                # proceso, así que sin esto el handler de este lado no sabe a nombre de quién
+                # actúa. Envuelve al `gather` entero, y eso es correcto: los handlers corren
+                # concurrentemente pero cada tarea hereda una **copia** del contexto, así que
+                # ninguno puede pisarle el contexto a otro.
+                async with restored_envelope_scope(metadata, event):
+                    await asyncio.gather(*(
+                        _execute_with_pipeline(handler, event) for handler in handlers
+                    ))
             
             except Exception as exc:
                 logger.exception(f"[RabbitMQEventBus] Error procesando mensaje {routing_key}: {exc}")

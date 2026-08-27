@@ -103,11 +103,11 @@ def test_sqlalchemy_common_repo_query_all_delegates_to_db_query() -> None:
 
         with (
             patch(
-                "hexcore.infrastructure.repositories.implementations.sql_db_query",
+                "hexcore.infrastructure.repositories._sqlalchemy_impl.sql_db_query",
                 new=AsyncMock(return_value=([object(), object()], 2)),
             ) as mock_query,
             patch(
-                "hexcore.infrastructure.repositories.implementations.to_entity_from_model_or_document",
+                "hexcore.infrastructure.repositories._sqlalchemy_impl.to_entity_from_model_or_document",
                 new=AsyncMock(side_effect=[_Entity(name="A"), _Entity(name="B")]),
             ) as mock_to_entity,
         ):
@@ -135,11 +135,11 @@ def test_beanie_common_repo_query_all_delegates_to_db_query() -> None:
 
         with (
             patch(
-                "hexcore.infrastructure.repositories.implementations.nosql_db_query",
+                "hexcore.infrastructure.repositories._beanie_impl.nosql_db_query",
                 new=AsyncMock(return_value=([object(), object()], 2)),
             ) as mock_query,
             patch(
-                "hexcore.infrastructure.repositories.implementations.to_entity_from_model_or_document",
+                "hexcore.infrastructure.repositories._beanie_impl.to_entity_from_model_or_document",
                 new=AsyncMock(side_effect=[_Entity(name="X"), _Entity(name="Y")]),
             ) as mock_to_entity,
         ):

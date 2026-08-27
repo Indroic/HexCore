@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Set, Dict, Optional
+import typing as t
 
 
 
@@ -31,9 +31,9 @@ class PermissionsRegistry:
     Cada instancia mantiene su propio registro de permisos.
     """
     def __init__(self):
-        self._permissions_registry: Dict[str, str] = {}
+        self._permissions_registry: t.Dict[str, str] = {}
 
-    def register_permission(self, name: str, value: Optional[str] = None) -> None:
+    def register_permission(self, name: str, value: t.Optional[str] = None) -> None:
         """
         Registra un nuevo permiso en el sistema.
         name: nombre identificador (ej: 'USERS_INVITE')
@@ -43,24 +43,24 @@ class PermissionsRegistry:
             value = name.lower()
         self._permissions_registry[name] = value
 
-    def register_permissions(self, permissions: Dict[str, Optional[str]]) -> None:
+    def register_permissions(self, permissions: t.Dict[str, t.Optional[str]]) -> None:
         """
         Registra múltiples permisos en el sistema.
         """
         for name, value in permissions.items():
             self.register_permission(name, value)
 
-    def get_permissions_registry(self) -> Dict[str, str]:
+    def get_permissions_registry(self) -> t.Dict[str, str]:
         """Devuelve el registro actual de permisos (nombre: valor)."""
         return dict(self._permissions_registry)
 
-    def get_all_permission_values(self) -> Set[str]:
+    def get_all_permission_values(self) -> t.Set[str]:
         """
         Devuelve un conjunto con todos los valores de los permisos registrados.
         """
         return set(self._permissions_registry.values())
 
-    def get_permission_by_name(self, name: str) -> Optional[str]:
+    def get_permission_by_name(self, name: str) -> t.Optional[str]:
         """Devuelve el valor del permiso por su nombre."""
         return self._permissions_registry.get(name)
 

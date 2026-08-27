@@ -26,11 +26,3 @@ class InMemoryEventBus(EventBus):
         if event.__class__ in self._handlers:
             for handler in self._handlers[event.__class__]:
                 await handler(event)
-
-
-# ── Alias de retrocompatibilidad (deprecado desde 5.0, se elimina en 6.0) ──────
-from hexcore._deprecation import deprecated_aliases  # noqa: E402
-
-_DEPRECATED_ALIASES = {"InMemoryEventDispatcher": "InMemoryEventBus"}
-
-__getattr__ = deprecated_aliases(__name__, _DEPRECATED_ALIASES, globals())

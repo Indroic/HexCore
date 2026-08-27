@@ -34,7 +34,6 @@ from hexcore.infrastructure.repositories.orms.sqlalchemy.session import (  # noq
     get_session_factory,
     init_engine,
     normalize_async_dsn,
-    reset_sqlalchemy_engine,
 )
 from hexcore.infrastructure.uow.scopes import session_scope  # noqa: E402
 
@@ -222,14 +221,15 @@ async def test_dispose_engine_is_safe_without_an_engine():
     await dispose_engine()
 
 
-@pytest.mark.anyio
-# El alias legacy se invoca a propósito; su deprecación se cubre en test_deprecations.py.
-@pytest.mark.filterwarnings("ignore::DeprecationWarning")
-async def test_reset_sqlalchemy_engine_is_still_available():
-    init_engine(SQLITE_URL)
-    await reset_sqlalchemy_engine()
+def test_reset_sqlalchemy_engine_was_removed():
+    """
+    Se eliminó en 7.0. Estaba deprecada desde 5.0, o sea dos majors de aviso.
 
-    assert session_module._engine is None
+    El test se invierte en vez de borrarse: así queda registrado que el nombre existió y que
+    su ausencia es deliberada, no un olvido de re-exportar.
+    """
+    assert not hasattr(session_module, "reset_sqlalchemy_engine")
+    assert "reset_sqlalchemy_engine" not in session_module.__all__
 
 
 @pytest.mark.anyio

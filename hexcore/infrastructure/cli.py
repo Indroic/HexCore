@@ -8,6 +8,15 @@ app = typer.Typer(
     help="CLI para ayudar con tareas de desarrollo en el proyecto Euphoria."
 )
 
+# El primer `add_typer` del repo. La sub-app de Darwin sólo puede importar `typer` y stdlib en
+# su nivel superior: `hexcore/__init__.py` importa este módulo **eagerly**, así que todo lo que
+# esa sub-app cargue arriba se carga con `import hexcore` — en cualquier proceso, tenga o no
+# los extras. Sus comandos importan lo que necesitan dentro del cuerpo, igual que
+# `make_migrations` y `test` ya hacen con `subprocess`.
+from hexcore.darwin.infrastructure.cli import identity_cli  # noqa: E402
+
+app.add_typer(identity_cli, name="identity")
+
 # Las rutas se resuelven al ejecutar el comando, no al importar el módulo: `hexcore/__init__.py`
 # importa este módulo, así que una constante a nivel de módulo resolvía la configuración
 # en import time — antes de que la aplicación pudiera llamar a
@@ -340,9 +349,37 @@ def _setup_alembic(base_path: Path, models_import: str, migrations_root: str) ->
             f"""from alembic import context
 from hexcore.config import LazyConfig
 from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
-from hexcore.infrastructure.repositories.orms.sqlalchemy.utils import import_all_models
+from hexcore.infrastructure.repositories.orms.sqlalchemy.utils import (
+    ensure_framework_models_loaded,
+    import_all_models,
+)
 {models_import}
 
+# Las tablas que declara el framework: hoy hexcore_cron_jobs. Sin esta linea quedan
+# afuera de Base.metadata y `--autogenerate` les emite un op.drop_table.
+#
+# NO cubre las tablas de Darwin: esas van en la linea de abajo.
+ensure_framework_models_loaded()
+
+# Las tablas de Darwin, si usas el modulo de identidad.
+#
+# DARWIN_PLUGINS tiene que listar los mismos plugins que le pasas a configure_identity.
+# Un plugin que falte acá tiene su tabla en la base y ausente del metadata, y el proximo
+# `revision --autogenerate` le emite un op.drop_table. Con Darwin cableado, el paso de
+# arranque IdentitySchemaStep loguea un error nombrando las que falten.
+DARWIN_PLUGINS: list[str] = []
+
+try:
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import (
+        ensure_identity_schema_loaded,
+    )
+except ImportError:
+    # Sin el extra [darwin] no hay tablas de identidad que registrar.
+    pass
+else:
+    ensure_identity_schema_loaded(plugins=DARWIN_PLUGINS)
+
+# Y los tuyos. Recursivo: tambien recorre subpaquetes de models/.
 import_all_models(models)
             """,
         )

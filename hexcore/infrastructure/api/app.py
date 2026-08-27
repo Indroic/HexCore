@@ -70,6 +70,28 @@ class AppFeatures(BaseModel):
         AppFeatures(health=HealthRoutes(liveness=False))
     """
 
+    auth_context: bool = False
+    """
+    Middleware que resuelve la credencial y publica el `AuthContext` (Darwin, Fase 7).
+
+    **Apagado por defecto**, al revés que el resto. Prenderlo en silencio cambiaría el
+    comportamiento de toda app existente: `create_app()` empezaría a resolver credenciales y
+    a exigir que Darwin esté configurado. Es una decisión que se toma, no que se hereda.
+
+    Prenderlo también hace que `create_app` mergee `IDENTITY_EXCEPTION_STATUS_MAP` y ponga el
+    `WWW-Authenticate` de los 401 (RFC 6750 §3).
+    """
+
+    csrf: bool = False
+    """
+    Chequeo anti-CSRF del transporte por cookie (Darwin, Fase 7).
+
+    Apagado por defecto y **separado de `auth_context`** a propósito: una API que sólo sirve
+    clientes Bearer no necesita CSRF —el cliente adjunta el token a propósito— y prenderlo
+    ahí sólo agregaría un chequeo que nunca se dispara. Si servís sesiones por cookie,
+    prendelo.
+    """
+
 
 def create_app(
     lifespan: t.Any | None = None,
@@ -123,13 +145,29 @@ def create_app(
         )
     if resolved_features.timing:
         app.add_middleware(TimingMiddleware)
+
+    # Los de Darwin van **antes** de `RequestIDMiddleware` en el orden de registro, o sea
+    # que corren **adentro** de él: cuando el middleware de auth loguea o el sink de
+    # auditoría lee el request-id, ya está poblado. Y el CSRF va antes que el de contexto
+    # para correr por fuera: rechazar una petición cross-origin no debería costar el trabajo
+    # de verificar su token.
+    if resolved_features.csrf:
+        from hexcore.darwin.infrastructure.api.middlewares import CsrfMiddleware
+
+        app.add_middleware(CsrfMiddleware)
+    if resolved_features.auth_context:
+        from hexcore.darwin.infrastructure.api.middlewares import AuthContextMiddleware
+
+        app.add_middleware(AuthContextMiddleware)
+
     if resolved_features.request_id:
         app.add_middleware(RequestIDMiddleware)
 
     if resolved_features.exception_handlers:
-        register_exception_handlers(
-            app, mapping=exception_mapping, headers_for=exception_headers
+        mapping, headers_for = _con_darwin(
+            resolved_features, exception_mapping, exception_headers
         )
+        register_exception_handlers(app, mapping=mapping, headers_for=headers_for)
 
     if resolved_features.health:
         health_routes = (
@@ -151,6 +189,65 @@ def create_app(
         mount_routers(app, list(routers))
 
     return app
+
+
+def _con_darwin(
+    features: AppFeatures,
+    mapping: dict[type[Exception], int] | None,
+    headers_for: HeadersFactory | None,
+) -> tuple[dict[type[Exception], int] | None, HeadersFactory | None]:
+    """
+    Mergea el mapa de excepciones de Darwin y su fábrica de headers, si `auth_context`.
+
+    **`IDENTITY_EXCEPTION_STATUS_MAP` no se agrega a `DEFAULT_EXCEPTION_STATUS_MAP`.**
+    Importar las excepciones de Darwin en tiempo de import de esta capa la acoplaría al
+    módulo de identidad y rompería el contrato de dependencias opcionales que
+    `tests/test_optional_dependencies.py` verifica. Se importa acá, adentro de la función y
+    sólo cuando el feature está prendido.
+
+    Lo que pase el consumidor **gana**: se mergea con el de Darwin debajo, no encima.
+    """
+    if not features.auth_context:
+        return mapping, headers_for
+
+    from hexcore.darwin.domain.exceptions import IDENTITY_EXCEPTION_STATUS_MAP
+    from hexcore.darwin.infrastructure.api.dependencies import (
+        identity_exception_headers,
+    )
+
+    combinado = {
+        **IDENTITY_EXCEPTION_STATUS_MAP,
+        **_mapa_de_plugins(),
+        **(mapping or {}),
+    }
+
+    if headers_for is None:
+        return combinado, identity_exception_headers
+
+    def combinar(exc: Exception) -> t.Mapping[str, str]:
+        # El del consumidor gana sobre el de Darwin, igual que con el mapa.
+        return {**identity_exception_headers(exc), **headers_for(exc)}
+
+    return combinado, combinar
+
+
+def _mapa_de_plugins() -> dict[type[Exception], int]:
+    """
+    Las excepciones de los plugins de Darwin, si el módulo está cableado.
+
+    Se consulta el contenedor y no un registro global: los plugins son de un despliegue, no
+    del proceso. Si Darwin todavía no se configuró —`create_app` antes de
+    `configure_identity`— devuelve vacío en vez de lanzar: el orden de cableado es del
+    consumidor, y hacer que el orden importe convertiría un detalle en un error de arranque.
+    """
+    from hexcore.darwin.application.container import get_identity_container
+
+    try:
+        contenedor = get_identity_container()
+    except Exception:
+        return {}
+
+    return contenedor.plugins.exception_status_map()
 
 
 def _fastapi_defaults(config: t.Any) -> dict[str, t.Any]:

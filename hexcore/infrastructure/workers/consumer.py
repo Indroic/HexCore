@@ -8,6 +8,7 @@ import typing as t
 
 from hexcore.domain.cqrs.buses import AbstractCommandBus, AbstractEventBus
 from hexcore.domain.cqrs.context import worker_execution
+from hexcore.domain.cqrs.envelope import restored_envelope_scope
 from hexcore.domain.cqrs.resolution import resolve_dotted
 from hexcore.domain.cqrs.serializer import AbstractSerializer
 from hexcore.domain.events import DomainEvent
@@ -95,12 +96,15 @@ class CQRSConsumer:
         compartir el mismo bus entre el proceso web y el worker.
         """
         try:
-            command = self._serializer.deserialize(payload)
+            command, metadata = self._serializer.deserialize_envelope(payload)
             cmd = t.cast("Command", command)
 
             logger.info("[CQRSConsumer] Procesando comando en background: %s", type(cmd).__qualname__)
-            with worker_execution():
-                await self._command_bus.dispatch(cmd)
+            # El scope del sobre va **por fuera** de `worker_execution()`: si el restaurador
+            # rechaza el sobre, el comando no llega ni a entrar al bus.
+            async with restored_envelope_scope(metadata, cmd):
+                with worker_execution():
+                    await self._command_bus.dispatch(cmd)
 
         except Exception as exc:
             logger.exception("[CQRSConsumer] Error procesando comando: %s", exc)
@@ -116,12 +120,13 @@ class CQRSConsumer:
         en vez de reencolarse.
         """
         try:
-            event = self._serializer.deserialize(payload)
+            event, metadata = self._serializer.deserialize_envelope(payload)
             evt = t.cast(DomainEvent, event)
 
             logger.info("[CQRSConsumer] Procesando evento en background: %s", evt.event_name)
-            with worker_execution():
-                await self.event_bus.publish(evt)
+            async with restored_envelope_scope(metadata, evt):
+                with worker_execution():
+                    await self.event_bus.publish(evt)
 
         except Exception as exc:
             logger.exception("[CQRSConsumer] Error procesando evento: %s", exc)
@@ -137,13 +142,14 @@ class CQRSConsumer:
         que los comandos que el handler despache a propósito se ejecutaran inline.
         """
         try:
-            event = self._serializer.deserialize(payload)
+            event, metadata = self._serializer.deserialize_envelope(payload)
             evt = t.cast(DomainEvent, event)
-            
+
             logger.info("[CQRSConsumer] Ejecutando EventHandler individual en background: %s", handler_name)
-            
+
             handler_func = _resolve_callable(handler_name)
-            await handler_func(evt)
+            async with restored_envelope_scope(metadata, evt):
+                await handler_func(evt)
             
         except Exception as exc:
             logger.exception("[CQRSConsumer] Error procesando EventHandler %s: %s", handler_name, exc)
@@ -155,6 +161,12 @@ class CQRSConsumer:
 
         Igual que ``process_handler``: la tarea se invoca directamente, sin activar
         ``worker_execution()``.
+
+        **No lleva sobre de contexto ambiental**, y es una limitación real del mecanismo, no
+        un olvido: acá ``payload`` **es** el dict de kwargs con el que se llama a la tarea, así
+        que una clave ``__meta__`` colisionaría con un parámetro y rompería la llamada. Además
+        no hay objeto-mensaje al que atar el grant. Una tarea que necesita saber quién la
+        originó recibe ese dato como **parámetro explícito**.
         """
         try:
             logger.info("[CQRSConsumer] Ejecutando Task genérica en background: %s", task_name)

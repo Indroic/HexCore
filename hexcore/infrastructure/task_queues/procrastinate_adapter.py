@@ -14,11 +14,14 @@ from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
 logger = logging.getLogger("hexcore.task_queues.procrastinate")
 
 if t.TYPE_CHECKING:
-    try:
-        import procrastinate
-    except ImportError:
-        procrastinate = t.Any
-        
+    # El import va pelado, sin `try/except ImportError: procrastinate = t.Any`, que es como
+    # estaba. Ese respaldo no protegía nada: el bloque entero está bajo `TYPE_CHECKING`, así
+    # que en runtime no se ejecuta y no hay `ImportError` posible. Lo único que lograba era
+    # que Pyright —que analiza las dos ramas y se queda con la última definición— resolviera
+    # `procrastinate` a `Any`, y con eso **toda** firma que lo mencione se degradaba a `Any`
+    # incluso con el extra instalado. Justo al revés de para qué existe el bloque.
+    import procrastinate
+
     from hexcore.infrastructure.workers.consumer import CQRSConsumer
 
 
@@ -99,17 +102,24 @@ def register_hexcore_procrastinate_tasks(
         )
         return False
 
+    # Los tres se registran por **efecto de lado** del decorador: `app.task(...)` las mete en
+    # el registro de la app y el nombre local no lo lee nadie.
     @app.task(name="hexcore.process_command")
-    async def process_command(payload: dict[str, t.Any]) -> None:
+    async def _process_command(payload: dict[str, t.Any]) -> None:
         await consumer.process_command(payload)
 
     @app.task(name="hexcore.process_handler")
-    async def process_handler(handler_name: str, payload: dict[str, t.Any]) -> None:
+    async def _process_handler(handler_name: str, payload: dict[str, t.Any]) -> None:
         await consumer.process_handler(handler_name, payload)
 
     @app.task(name="hexcore.process_task")
-    async def process_task(task_name: str, payload: dict[str, t.Any]) -> None:
+    async def _process_task(task_name: str, payload: dict[str, t.Any]) -> None:
         await consumer.process_task(task_name, payload)
+
+    # Nombrarlas acá es lo que las separa de código muerto, para el checker y para quien lee.
+    # El prefijo con guion bajo no alcanza: `reportUnusedFunction` no exime los nombres
+    # privados como sí hace `reportUnusedVariable`.
+    _registradas = (_process_command, _process_handler, _process_task)
 
     try:
         _registered_apps[id(app)] = app
