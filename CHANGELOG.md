@@ -1,3 +1,61 @@
+## 8.0.0 (2026-08-27)
+
+### BREAKING CHANGE
+
+- `[darwin]` ya no trae sqlalchemy ni alembic. Un despliegue que
+usaba identidad con SQL tiene que pasar a `hexcore[darwin,darwin-sqlalchemy]`.
+Y los modulos de persistencia se movieron a `**/orms/sqlalchemy/` — afecta a
+quien importaba los mixins para su paquete `models/`.
+- los nombres anteriores a 5.0 ya no resuelven. Son renombres, no
+cambios de comportamiento, así que la migración es mecánica: la tabla de reemplazos
+está en el README, sección "Versiones y soporte". Para ver qué usás antes de subir,
+corré tus tests con `-W "default::DeprecationWarning"` en 6.x.
+- `import_all_models` propaga los `ImportError` de los módulos que
+recorre, donde antes fallaba en silencio, y ahora devuelve `list[str]` en vez de
+`None`. Un proyecto con un módulo roto bajo `models/` va a fallar al migrar en
+vez de generar una migración incompleta.
+
+### Feat
+
+- **darwin**: un extra por plugin, y el nucleo deja de nombrarlos
+- **darwin**: backend de Beanie para los cuatro plugins con almacenamiento
+- **darwin**: backend de almacenamiento en Beanie/MongoDB
+- **darwin**: kit de testing y deprecacion de hexcore.domain.auth
+- **darwin**: organization, y el ultimo owner que ahora si es atomico
+- **darwin**: passkey, con la deteccion de clonado que casi nadie hace
+- **darwin**: impersonate, con techo real y sin cadenas
+- **darwin**: oauth con PKCE, y la vinculacion que no se hace sola
+- **darwin**: two_factor, y el punto de extensión del sign-in
+- **darwin**: sistema de plugins, magic_link y la sub-app de CLI
+- **darwin**: borde HTTP — transportes, CSRF, router y dependencias
+- **darwin**: el actor cruza la cola en un sobre firmado
+- **darwin**: capa de aplicación, contenedor y flujos de sesión
+- elimina la superficie de API anterior a 5.0
+- **darwin**: marca Darwin como API provisional
+- **darwin**: capa de crypto — hashing, claves, tokens y revocación
+- **darwin**: capa de persistencia del módulo de identidad
+- **darwin**: capa de dominio del módulo de identidad
+- **typing**: stubs generados para las 3 fachadas perezosas
+- **sql**: convención de nombres de constraints
+
+### Fix
+
+- **ci**: publicar deja de ser un paso sin verificar
+- **ci**: el job de imports pelados medía lo que no debía
+- **darwin**: plugins= acepta una lista, y si no, el error lo explica
+- **darwin**: ningun plugin fuerza un backend de almacenamiento
+- **darwin**: el esquema llega a Alembic y a init_beanie, plugins incluidos
+- **sql**: --autogenerate ya no dropea las tablas del framework
+
+### Refactor
+
+- **typing**: 59 a 39, y cinco defectos reales que estaban tapados
+- **typing**: ningun # type: ignore pelado, y la regla que lo sostiene
+- **typing**: el respaldo de un extra ausente no le gana al checker
+- **typing**: los adaptadores de cola no degradan sus firmas a Any
+- **typing**: los repositorios genericos dejan de resolver a una clase vacia
+- **darwin**: separa el nucleo del almacenamiento en tres extras
+
 ## 7.0.0 (2026-08-27)
 
 ### BREAKING CHANGE
