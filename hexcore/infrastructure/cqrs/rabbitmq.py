@@ -10,7 +10,6 @@ import typing as t
 
 from hexcore.domain.cqrs.buses import AbstractEventBus
 from hexcore.domain.cqrs.envelope import restored_envelope_scope
-from hexcore.domain.cqrs.middleware import NextHandler
 from hexcore.application.cqrs.pipeline import MiddlewarePipeline
 from hexcore.domain.cqrs.serializer import AbstractSerializer
 from hexcore.domain.events import DomainEvent
@@ -56,8 +55,11 @@ class RabbitMQEventBus(AbstractEventBus):
         self._exchange_name = exchange_name
         self._queue_name = queue_name
         
-        self._channel: "AbstractChannel" | None = None
-        self._exchange: "AbstractExchange" | None = None
+        # Las comillas van alrededor de **toda** la expresión. Con `"AbstractChannel" | None`
+        # el `|` se aplica a un `str` y a `None`, que no es una unión de tipos: pyright lo
+        # reporta y `t.get_type_hints()` sobre esta clase levantaría `TypeError`.
+        self._channel: "AbstractChannel | None" = None
+        self._exchange: "AbstractExchange | None" = None
         
         # event_name -> list of handlers
         self._handlers: dict[str, list[t.Callable[[DomainEvent], t.Awaitable[None]]]] = {}

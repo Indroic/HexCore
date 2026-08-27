@@ -165,11 +165,18 @@ def default_probes() -> list[Probe]:
 
 
 def _sql_available() -> bool:
-    try:
-        import sqlalchemy  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    """
+    Si SQLAlchemy está instalado.
+
+    Delega en `hexcore.capabilities`, que es donde vive esta pregunta para todo el
+    framework. Antes cada módulo la resolvía con su propio `try: import`, y eso tiene dos
+    costos: importa el paquete de verdad —cientos de milisegundos y una entrada en
+    `sys.modules`— sólo para saber si existe, y deja el import sin usar, que es ruido que
+    hay que silenciar con un `noqa`.
+    """
+    from hexcore.capabilities import has_extra
+
+    return has_extra("sqlalchemy")
 
 
 async def _check_sql() -> None:
@@ -183,9 +190,16 @@ async def _check_sql() -> None:
 
 
 def _redis_configured() -> bool:
-    try:
-        import redis  # noqa: F401
-    except ImportError:
+    """
+    Si Redis está instalado **y** hay una URI configurada.
+
+    Las dos cosas, y por eso no alcanza con `has_extra`: tener el paquete no significa que
+    la app use Redis, y una sonda contra una URI que no existe reportaría caída sobre algo
+    que nadie configuró.
+    """
+    from hexcore.capabilities import has_extra
+
+    if not has_extra("redis"):
         return False
 
     from hexcore.config import LazyConfig
@@ -206,11 +220,10 @@ async def _check_redis() -> None:
 
 
 def _mongo_available() -> bool:
-    try:
-        import beanie  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    """Si Beanie está instalado. Ver `_sql_available` para el porqué de la delegación."""
+    from hexcore.capabilities import has_extra
+
+    return has_extra("beanie")
 
 
 async def _check_mongo() -> None:
@@ -294,6 +307,11 @@ def register_health_routes(
     def render(report: HealthReport) -> t.Any:
         return report if response_factory is None else response_factory(report)
 
+    # Las dos rutas de abajo las registra `@app.get` por efecto de lado, así que sus nombres
+    # locales no los lee nadie y el checker las reporta como código muerto. Juntarlas acá es
+    # lo que dice que están vivas, para el checker y para quien lee.
+    _registradas: list[t.Any] = []
+
     if liveness:
         @app.get(
             path,
@@ -301,8 +319,12 @@ def register_health_routes(
             summary="Liveness: el proceso responde",
             response_model=response_model,
         )
-        async def health() -> t.Any:
+        async def _health() -> t.Any:
             return render(await check_health(deep=False))
+
+        # El decorador la registra en la app; el nombre local no lo lee nadie. Nombrarla
+        # es lo que la separa de código muerto para el checker y para quien lee.
+        _registradas.append(_health)
 
     if readiness:
         @app.get(
@@ -312,7 +334,9 @@ def register_health_routes(
             response_model=response_model,
             responses={503: {"description": "Alguna dependencia crítica no responde"}},
         )
-        async def health_ready(response: Response) -> t.Any:
+        async def _health_ready(response: Response) -> t.Any:
             report = await check_health(deep=True, probes=probes)
             response.status_code = report.http_status
             return render(report)
+
+        _registradas.append(_health_ready)

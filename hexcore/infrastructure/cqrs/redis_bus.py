@@ -94,7 +94,9 @@ class RedisEventBus(AbstractEventBus):
                     continue
                 
                 # messages: [[b'stream_name', [(b'message_id', {b'payload': b'...'}), ...]]]
-                for stream, stream_messages in messages:
+                # El nombre del stream no se usa: cada consumidor escucha uno solo, así
+                # que el mensaje ya se sabe de dónde viene.
+                for _stream, stream_messages in messages:
                     for message_id, message_data in stream_messages:
                         await self._handle_message(message_id, message_data)
                         

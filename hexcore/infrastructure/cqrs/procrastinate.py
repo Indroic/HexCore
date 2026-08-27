@@ -19,14 +19,19 @@ from hexcore.application.cqrs.registry import HandlerRegistry
 
 
 def _ensure_procrastinate() -> None:
-    """Valida que procrastinate esté instalado."""
-    try:
-        import procrastinate  # noqa: F401
-    except ImportError as exc:
-        raise ImportError(
-            "Procrastinate is required for ProcrastinateCommandBus. "
-            "Install it with: pip install hexcore[procrastinate]"
-        ) from exc
+    """
+    Valida que Procrastinate esté instalado.
+
+    Delega en `require_extra`, que es el mismo error para los ocho extras. Este módulo era
+    el único que se acordaba de decir qué había que instalar, y esa asimetría era el
+    problema: el consumidor recibía un mensaje distinto según por dónde entrara.
+
+    De paso desaparece el `import procrastinate` que sólo existía para probar que se podía
+    importar — con su `noqa` al lado, porque el import quedaba sin usar.
+    """
+    from hexcore.capabilities import require_extra
+
+    require_extra("procrastinate", para="`ProcrastinateCommandBus`")
 
 
 class ProcrastinateCommandBus(AbstractCommandBus):

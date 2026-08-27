@@ -15,7 +15,6 @@ from hexcore.application.dtos.query import (
 from hexcore.application.use_cases.query import QueryEntitiesUseCase
 from hexcore.domain.uow import IUnitOfWork
 from hexcore.infrastructure.repositories.orms.sqlalchemy.session import (
-    get_async_db_session,
     get_session_factory,
 )
 from hexcore.infrastructure.uow import BeanieUnitOfWork, SqlAlchemyUnitOfWork
