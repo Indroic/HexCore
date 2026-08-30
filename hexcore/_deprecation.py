@@ -42,13 +42,16 @@ __all__ = [
 #: al usuario que estos avisos no hay que leerlos. Ya pasó, y no por descuido sino porque en
 #: este repo dos majors salieron de commits `feat!:` involuntarios.
 #:
-#: En 7.0 los alias pre-5.0 **se eliminaron de verdad**, así que la constante pasa a 8.0: la
-#: próxima ventana real, para lo que se deprece de acá en adelante.
+#: En 7.0 los alias pre-5.0 **se eliminaron de verdad**. La constante apunta siempre al
+#: próximo major por publicar: hoy 9.0, porque 8.0.0 es la serie que se está por sacar.
+#: No hay nada deprecado esperando esa fecha — la constante es la ventana disponible para
+#: lo que se deprece de acá en adelante, y por eso se corre con cada major en vez de
+#: quedarse fija.
 #:
 #: Lo vigila `test_removed_in_is_ahead_of_the_published_version`: si un bump vuelve a alcanzar
 #: este valor, el fallo salta en CI y no en el aviso que lee el usuario. Ese test es el que
 #: convierte "se nos pasó" en "no se puede releasear".
-REMOVED_IN = "8.0"
+REMOVED_IN = "9.0"
 
 
 def warn_deprecated(

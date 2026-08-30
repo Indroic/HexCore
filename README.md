@@ -1129,9 +1129,11 @@ asciende a alguien por encima de sí mismo ni actúa sobre un par o un superior;
 invitación está atada al mail verificado del invitado (sin eso, reenviar el link le da el rol
 a cualquiera que lo reciba).
 
-Para el detalle de arquitectura y el plan de desarrollo completo, ver
-[`docs/ARCHITECTURE_DARWIN.md`](./docs/ARCHITECTURE_DARWIN.md). Para el sistema de tipos y
-los stubs generados, [`docs/ARCHITECTURE_TYPING.md`](./docs/ARCHITECTURE_TYPING.md).
+La documentación completa de Darwin está en [`docs/darwin/`](./docs/darwin/):
+[almacenamiento y migraciones](./docs/darwin/almacenamiento.md), [los seis plugins
+incluidos](./docs/darwin/plugins-incluidos.md) y [cómo escribir uno
+propio](./docs/darwin/plugins-propios.md). Para el sistema de tipos y los stubs generados,
+[`docs/ARCHITECTURE_TYPING.md`](./docs/ARCHITECTURE_TYPING.md).
 
 ---
 
@@ -1154,7 +1156,8 @@ estructura de migraciones con Alembic.
 
 | Serie | Estado | Qué significa |
 | :-- | :-- | :-- |
-| **7.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. Trae Darwin, elimina la superficie anterior a 5.0 y corrige los defectos de CORS y rate limiting. |
+| **8.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. |
+| **7.x** | ⛔ **Deprecada** | Elimina la superficie anterior a 5.0 y corrige los defectos de CORS y rate limiting. No trae Darwin: se publicó antes de que el módulo llegara a `master`. |
 | **6.x** | ⛔ **Deprecada** | Sigue funcionando pero no recibe correcciones. Incluye los defectos de seguridad de CORS y rate limiting corregidos en 7.0, y los alias anteriores a 5.0 todavía presentes. |
 | **5.x** | ⛔ **Deprecada** | Misma superficie de API que 6.x. Migrar a 6.x era actualizar la versión; a 7.x hay que sacar los alias `I*`. |
 | **4.x** | ⛔ **Deprecada** | Aplicación **parcial**: le faltan el fix del event loop de Celery, las fachadas y la documentación alineada. |
@@ -1162,7 +1165,7 @@ estructura de migraciones con Alembic.
 | **2.x** | ⛔ **Deprecada** | Contiene los bugs silenciosos corregidos en 5.x (ver abajo). |
 | **1.x** | ⛔ **Deprecada** | Sin soporte de ningún tipo. |
 
-**Todo lo anterior a 7.0 está deprecado. Migrá a 7.x.**
+**Todo lo anterior a 8.0 está deprecado. Migrá a 8.x.**
 
 Los alias anteriores a 5.0 avisaban que se eliminaban "en 6.0". 6.0.0 salió sin eliminarlos —
 se prefirió mover la fecha antes que romper retroactivamente a quien ya había actualizado
@@ -1370,7 +1373,7 @@ Hay un conjunto de skills para extender HexCore en VS Code y entornos compatible
 ## Referencias
 
 - [DOCS.md](./DOCS.md) — guía de arranque y documentación de clases y funciones.
-- [docs/ARCHITECTURE_DARWIN.md](./docs/ARCHITECTURE_DARWIN.md) — arquitectura del módulo de identidad.
+- [docs/](./docs/) — la documentación: Darwin (identidad) y el sistema de tipos.
 - [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md) — sistema de tipos y stubs.
 - [CHANGELOG.md](./CHANGELOG.md) — historial de cambios.
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — pautas de colaboración.
