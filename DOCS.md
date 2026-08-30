@@ -521,7 +521,8 @@ class UserModel(UserMixin, Base):
 - [CONTRIBUTING.md](./CONTRIBUTING.md): Pautas de colaboración.
 - [README.md](./README.md): Introducción arquitectónica.
 - [CHANGELOG.md](./CHANGELOG.md): Historial de cambios.
-- [docs/ARCHITECTURE_DARWIN.md](./docs/ARCHITECTURE_DARWIN.md): Arquitectura del módulo de identidad.
+- [docs/darwin/](./docs/darwin/): El módulo de identidad — almacenamiento, plugins incluidos
+  y cómo escribir uno propio.
 - [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md): Sistema de tipos y stubs.
 
 ---
