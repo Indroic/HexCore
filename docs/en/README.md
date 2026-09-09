@@ -10,7 +10,7 @@ The design goal is that **the happy path takes zero configuration**: `create_app
 arguments gives you a usable app, `init_engine()` with no arguments gives you a
 production-correct engine.
 
-> 🇪🇸 [Versión en español](../es/) — the reference version. Written first.
+> 🇪🇸 [Versión en español](../es/) — a complete translation of this documentation.
 
 ---
 
@@ -108,6 +108,6 @@ see `Any` for all 64 symbols of `hexcore.cqrs`.
 
 - **The canonical names are the `Abstract*` ones.** The v1/v2 `I*` aliases were removed in 7.0;
   the replacement table is in [Versions and migration](./versions-and-migration.md).
-- **Examples are code that runs.** See [the rule](../README.md#la-regla-de-esta-documentación).
+- **Examples are code that runs.** See [the rule](../README.md#the-rule-of-this-documentation).
 - **⚠️ warnings are real failure modes**, not style notes. Almost all of them describe something
   that raises no exception and surfaces far from its cause.
