@@ -59,7 +59,7 @@ async def _clean_old_records_task(days_retention: int) -> None:  # pragma: no co
 
 
 def test_docs_startup_example_runs():
-    """El ejemplo de "una app HexCore en una pantalla" de DOCS.md."""
+    """El ejemplo de arranque de docs/es/inicio-rapido.md."""
     pytest.importorskip("fastapi")
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
@@ -297,7 +297,21 @@ def test_readme_command_only_consumer_example_runs():
 
 # ── La documentación no debe mencionar API que no existe ───────────────────────
 
+#: Las dos páginas de entrada. Los guardas de "no enseñes API que no existe" corren sólo acá:
+#: son las que quedaron de la documentación vieja, y las únicas que todavía nombran en prosa la
+#: superficie removida —la tabla de deprecación vive en el README—.
 DOC_FILES = ["README.md", "DOCS.md"]
+
+#: Toda la documentación, incluida la de `docs/`. Los chequeos de "los símbolos que nombra
+#: existen" corren sobre esto: son los que convierten un rename en un CI rojo, y no tendría
+#: sentido que cubrieran la portada y no las guías, que son las que la gente copia y pega.
+#:
+#: Se descubre recorriendo `docs/` en vez de enumerarlo: una guía nueva que nadie agregue a
+#: una lista es exactamente el archivo que se desalinea sin que nadie se entere.
+ALL_DOC_FILES = DOC_FILES + sorted(
+    str(path.relative_to(REPO_ROOT)).replace("\\", "/")
+    for path in (REPO_ROOT / "docs").rglob("*.md")
+)
 
 
 def _code_blocks(content: str) -> list[str]:
@@ -367,7 +381,7 @@ def test_every_hexcore_symbol_referenced_in_the_docs_exists():
     missing: list[str] = []
     pattern = re.compile(r"^from (hexcore[\w.]*) import ([^\n(]+)$", re.MULTILINE)
 
-    for doc in DOC_FILES:
+    for doc in ALL_DOC_FILES:
         for module_path, names in pattern.findall(_read(doc)):
             try:
                 module = importlib.import_module(module_path)
@@ -392,11 +406,21 @@ def test_docs_facade_attributes_exist():
     aliases = {"hx": "hexcore.fastapi", "cqrs": "hexcore.cqrs", "sql": "hexcore.sql"}
     # `(?<![\w.])` evita capturar el fragmento `cqrs.` de una ruta larga como
     # `hexcore.application.cqrs.commands`, que no es un uso de la fachada.
-    pattern = re.compile(r"(?<![\w.])(hx|cqrs|sql)\.([A-Za-z_][A-Za-z0-9_]*)\b")
+    #
+    # La `/` del lookbehind saca los **nombres de archivo**: desde que la documentación vive en
+    # `docs/es/` y `docs/en/`, un enlace a `./docs/es/sql.md` o una mención a `hexcore/cqrs.py`
+    # matcheaban como si fueran `sql.md` y `cqrs.py` de la fachada. Son rutas, no usos.
+    pattern = re.compile(r"(?<![\w./])(hx|cqrs|sql)\.([A-Za-z_][A-Za-z0-9_]*)\b")
+    # Los módulos del framework se llaman igual que sus alias, así que la prosa que habla de
+    # los **archivos** —"ante `sql.py` y `sql.pyi`, Pyright usa el stub"— matchea igual que un
+    # uso de la fachada. Una extensión no es ni va a ser un símbolo exportado.
+    extensiones = {"md", "py", "pyi"}
     missing: list[str] = []
 
-    for doc in DOC_FILES:
+    for doc in ALL_DOC_FILES:
         for alias, attribute in pattern.findall(_read(doc)):
+            if attribute in extensiones:
+                continue
             facade = importlib.import_module(aliases[alias])
             if attribute not in facade.__all__:
                 missing.append(f"{doc}: {alias}.{attribute}")

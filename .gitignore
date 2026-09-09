@@ -13,3 +13,8 @@ pyright.json
 verifytypes.json
 # Índice local de CodeGraph (no es artefacto del proyecto)
 .codegraph/
+# Bases SQLite locales. El default de `ServerConfig.async_sql_database_url` es
+# `sqlite+aiosqlite:///./db.sqlite3`, así que cualquier corrida que levante el engine sin
+# configuración —un test, un `hexcore identity create-tables`, un script— deja el archivo en
+# la raíz del repo.
+*.sqlite3

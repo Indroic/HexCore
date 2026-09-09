@@ -52,6 +52,8 @@ Eso monta ocho rutas bajo `/auth`:
 | [Plugins incluidos](./plugins-incluidos.md) | Los seis, con sus rutas y advertencias |
 | [Escribir un plugin propio](./plugins-propios.md) | Los puntos de extensión, hooks, y las trampas |
 
+← Volver al [índice de la documentación](../).
+
 ---
 
 ## Las decisiones que conviene conocer
@@ -136,7 +138,47 @@ IdentityConfig(
 )
 ```
 
-En producción **falla si no hay clave de firma**, y eso es deliberado.
+| Campo | Default | Qué hace |
+| :-- | :-- | :-- |
+| `secret_key` | `None` | La clave de firma. **Sin default**: se lee de `HEXCORE_DARWIN_SECRET_KEY` |
+| `user_model` | `None` | Tu clase, si componés `UserMixin`. Se valida al configurar |
+| `storage` | `None` | `"sqlalchemy"`, `"beanie"`, o detección |
+| `trusted_origins` | `()` | Orígenes válidos para el chequeo anti-CSRF |
+| `worker_context_ttl` | 24 h | Ventana en que el sobre del actor sigue siendo canjeable |
+| `require_verified_email` | `True` | Si el sign-in exige mail verificado |
+| `max_verification_attempts` | `5` | Intentos por token de verificación antes de invalidarlo |
+
+`TokenConfig`:
+
+| Campo | Default | Nota |
+| :-- | :-- | :-- |
+| `issuer` | `"hexcore"` | El `iss` del JWT |
+| `access_ttl` | **2 minutos** | Corto a propósito: es lo que acota el robo de un access token |
+| `refresh_ttl` | 30 días | El refresh rota en cada uso |
+| `session_ttl` | 90 días | Techo absoluto de la sesión, rote lo que rote |
+| `algorithm` | `"Ed25519"` | Fijado por allowlist, nunca por el `alg` del token |
+| `leeway` | 30 s | Tolerancia de reloj entre nodos |
+
+`CookieConfig`:
+
+| Campo | Default | Nota |
+| :-- | :-- | :-- |
+| `access_name` / `refresh_name` / `csrf_name` | `session` / `refresh` / `csrf` | Reciben el prefijo `__Host-` |
+| `secure` | `True` | — |
+| `http_only` | `True` | El JS no ve el token |
+| `same_site` | `"lax"` | — |
+| `path` | `"/"` | `__Host-` exige exactamente esto |
+
+`PasswordPolicy`:
+
+| Campo | Default | Nota |
+| :-- | :-- | :-- |
+| `min_length` | `12` | Longitud sobre composición: es lo que recomienda el NIST |
+| `max_length` | `1024` | Un techo existe porque hashear 10 MB es un DoS gratis |
+| `denylist` | `frozenset()` | Contraseñas prohibidas, comparadas normalizadas |
+
+En producción **falla si no hay clave de firma**, y eso es deliberado. Para generar una:
+`hexcore identity generate-secret`.
 
 `configure_identity(config, **componentes)` acepta cualquier puerto a inyectar: `users=`,
 `clock=`, `key_store=`, `plugins=`, … Es lo que usan los tests y lo que permite persistir las
@@ -154,5 +196,5 @@ bloqueando los paquetes en `sys.meta_path`.
 
 ## Ver también
 
-- [`docs/ARCHITECTURE_TYPING.md`](../ARCHITECTURE_TYPING.md) — el sistema de tipos del framework
-- [README del proyecto](../../README.md) — el resto de HexCore
+- [`docs/ARCHITECTURE_TYPING.md`](../../ARCHITECTURE_TYPING.md) — el sistema de tipos del framework
+- [README del proyecto](../../../README.md) — el resto de HexCore
