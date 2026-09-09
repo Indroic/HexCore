@@ -3,7 +3,7 @@
 HexCore shippea tipos: trae `py.typed`, corre Pyright en modo `strict` sobre todo el paquete, y
 publica stubs generados para las fachadas. Este documento cubre **lo que necesitás saber como
 consumidor**; el contrato completo para contribuir está en
-[`docs/ARCHITECTURE_TYPING.md`](../ARCHITECTURE_TYPING.md).
+[`docs/ARCHITECTURE_TYPING.md`](../ARCHITECTURE_TYPING.md) (en inglés).
 
 ---
 

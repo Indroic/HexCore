@@ -3,7 +3,7 @@
 HexCore ships types: it includes `py.typed`, runs Pyright in `strict` mode over the whole package,
 and publishes generated stubs for the facades. This document covers **what you need to know as a
 consumer**; the full contract for contributors is in
-[`docs/ARCHITECTURE_TYPING.md`](../ARCHITECTURE_TYPING.md) (Spanish).
+[`docs/ARCHITECTURE_TYPING.md`](../ARCHITECTURE_TYPING.md).
 
 ---
 

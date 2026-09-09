@@ -14,7 +14,7 @@ version = "8.0.0"
 authors = [
   { name="David Latosefki (Indroic)", email="indroic@outlook.com" },
 ]
-description = "Núcleo reutilizable para proyectos Python con arquitectura hexagonal y event handling. Provee abstracciones, utilidades y contratos para DDD, eventos y desacoplamiento de infraestructura."
+description = "Reusable core for Python projects with hexagonal architecture, DDD, CQRS and background tasks. Ships the abstractions and the infrastructure: SQL session layer, FastAPI factories, worker runner, dynamic cron and identity."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

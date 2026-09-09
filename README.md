@@ -1,27 +1,29 @@
 # HexCore [![PyPI Downloads](https://static.pepy.tech/personalized-badge/hexcore?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/hexcore)
 
-Núcleo reutilizable para aplicaciones Python con **arquitectura hexagonal**, **DDD**, **CQRS**
-y **tareas en background**. HexCore trae las abstracciones (entidades, repositorios, UoW,
-buses) *y* la infraestructura que normalmente reescribe cada proyecto: la capa de sesión SQL,
-las factories de FastAPI, el runner del worker, el cron dinámico, la identidad y las utilidades
-de test.
+A reusable core for Python applications built on **hexagonal architecture**, **DDD**, **CQRS**
+and **background tasks**. HexCore ships the abstractions (entities, repositories, unit of work,
+buses) *and* the infrastructure every project otherwise rewrites: the SQL session layer, the
+FastAPI factories, the worker runner, the dynamic cron, identity, and the testing utilities.
 
-El objetivo de diseño es que el camino feliz sea **cero configuración**: `create_app()` sin
-argumentos da una app usable, `init_engine()` sin argumentos da un engine de producción
-correcto.
+The design goal is that the happy path takes **zero configuration**: `create_app()` with no
+arguments gives you a usable app, `init_engine()` with no arguments gives you a
+production-correct engine.
+
+> 🇪🇸 **¿Preferís español?** La documentación está completa en los dos idiomas:
+> **[docs/es/](./docs/es/)**.
 
 ```python
-# main.py — el arranque completo de una app HexCore
+# main.py — a complete HexCore app
 from hexcore.fastapi import build_lifespan, create_app, SqlEngineStep
 
 app = create_app(
     lifespan=build_lifespan(SqlEngineStep()),
-    routers=[usuarios_router, tickets_router],
+    routers=[users_router, tickets_router],
 )
 ```
 
 ```python
-# worker.py — el worker completo, con cron, muerte mutua y SIGTERM
+# worker.py — the complete worker, with cron, mutual death and SIGTERM
 import hexcore.cqrs as cqrs
 
 await cqrs.run_procrastinate_worker(
@@ -34,38 +36,38 @@ await cqrs.run_procrastinate_worker(
 
 ---
 
-## 📚 La documentación
+## 📚 Documentation
 
-**→ [`docs/`](./docs/) — 🇪🇸 [español](./docs/es/) · 🇬🇧 [English](./docs/en/)**
+**→ [`docs/`](./docs/) — 🇬🇧 [English](./docs/en/) · 🇪🇸 [español](./docs/es/)**
 
-| | Español | English |
+| | English | Español |
 | :-- | :-- | :-- |
-| Instalación y extras | [instalacion](./docs/es/instalacion.md) | [installation](./docs/en/installation.md) |
-| Inicio rápido | [inicio-rapido](./docs/es/inicio-rapido.md) | [quickstart](./docs/en/quickstart.md) |
-| Configuración | [configuracion](./docs/es/configuracion.md) | [configuration](./docs/en/configuration.md) |
-| Capa SQL | [sql](./docs/es/sql.md) | [sql](./docs/en/sql.md) |
-| Repositorios y entidades | [repositorios](./docs/es/repositorios.md) | [repositories](./docs/en/repositories.md) |
-| Utilidades FastAPI | [fastapi](./docs/es/fastapi.md) | [fastapi](./docs/en/fastapi.md) |
-| Arquitectura CQRS | [cqrs](./docs/es/cqrs.md) | [cqrs](./docs/en/cqrs.md) |
-| Colas y workers | [colas-y-workers](./docs/es/colas-y-workers.md) | [queues-and-workers](./docs/en/queues-and-workers.md) |
-| Tareas periódicas | [cron](./docs/es/cron.md) | [cron](./docs/en/cron.md) |
-| Testing | [testing](./docs/es/testing.md) | [testing](./docs/en/testing.md) |
-| CLI | [cli](./docs/es/cli.md) | [cli](./docs/en/cli.md) |
-| **Darwin** (identidad) | [darwin/](./docs/es/darwin/) | [darwin/](./docs/en/darwin/) |
-| Referencia de API | [referencia](./docs/es/referencia.md) | [reference](./docs/en/reference.md) |
-| Versiones y migración | [versiones-y-migracion](./docs/es/versiones-y-migracion.md) | [versions-and-migration](./docs/en/versions-and-migration.md) |
-| Tipado | [tipado](./docs/es/tipado.md) | [typing](./docs/en/typing.md) |
+| Installation and extras | [installation](./docs/en/installation.md) | [instalacion](./docs/es/instalacion.md) |
+| Quickstart | [quickstart](./docs/en/quickstart.md) | [inicio-rapido](./docs/es/inicio-rapido.md) |
+| Configuration | [configuration](./docs/en/configuration.md) | [configuracion](./docs/es/configuracion.md) |
+| SQL layer | [sql](./docs/en/sql.md) | [sql](./docs/es/sql.md) |
+| Repositories and entities | [repositories](./docs/en/repositories.md) | [repositorios](./docs/es/repositorios.md) |
+| FastAPI utilities | [fastapi](./docs/en/fastapi.md) | [fastapi](./docs/es/fastapi.md) |
+| CQRS architecture | [cqrs](./docs/en/cqrs.md) | [cqrs](./docs/es/cqrs.md) |
+| Queues and workers | [queues-and-workers](./docs/en/queues-and-workers.md) | [colas-y-workers](./docs/es/colas-y-workers.md) |
+| Scheduled tasks | [cron](./docs/en/cron.md) | [cron](./docs/es/cron.md) |
+| Testing | [testing](./docs/en/testing.md) | [testing](./docs/es/testing.md) |
+| CLI | [cli](./docs/en/cli.md) | [cli](./docs/es/cli.md) |
+| **Darwin** (identity) | [darwin/](./docs/en/darwin/) | [darwin/](./docs/es/darwin/) |
+| API reference | [reference](./docs/en/reference.md) | [referencia](./docs/es/referencia.md) |
+| Versions and migration | [versions-and-migration](./docs/en/versions-and-migration.md) | [versiones-y-migracion](./docs/es/versiones-y-migracion.md) |
+| Typing | [typing](./docs/en/typing.md) | [tipado](./docs/es/tipado.md) |
 
 ---
 
-## Instalación
+## Installation
 
 ```sh
 pip install hexcore
 ```
 
-Requiere Python ≥ 3.12. HexCore no arrastra dependencias pesadas: todo lo que no es el núcleo va
-en **extras**, y los módulos que las necesitan sólo las importan cuando los usás.
+Requires Python ≥ 3.12. HexCore pulls in no heavy dependencies: everything that is not the core
+lives in **extras**, and the modules that need them only import them when you use them.
 
 ```sh
 pip install "hexcore[api,sql,procrastinate]"
@@ -73,64 +75,63 @@ pip install "hexcore[darwin-sqlalchemy]"
 pip install "hexcore[all]"
 ```
 
-| Grupo | Extras |
+| Group | Extras |
 | :-- | :-- |
-| Núcleo | `api`, `sql`, `mongo`, `redis`, `rabbitmq`, `procrastinate`, `celery` |
-| Identidad | `darwin`, `darwin-sqlalchemy`, `darwin-beanie`, `darwin-magic-link`, `darwin-two-factor`, `darwin-oauth`, `darwin-impersonate`, `darwin-passkey`, `darwin-organization` |
-| Todo | `all` |
+| Core | `api`, `sql`, `mongo`, `redis`, `rabbitmq`, `procrastinate`, `celery` |
+| Identity | `darwin`, `darwin-sqlalchemy`, `darwin-beanie`, `darwin-magic-link`, `darwin-two-factor`, `darwin-oauth`, `darwin-impersonate`, `darwin-passkey`, `darwin-organization` |
+| Everything | `all` |
 
-La tabla completa, con qué habilita cada uno, está en
-[instalación](./docs/es/instalacion.md) · [installation](./docs/en/installation.md).
+The full table, with what each one enables, is in
+[installation](./docs/en/installation.md) · [instalación](./docs/es/instalacion.md).
 
-> `import hexcore.cqrs` funciona sin ningún extra: la resolución de nombres es perezosa, así
-> que `hexcore.cqrs.SqlAlchemyCronJobRepository` sólo exige `[sql]` en el momento en que lo
-> pedís.
+> `import hexcore.cqrs` works with no extras at all: name resolution is lazy, so
+> `hexcore.cqrs.SqlAlchemyCronJobRepository` only requires `[sql]` at the moment you ask for it.
 
 ---
 
-## Los cuatro imports
+## The four imports
 
-Hay un módulo fachada por tarea. Reexportan lo público **sin mover nada de sitio**: las rutas
-largas siguen resolviendo al mismo objeto.
+There is one facade module per task. They re-export the public surface **without moving
+anything**: the long paths keep resolving to the same object.
 
 ```python
 import hexcore.fastapi as hx     # create_app, build_lifespan, providers, middlewares, health
-import hexcore.cqrs as cqrs      # Command, Query, handlers, decoradores, buses, worker, cron
-import hexcore.sql as sql        # init_engine, session_scope, uow_scope, Base, DTOs de query
+import hexcore.cqrs as cqrs      # Command, Query, handlers, decorators, buses, worker, cron
+import hexcore.sql as sql        # init_engine, session_scope, uow_scope, Base, query DTOs
 import hexcore.darwin as darwin  # IdentityConfig, configure_identity, build_identity_router
 ```
 
-Las fachadas exponen **sólo los nombres canónicos**. Los alias históricos `I*` se eliminaron en
-7.0 — ver [API removida](#api-removida-y-su-reemplazo).
+The facades expose **only the canonical names**. The historical `I*` aliases were removed in
+7.0 — see [Removed API](#removed-api-and-its-replacement).
 
 ---
 
-## Qué trae, de un vistazo
+## What you get, at a glance
 
-| Necesitás | API | Extra |
+| You need | API | Extra |
 | :-- | :-- | :-- |
-| Una app FastAPI cableada | `hx.create_app()`, `hx.AppFeatures` | `api` |
-| Orquestar el arranque y el apagado | `hx.build_lifespan()` + steps | `api` |
-| Engine y sesiones SQL | `sql.init_engine()`, `sql.PoolSettings` | `sql` |
-| Sesión o UoW fuera de un request | `sql.session_scope()`, `sql.uow_scope()` | `sql` |
-| Health checks que sondean de verdad | `hx.register_health_routes()` | `api` |
+| A wired-up FastAPI app | `hx.create_app()`, `hx.AppFeatures` | `api` |
+| Orchestrated startup and shutdown | `hx.build_lifespan()` + steps | `api` |
+| SQL engine and sessions | `sql.init_engine()`, `sql.PoolSettings` | `sql` |
+| A session or UoW outside a request | `sql.session_scope()`, `sql.uow_scope()` | `sql` |
+| Health checks that actually probe | `hx.register_health_routes()` | `api` |
 | Rate limiting | `hx.rate_limit()` | `api` |
-| SSE / WebSocket / límite de conexiones | `hx.sse_stream()`, `hx.connection_slot()` | `api` |
-| Commands, Queries y eventos | `cqrs.Command`, `cqrs.Query`, `cqrs.HandlerRegistry` | — |
-| Ejecutar en background | `cqrs.background_command`, `cqrs.background_task` | — |
-| Entrypoint del worker | `cqrs.run_cqrs_worker()`, `cqrs.run_procrastinate_worker()` | — |
-| Cron editable en caliente | `cqrs.DynamicScheduler`, `cqrs.SqlAlchemyCronJobRepository` | `sql` |
-| Locks distribuidos | `cqrs.RedisLockProvider`, `cqrs.PostgresLockProvider` | `redis` / `sql` |
-| Identidad y autenticación | `darwin.configure_identity()`, `darwin.build_identity_router()` | `darwin` + almacenamiento |
-| Testear todo lo anterior | `hexcore.testing` | — |
+| SSE / WebSocket / connection caps | `hx.sse_stream()`, `hx.connection_slot()` | `api` |
+| Commands, queries and events | `cqrs.Command`, `cqrs.Query`, `cqrs.HandlerRegistry` | — |
+| Running work in the background | `cqrs.background_command`, `cqrs.background_task` | — |
+| The worker entrypoint | `cqrs.run_cqrs_worker()`, `cqrs.run_procrastinate_worker()` | — |
+| Cron you can edit without a restart | `cqrs.DynamicScheduler`, `cqrs.SqlAlchemyCronJobRepository` | `sql` |
+| Distributed locks | `cqrs.RedisLockProvider`, `cqrs.PostgresLockProvider` | `redis` / `sql` |
+| Identity and authentication | `darwin.configure_identity()`, `darwin.build_identity_router()` | `darwin` + storage |
+| Testing all of the above | `hexcore.testing` | — |
 
 ---
 
-## Darwin: el módulo de identidad
+## Darwin: the identity module
 
-Registro, verificación de mail, login, sesiones con refresh rotativo, revocación, impersonación
-auditada, y un sistema de plugins que agrega segundo factor, OAuth, magic links, passkeys y
-organizaciones sin que el núcleo los conozca.
+Registration, email verification, sign-in, sessions with rotating refresh, revocation, audited
+impersonation, and a plugin system that adds second factor, OAuth, magic links, passkeys and
+organizations without the core knowing about them.
 
 ```python
 from hexcore.darwin import (
@@ -150,52 +151,52 @@ app = create_app(
 )
 ```
 
-⚠️ Si usás SQL, lo más importante que podés leer antes de desplegar es la sección de Alembic:
-[almacenamiento](./docs/es/darwin/almacenamiento.md) · [storage](./docs/en/darwin/storage.md).
-Un plugin que falte en el `env.py` hace que `alembic revision --autogenerate` emita
-`op.drop_table` sobre sus tablas.
+⚠️ If you use SQL, the most important thing to read before deploying is the Alembic section:
+[storage](./docs/en/darwin/storage.md) · [almacenamiento](./docs/es/darwin/almacenamiento.md).
+A plugin missing from your `env.py` makes `alembic revision --autogenerate` emit
+`op.drop_table` for its tables.
 
 ---
 
-## Templates de proyecto (CLI)
+## Project templates (CLI)
 
 ```sh
-hexcore init mi_proyecto --template hexagonal
-hexcore init mi_proyecto --template vertical-slice
+hexcore init my_project --template hexagonal
+hexcore init my_project --template vertical-slice
 ```
 
 - `hexagonal` → `src/domain`, `src/application`, `src/infrastructure`.
 - `vertical-slice` → `src/features`, `src/shared/{domain,application,infrastructure}`.
 
-Ambos generan `config.py` en la raíz y dejan Alembic configurado. Ver
-[CLI](./docs/es/cli.md) · [CLI](./docs/en/cli.md).
+Both generate a root `config.py` and leave Alembic configured. See
+[CLI](./docs/en/cli.md) · [CLI](./docs/es/cli.md).
 
 ---
 
-## Versiones y soporte
+## Versions and support
 
-| Serie | Estado | Qué significa |
+| Series | Status | What it means |
 | :-- | :-- | :-- |
-| **8.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. Trae Darwin. |
-| **7.x** | ⛔ **Deprecada** | Elimina la superficie anterior a 5.0 y corrige los defectos de CORS y rate limiting. No trae Darwin: se publicó antes de que el módulo llegara a `master`. |
-| **6.x** | ⛔ **Deprecada** | Ya no recibe correcciones. Incluye los defectos de seguridad de CORS y rate limiting corregidos en 7.0, y los alias anteriores a 5.0 todavía presentes. |
-| **5.x** | ⛔ **Deprecada** | Misma superficie de API que 6.x. |
-| **4.x** | ⛔ **Deprecada** | Aplicación **parcial**: le faltan el fix del event loop de Celery, las fachadas y la documentación alineada. |
-| **3.x** | ⛔ **Deprecada** | Aplicación **parcial**: tiene las correcciones P0/P1 pero ninguna de las factories de FastAPI. |
-| **2.x** | ⛔ **Deprecada** | Contiene bugs silenciosos corregidos en 5.x: el worker reencolaba en vez de ejecutar, el cron se salteaba o duplicaba ejecuciones, y una caída de Redis apagaba el cron entero. |
-| **1.x** | ⛔ **Deprecada** | Sin soporte de ningún tipo. |
+| **8.x** | ✅ **Active** | The only supported one. Receives features and fixes. Ships Darwin. |
+| **7.x** | ⛔ **Deprecated** | Removes the pre-5.0 surface and fixes the CORS and rate-limiting defects. No Darwin: it shipped before the module landed on `master`. |
+| **6.x** | ⛔ **Deprecated** | No longer receives fixes. Contains the CORS and rate-limiting security defects fixed in 7.0, and the pre-5.0 aliases still present. |
+| **5.x** | ⛔ **Deprecated** | Same API surface as 6.x. |
+| **4.x** | ⛔ **Deprecated** | **Partial** application: missing the Celery event-loop fix, the facades, and the aligned documentation. |
+| **3.x** | ⛔ **Deprecated** | **Partial** application: has the P0/P1 fixes but none of the FastAPI factories. |
+| **2.x** | ⛔ **Deprecated** | Contains silent bugs fixed in 5.x: the worker re-enqueued instead of executing, the cron skipped or duplicated runs, and a Redis outage switched off the entire cron. |
+| **1.x** | ⛔ **Deprecated** | No support of any kind. |
 
-**Todo lo anterior a 8.0 está deprecado. Migrá a 8.x.** El detalle de cada serie, los bugs
-silenciosos de 2.x y las guías paso a paso están en
-[versiones y migración](./docs/es/versiones-y-migracion.md) ·
-[versions and migration](./docs/en/versions-and-migration.md).
+**Everything before 8.0 is deprecated. Migrate to 8.x.** The detail of each series, the silent
+2.x bugs and the step-by-step guides are in
+[versions and migration](./docs/en/versions-and-migration.md) ·
+[versiones y migración](./docs/es/versiones-y-migracion.md).
 
-### API removida y su reemplazo
+### Removed API and its replacement
 
-Los alias de v1/v2 estuvieron deprecados desde 5.0 —dos majors completos de aviso— y se
-eliminaron en 7.0. El reemplazo es mecánico: son renombres, no cambios de comportamiento.
+The v1/v2 aliases were deprecated since 5.0 — two full majors of notice — and were removed in
+7.0. The replacement is mechanical: they are renames, not behavior changes.
 
-| Removido en 7.0 (era v1/v2) | Usá en su lugar |
+| Removed in 7.0 (was v1/v2) | Use instead |
 | :-- | :-- |
 | `ICommandBus`, `IQueryBus`, `IEventBus` | `AbstractCommandBus`, `AbstractQueryBus`, `AbstractEventBus` |
 | `ICommandHandler`, `IQueryHandler` | `AbstractCommandHandler`, `AbstractQueryHandler` |
@@ -208,13 +209,14 @@ eliminaron en 7.0. El reemplazo es mecánico: son renombres, no cambios de compo
 | `BeanieODMCommonImplementationsRepo` | `BeanieRepository` |
 | `NoSqlUnitOfWork` | `BeanieUnitOfWork` |
 | `reset_sqlalchemy_engine()` | `dispose_engine()` |
-| `MiddlewareConfig` | **Eliminado en 3.0.** Era código muerto: nunca se leía. |
+| `MiddlewareConfig` | **Removed in 3.0.** It was dead code: never read. |
 
-Pasar `event_dispatcher=` a `ServerConfig` **falla con un error que dice qué usar**, en vez de
-ignorarse en silencio: pydantic descarta los kwargs que no conoce, y quedarte con el bus por
-defecto sin enterarte se manifestaría mucho después como «mis eventos no llegan».
+Passing `event_dispatcher=` to `ServerConfig` **fails with an error that says what to use**,
+rather than being silently ignored: pydantic discards keyword arguments it does not know, and
+keeping the default bus without noticing would surface much later as "my events never arrive".
 
-Si todavía estás en 6.x, corré tus tests con los warnings visibles para ver qué te falta migrar:
+If you are still on 6.x, run your tests with warnings visible to see what you have left to
+migrate:
 
 ```sh
 python -m pytest -W "default::DeprecationWarning"
@@ -222,41 +224,40 @@ python -m pytest -W "default::DeprecationWarning"
 
 ---
 
-## Contribuir
+## Contributing
 
-1. **Código de conducta** — revisá el [Código de Conducta](CODE_OF_CONDUCT.md) antes de
-   interactuar.
-2. **Ramas** — forkeá y creá una rama (`feat/nombre`, `fix/nombre`, `docs/nombre`).
-3. **Tests** — toda corrección entra con al menos un test que falle antes y pase después:
+1. **Code of conduct** — read the [Code of Conduct](CODE_OF_CONDUCT.md) before interacting.
+2. **Branches** — fork and create a branch (`feat/name`, `fix/name`, `docs/name`).
+3. **Tests** — every fix lands with at least one test that fails before and passes after:
 
    ```sh
    uv sync --extra all --group dev
    uv run python -m pytest -q
    ```
 
-   El CI falla si algún test se **salta**: un skip significa que falta un extra y que
-   estaríamos reportando verde sin ejecutar la mitad del suite.
-4. **Typecheck** — `uv run pyright hexcore`. El veredicto lo da el ratchet, no el exit code:
-   ver [tipado](./docs/es/tipado.md) · [typing](./docs/en/typing.md).
-5. **Estilo** — [PEP8](https://pep8.org/). Comentá el *por qué*, no el *qué*.
+   CI fails if any test is **skipped**: a skip means an extra is missing, and we would be
+   reporting green without having run half the suite.
+4. **Typecheck** — `uv run pyright hexcore`. The verdict comes from the ratchet, not the exit
+   code: see [typing](./docs/en/typing.md) · [tipado](./docs/es/tipado.md).
+5. **Style** — [PEP8](https://pep8.org/). Comment the *why*, not the *what*.
 6. **Commits** — [Commitizen](https://commitizen-tools.github.io/commitizen/): `feat:`, `fix:`,
-   `docs:`, `refactor:`, y `!` para breaking changes. El bump de versión y el CHANGELOG son
-   automáticos al mergear a `master`.
-7. **PRs** — describí el problema, la reproducción, la solución y **por qué esa opción**.
+   `docs:`, `refactor:`, and `!` for breaking changes. The version bump and the CHANGELOG are
+   automatic on merge to `master`.
+7. **PRs** — describe the problem, the reproduction, the solution and **why that option**.
 
-Detalle completo en [CONTRIBUTING.md](CONTRIBUTING.md).
+Full detail in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-### Skills del proyecto
+### Project skills
 
-Hay un conjunto de skills para extender HexCore en VS Code y entornos compatibles:
-[Repositorio de Skills de HexCore](https://github.com/Indroic/hexcore-skill).
+There is a set of skills for extending HexCore in VS Code and compatible environments:
+[HexCore Skills repository](https://github.com/Indroic/hexcore-skill).
 
 ---
 
-## Referencias
+## References
 
-- [docs/](./docs/) — la documentación completa, en español e inglés.
-- [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md) — sistema de tipos y stubs.
-- [CHANGELOG.md](./CHANGELOG.md) — historial de cambios.
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — pautas de colaboración.
-- [SECURITY.md](./SECURITY.md) — política de seguridad.
+- [docs/](./docs/) — the complete documentation, in English and Spanish.
+- [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md) — type system and stubs.
+- [CHANGELOG.md](./CHANGELOG.md) — change history.
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — collaboration guidelines.
+- [SECURITY.md](./SECURITY.md) — security policy.

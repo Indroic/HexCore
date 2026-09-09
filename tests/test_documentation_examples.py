@@ -300,6 +300,13 @@ def test_readme_command_only_consumer_example_runs():
 #: Las dos páginas de entrada. Los guardas de "no enseñes API que no existe" corren sólo acá:
 #: son las que quedaron de la documentación vieja, y las únicas que todavía nombran en prosa la
 #: superficie removida —la tabla de deprecación vive en el README—.
+#: Los títulos del README que estos tests parten para leer una sección. Van acá y no inline
+#: porque el README pasó a inglés y estaban escritos en español en cinco lugares: una constante
+#: hace que el próximo cambio de idioma o de redacción sea una línea y no una cacería.
+POLICY_HEADING = "## Versions and support"
+REMOVED_API_HEADING = "### Removed API and its replacement"
+ACTIVE_MARKER = "**Active**"
+
 DOC_FILES = ["README.md", "DOCS.md"]
 
 #: Toda la documentación, incluida la de `docs/`. Los chequeos de "los símbolos que nombra
@@ -446,7 +453,7 @@ def test_support_policy_covers_every_released_major():
     current_major = int(version.split(".")[0])
 
     readme = _read("README.md")
-    policy = readme.split("## Versiones y soporte", 1)[1].split("## ", 1)[0]
+    policy = readme.split(POLICY_HEADING, 1)[1].split("## ", 1)[0]
 
     for major in range(1, current_major + 1):
         assert f"**{major}.x**" in policy, (
@@ -463,8 +470,8 @@ def test_support_policy_marks_only_the_current_major_as_active():
     )["project"]["version"]
     current_major = version.split(".")[0]
 
-    policy = _read("README.md").split("## Versiones y soporte", 1)[1].split("## ", 1)[0]
-    active_rows = [line for line in policy.splitlines() if "**Activa**" in line]
+    policy = _read("README.md").split(POLICY_HEADING, 1)[1].split("## ", 1)[0]
+    active_rows = [line for line in policy.splitlines() if ACTIVE_MARKER in line]
 
     assert len(active_rows) == 1, "debe haber exactamente una serie activa"
     assert f"**{current_major}.x**" in active_rows[0], (
@@ -532,6 +539,13 @@ def test_the_removed_api_table_matches_reality():
     for _module_path, name in removidos + canonicos:
         assert name in readme, f"{name} no aparece en el README"
 
-    # La tabla ya no puede prometer que los alias siguen funcionando.
-    assert "se eliminará en **6.0**" not in readme
-    assert "sigue funcionando" not in readme.split("### API removida", 1)[-1].split("##", 1)[0]
+    # La tabla ya no puede prometer que los alias siguen funcionando. El aviso viejo decía que
+    # se eliminaban "en 6.0" y salieron igual en 6.0.0, así que la frase tampoco puede volver.
+    assert "will be removed in **6.0**" not in readme
+
+    seccion = readme.split(REMOVED_API_HEADING, 1)[-1].split("##", 1)[0]
+    for promesa in ("still works", "still work", "still importable", "still available"):
+        assert promesa not in seccion, (
+            f"la sección de API removida del README dice '{promesa}': esos nombres se "
+            f"eliminaron en 7.0 y no resuelven"
+        )
