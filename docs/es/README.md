@@ -10,7 +10,8 @@ El objetivo de diseño es que **el camino feliz sea cero configuración**: `crea
 argumentos da una app usable, `init_engine()` sin argumentos da un engine correcto para
 producción.
 
-> 🇬🇧 [English version](../en/)
+> 🇬🇧 [English version](../en/) — la versión de referencia. Se escribe primero ahí, y esta es su
+> traducción completa. Si las dos se contradicen, la de inglés es la que manda.
 
 ---
 
@@ -108,6 +109,6 @@ type checkers verían `Any` en los 64 símbolos de `hexcore.cqrs`.
 
 - **Los nombres canónicos son los `Abstract*`.** Los alias `I*` de v1/v2 se eliminaron en 7.0;
   la tabla de reemplazos está en [Versiones y migración](./versiones-y-migracion.md).
-- **Los ejemplos son código que corre.** Ver la [regla](../README.md#la-regla-de-esta-documentación).
+- **Los ejemplos son código que corre.** Ver la [regla](../README.md#the-rule-of-this-documentation).
 - **Las advertencias marcadas con ⚠️ son modos de falla reales**, no estilo. Casi todas
   describen algo que no lanza excepción y aparece lejos de su causa.

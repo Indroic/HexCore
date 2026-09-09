@@ -2,9 +2,16 @@
 
 ## Supported Versions
 
+Only the current major series receives security fixes.
+
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
+| 8.x     | :white_check_mark: |
+| ≤ 7.x   | :x:                |
+
+Series 7.x and earlier are deprecated. 6.x and earlier additionally carry the CORS and
+rate-limiting defects fixed in 7.0 — see
+[versions and migration](./docs/en/versions-and-migration.md) for the detail.
 
 ---
 
