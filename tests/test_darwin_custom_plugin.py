@@ -1,5 +1,5 @@
 """
-El plugin de ejemplo de `docs/darwin/plugins-propios.md`, ejecutado.
+El plugin de ejemplo de `docs/es/darwin/plugins-propios.md`, ejecutado.
 
 Una guía de extensión que no corre es una guía que envejece sin avisar: el día que un punto
 de extensión cambia de firma, el documento sigue diciendo lo de antes y el primero en

@@ -7,7 +7,7 @@ Un plugin puede aportar rutas HTTP, comandos y queries de CQRS, middlewares, pas
 tablas y —lo que más se usa— **hooks** que se enganchan a los flujos que Darwin ya tiene.
 
 > Todo el código de esta guía vive ejecutado en
-> [`tests/test_darwin_custom_plugin.py`](../../tests/test_darwin_custom_plugin.py). Si esta
+> [`tests/test_darwin_custom_plugin.py`](../../../tests/test_darwin_custom_plugin.py). Si esta
 > guía miente, esos tests se ponen rojos. Si editás una, editá la otra.
 
 ---
@@ -392,5 +392,5 @@ el import se rompe.
 
 - [Los seis plugins que vienen incluidos](./plugins-incluidos.md)
 - [Almacenamiento, esquema y Alembic](./almacenamiento.md)
-- [`tests/test_darwin_custom_plugin.py`](../../tests/test_darwin_custom_plugin.py) — todo esto,
+- [`tests/test_darwin_custom_plugin.py`](../../../tests/test_darwin_custom_plugin.py) — todo esto,
   ejecutado
