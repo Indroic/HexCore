@@ -245,7 +245,7 @@ python -m pytest -W "default::DeprecationWarning"
    automatic on merge to `master`.
 7. **PRs** — describe the problem, the reproduction, the solution and **why that option**.
 
-Full detail in [CONTRIBUTING.md](CONTRIBUTING.md) (in Spanish).
+Full detail in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Project skills
 
@@ -257,7 +257,7 @@ There is a set of skills for extending HexCore in VS Code and compatible environ
 ## References
 
 - [docs/](./docs/) — the complete documentation, in English and Spanish.
-- [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md) — type system and stubs (Spanish).
+- [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md) — type system and stubs.
 - [CHANGELOG.md](./CHANGELOG.md) — change history.
 - [CONTRIBUTING.md](./CONTRIBUTING.md) — collaboration guidelines.
 - [SECURITY.md](./SECURITY.md) — security policy.
