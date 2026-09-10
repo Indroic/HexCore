@@ -121,6 +121,17 @@ class ServerConfig(BaseModel):
     # `IdentityConfig` como `SecretStr` sin default, leída de `HEXCORE_DARWIN_SECRET_KEY`.
     darwin: t.Any = None
 
+    # Event Store (opcional — None = deshabilitado).
+    # Tipo: Optional[hexcore.application.eventsourcing.config.EventStoreConfig]
+    #
+    # Se tipa `t.Any` por el mismo motivo que `cqrs` y `darwin`: anotarlo de verdad obligaría
+    # a importar el módulo acá, y `hexcore.config` lo importa medio framework.
+    #
+    # Va como campo propio y **no dentro de `cqrs`**. `CQRSConfig` está congelado y modela
+    # tres buses; el event store es útil sin CQRS, y meterlo ahí haría que
+    # `CQRSConfig(enabled=False)` apagara el almacén de la verdad.
+    event_store: t.Any = None
+
     # ── Nombres removidos ─────────────────────────────────────────────────────
     @model_validator(mode="before")
     @classmethod
