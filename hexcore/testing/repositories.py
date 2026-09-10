@@ -240,14 +240,27 @@ class FakeUnitOfWork(IUnitOfWork):
 
     def collect_domain_events(self) -> list[t.Any]:
         """
-        Los eventos de las entidades trackeadas.
+        Los eventos de las entidades trackeadas, drenados como lo hace el UoW real.
 
-        Se leen con `getattr` porque `BaseEntity` no obliga a tener eventos: una entidad que no
-        los emite no debería tener que declarar una lista vacía.
+        Antes esto leía `getattr(entidad, "_events", ())`, y ese atributo **no existe**:
+        `BaseEntity` guarda sus eventos en `_domain_events` y los entrega con
+        `pull_domain_events()`. O sea que el fake devolvía siempre una lista vacía, y un test
+        que verificaba "mi caso de uso publica tal evento" pasaba sin que se publicara nada.
+        Un doble que miente en la dirección de aprobar es peor que no tenerlo.
+
+        Se **drena**, no se copia, por simetría con `SqlAlchemyUnitOfWork`: un evento se
+        despacha una sola vez, y un segundo `commit()` sobre la misma entidad no tiene que
+        reenviar lo de antes.
+
+        Se sigue usando `getattr` para el método porque una entidad trackeada no está obligada
+        a ser una `BaseEntity`: los tests pasan dobles livianos por `collect_entity()`, y uno
+        que no acumule eventos simplemente no aporta ninguno.
         """
         eventos: list[t.Any] = []
         for entidad in self._trackeadas:
-            eventos.extend(getattr(entidad, "_events", ()) or ())
+            drenar = getattr(entidad, "pull_domain_events", None)
+            if drenar is not None:
+                eventos.extend(drenar())
         return eventos
 
     async def dispatch_events(self) -> None:

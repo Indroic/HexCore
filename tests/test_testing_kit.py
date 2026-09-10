@@ -24,6 +24,7 @@ from uuid import uuid4
 import pytest
 
 from hexcore.domain.base import BaseEntity
+from hexcore.domain.events import DomainEvent
 from hexcore.testing import FakeRepository, FakeUnitOfWork
 
 AHORA = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
@@ -32,6 +33,10 @@ AHORA = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+class UnEvento(DomainEvent):
+    """Un evento de dominio cualquiera, para verificar el drenado."""
 
 
 class Cosa(BaseEntity):
@@ -282,6 +287,15 @@ class TestFakeUnitOfWork:
 
     @pytest.mark.anyio
     async def test_despacha_los_eventos_al_commit(self):
+        """
+        El evento se registra como lo hace una entidad de verdad: `register_event()`.
+
+        Este test le inyectaba un `_events` a la entidad con `object.__setattr__`, porque eso
+        era lo que `collect_domain_events()` leia. Pero `BaseEntity` guarda sus eventos en
+        `_domain_events`: el atributo `_events` no existe en el framework, asi que el test
+        verificaba que el fake supiera leer un atributo que ninguna entidad real tiene. Con
+        una entidad de verdad, el fake no despachaba **nada** y nadie se enteraba.
+        """
         publicados: list[object] = []
 
         class Bus:
@@ -290,19 +304,66 @@ class TestFakeUnitOfWork:
 
         uow = FakeUnitOfWork(event_bus=Bus())
         cosa = Cosa()
-        object.__setattr__(cosa, "_events", ["un-evento"])
+        evento = UnEvento()
+        cosa.register_event(evento)
         uow.collect_entity(cosa)
 
         await uow.commit()
 
-        assert publicados == ["un-evento"]
-        assert uow.dispatched == ["un-evento"]
+        assert publicados == [evento]
+        assert uow.dispatched == [evento]
+
+    @pytest.mark.anyio
+    async def test_un_segundo_commit_no_reenvia_los_eventos_de_antes(self):
+        """
+        Simetria con `SqlAlchemyUnitOfWork`: los eventos se **drenan**, no se copian.
+
+        Sin esto, un caso de uso que comitea dos veces sobre la misma entidad publicaria el
+        primer evento dos veces, y el test no lo veria.
+        """
+        publicados: list[object] = []
+
+        class Bus:
+            async def publish(self, evento: object) -> None:
+                publicados.append(evento)
+
+        uow = FakeUnitOfWork(event_bus=Bus())
+        cosa = Cosa()
+        cosa.register_event(UnEvento())
+        uow.collect_entity(cosa)
+
+        await uow.commit()
+        uow.collect_entity(cosa)
+        await uow.commit()
+
+        assert len(publicados) == 1, "el evento se republico en el segundo commit"
+
+    @pytest.mark.anyio
+    async def test_una_entidad_sin_eventos_no_rompe_el_commit(self):
+        """Un doble liviano pasado por `collect_entity()` simplemente no aporta eventos."""
+        uow = FakeUnitOfWork()
+
+        class DobleLiviano:
+            pass
+
+        uow.collect_entity(DobleLiviano())  # pyright: ignore[reportArgumentType]
+
+        await uow.commit()
+
+        assert uow.dispatched == []
 
     @pytest.mark.anyio
     async def test_el_rollback_descarta_los_eventos(self):
+        """
+        Tras un rollback la entidad deja de estar trackeada, asi que el commit siguiente no
+        publica lo que la transaccion revertida habia registrado.
+
+        Este test tambien inyectaba `_events` a mano, y por eso pasaba trivialmente: no habia
+        forma de que despachara nada. Con una entidad real, lo que se prueba es el rollback.
+        """
         uow = FakeUnitOfWork()
         cosa = Cosa()
-        object.__setattr__(cosa, "_events", ["un-evento"])
+        cosa.register_event(UnEvento())
         uow.collect_entity(cosa)
 
         await uow.rollback()
