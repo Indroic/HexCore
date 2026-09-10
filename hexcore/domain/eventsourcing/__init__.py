@@ -10,6 +10,7 @@ perezosa porque ahi conviven los adaptadores.
 """
 from __future__ import annotations
 
+from .aggregate import AggregateRoot, when
 from .exceptions import (
     AggregateNotFoundError,
     ConcurrencyError,
@@ -22,6 +23,9 @@ from .store import AbstractEventStore
 from .stored import EXPECTED_VERSION_ANY, EXPECTED_VERSION_NO_STREAM, StoredEvent
 
 __all__ = [
+    # Agregado
+    "AggregateRoot",
+    "when",
     # El evento persistido
     "StoredEvent",
     "EXPECTED_VERSION_ANY",
