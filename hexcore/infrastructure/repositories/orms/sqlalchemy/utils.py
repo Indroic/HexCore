@@ -480,6 +480,11 @@ def ensure_framework_models_loaded() -> list[str]:
         CronJobModel nunca fue importado   ->  ausente de Base.metadata
         alembic revision --autogenerate    ->  op.drop_table("hexcore_cron_jobs")
 
+    Con el event store el mismo escenario deja de ser una molestia y pasa a ser la peor
+    perdida de datos que este framework puede provocar: `hexcore_event_store` no es una
+    proyeccion que se reconstruya ni una cola que se vuelva a llenar, es el registro de lo
+    que paso. Por eso `tests/test_alembic_metadata_completeness.py` verifica esta lista.
+
     Sólo importa los módulos cuyo extra esté instalado: sin `[sql]` no hay `Base`, así que
     tampoco hay metadata que poblar.
 
@@ -492,7 +497,13 @@ def ensure_framework_models_loaded() -> list[str]:
         import_all_models(models)
         target_metadata = Base.metadata
     """
-    candidatos = ("hexcore.infrastructure.cqrs.cron_sql",)
+    candidatos = (
+        "hexcore.infrastructure.cqrs.cron_sql",
+        # El event store. Es el candidato mas importante de la lista: las otras tablas de
+        # framework se pueden recrear, y esta **es** la fuente de verdad. Un op.drop_table
+        # sobre `hexcore_event_store` no pierde una cache, pierde lo que paso.
+        "hexcore.infrastructure.eventsourcing.sqlalchemy_models",
+    )
 
     importados: list[str] = []
     for module_name in candidatos:

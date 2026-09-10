@@ -27,22 +27,76 @@ from hexcore.infrastructure.eventsourcing.memory import (
 
 AHORA = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 
-SNAPSHOT_STORES: dict[str, t.Callable[[], AbstractSnapshotStore]] = {
-    "memoria": InMemorySnapshotStore,
-}
-CHECKPOINT_STORES: dict[str, t.Callable[[], AbstractCheckpointStore]] = {
-    "memoria": InMemoryCheckpointStore,
-}
+pytest.importorskip("sqlalchemy")
+pytest.importorskip("aiosqlite")
+
+BACKENDS = ("memoria", "sqlite")
 
 
-@pytest.fixture(params=sorted(SNAPSHOT_STORES), ids=sorted(SNAPSHOT_STORES))
-def snapshots(request: pytest.FixtureRequest) -> AbstractSnapshotStore:
-    return SNAPSHOT_STORES[request.param]()
+class _EnSqlite:
+    """
+    Los adaptadores de SQLAlchemy sobre SQLite en memoria.
+
+    Aca `StaticPool` si sirve, a diferencia del contrato del event store: ninguno de estos
+    casos escribe concurrentemente, asi que una sola conexion compartida alcanza y evita el
+    archivo temporal.
+    """
+
+    def __init__(self) -> None:
+        self._engine: t.Any = None
+
+    async def __aenter__(self) -> tuple[AbstractSnapshotStore, AbstractCheckpointStore]:
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from sqlalchemy.pool import StaticPool
+
+        from hexcore.infrastructure.eventsourcing.sqlalchemy_models import (
+            create_eventstore_tables,
+        )
+        from hexcore.infrastructure.eventsourcing.sqlalchemy_store import (
+            SqlAlchemyCheckpointStore,
+            SqlAlchemySnapshotStore,
+        )
+
+        self._engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:", poolclass=StaticPool
+        )
+        await create_eventstore_tables(self._engine)
+        fabrica = async_sessionmaker(self._engine, expire_on_commit=False)
+
+        return (
+            SqlAlchemySnapshotStore(session_scope=fabrica),
+            SqlAlchemyCheckpointStore(session_scope=fabrica),
+        )
+
+    async def __aexit__(self, *_: object) -> None:
+        if self._engine is not None:
+            await self._engine.dispose()
 
 
-@pytest.fixture(params=sorted(CHECKPOINT_STORES), ids=sorted(CHECKPOINT_STORES))
-def checkpoints(request: pytest.FixtureRequest) -> AbstractCheckpointStore:
-    return CHECKPOINT_STORES[request.param]()
+@pytest.fixture(params=BACKENDS, ids=BACKENDS)
+async def almacenes(
+    request: pytest.FixtureRequest,
+) -> t.AsyncIterator[tuple[AbstractSnapshotStore, AbstractCheckpointStore]]:
+    if request.param == "memoria":
+        yield InMemorySnapshotStore(), InMemoryCheckpointStore()
+        return
+
+    async with _EnSqlite() as adaptadores:
+        yield adaptadores
+
+
+@pytest.fixture
+def snapshots(
+    almacenes: tuple[AbstractSnapshotStore, AbstractCheckpointStore],
+) -> AbstractSnapshotStore:
+    return almacenes[0]
+
+
+@pytest.fixture
+def checkpoints(
+    almacenes: tuple[AbstractSnapshotStore, AbstractCheckpointStore],
+) -> AbstractCheckpointStore:
+    return almacenes[1]
 
 
 @pytest.fixture

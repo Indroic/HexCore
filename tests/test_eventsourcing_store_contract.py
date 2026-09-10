@@ -29,6 +29,9 @@ from hexcore.domain.eventsourcing import (
 )
 from hexcore.infrastructure.eventsourcing.memory import InMemoryEventStore
 
+pytest.importorskip("sqlalchemy")
+pytest.importorskip("aiosqlite")
+
 
 class Creado(DomainEvent):
     quien: str = "acme"
@@ -51,9 +54,58 @@ class _StoreEnMemoria:
         return None
 
 
+class _StoreEnSqlite:
+    """
+    El adaptador de SQLAlchemy contra SQLite **en un archivo temporal**, no en `:memory:`.
+
+    El resto de la suite usa `:memory:` con `StaticPool`, y acá no sirve: `StaticPool`
+    mantiene **una sola conexión** compartida, así que dos sesiones que escriben a la vez
+    comparten transacción y se pisan — el `test_de_dos_escritores_simultaneos` detecta el
+    conflicto igual, pero después el commit del ganador desaparece con el rollback de la
+    perdedora. Es un artefacto del pool, no del adaptador, y esconder la diferencia
+    excluyendo el test dejaría sin probar justo lo que el adaptador SQL aporta: traducir el
+    `IntegrityError` del UNIQUE a `ConcurrencyError`.
+
+    Con un archivo, cada sesión toma su propia conexión y la carrera es la de verdad.
+    """
+
+    def __init__(self) -> None:
+        self._engine: t.Any = None
+        self._directorio: t.Any = None
+
+    async def __aenter__(self) -> AbstractEventStore:
+        import tempfile
+        from pathlib import Path
+
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+        from hexcore.infrastructure.eventsourcing.sqlalchemy_models import (
+            create_eventstore_tables,
+        )
+        from hexcore.infrastructure.eventsourcing.sqlalchemy_store import (
+            SqlAlchemyEventStore,
+        )
+
+        self._directorio = tempfile.TemporaryDirectory()
+        ruta = Path(self._directorio.name) / "event_store.db"
+
+        self._engine = create_async_engine(f"sqlite+aiosqlite:///{ruta}")
+        await create_eventstore_tables(self._engine)
+        fabrica = async_sessionmaker(self._engine, expire_on_commit=False)
+
+        return SqlAlchemyEventStore(session_scope=fabrica)
+
+    async def __aexit__(self, *_: object) -> None:
+        if self._engine is not None:
+            await self._engine.dispose()
+        if self._directorio is not None:
+            self._directorio.cleanup()
+
+
 #: Cada adaptador que quiera cumplir el puerto se agrega acá y hereda la suite completa.
 ADAPTADORES: dict[str, t.Callable[[], t.Any]] = {
     "memoria": _StoreEnMemoria,
+    "sqlite": _StoreEnSqlite,
 }
 
 
