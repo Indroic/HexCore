@@ -47,10 +47,30 @@ try:
         Implementación concreta (Adaptador) de la Unidad de Trabajo para SQLAlchemy.
         """
 
-        def __init__(self, session: "AsyncSession") -> None:
+        def __init__(
+            self,
+            session: "AsyncSession",
+            *,
+            event_store: t.Any = None,
+            publish_after_commit: bool = True,
+        ) -> None:
+            """
+            Args:
+                session: La sesión de SQLAlchemy.
+                event_store: Opcional. Si está, los eventos se persisten en la **misma
+                    transacción** que el cambio, antes del commit.
+                publish_after_commit: Si el UoW publica al bus después de comitear.
+                    **Ponelo en `False` cuando corra un `EventStoreRelay`**: el relay lee del
+                    almacén y publica, así que con los dos activos cada evento sale dos veces
+                    — en silencio, y con handlers no idempotentes eso hace daño real.
+            """
             self.session = session
             super().__init__()
             self.event_bus = LazyConfig.get_config().event_bus
+            self.event_store = event_store
+            self._publish_after_commit = publish_after_commit
+            self._entidades_del_commit: list[BaseEntity] = []
+            self._eventos_por_entidad: dict[int, list[DomainEvent]] = {}
             self._inject_repositories()
 
         def _inject_repositories(self) -> None:
@@ -81,24 +101,111 @@ try:
 
         async def commit(self) -> None:
             """
-            Confirma la transacción y despacha los eventos.
+            Persiste, confirma y despacha, **en ese orden**.
+
+            El orden cambió en 9.0, y el anterior era un defecto silencioso: se comiteaba
+            primero y recién después se llamaba a `collect_domain_events()`, que recorre
+            `session.new | dirty | deleted`. Post-commit esas tres colecciones **están
+            vacías** — SQLAlchemy las limpia al comitear —, así que el UoW no recogía ningún
+            evento y no publicaba nada. Sin error y sin log: los eventos de dominio de toda
+            aplicación que usara este UoW simplemente no llegaban.
+
+            Recolectar antes lo arregla, y además es lo único que permite escribir el evento
+            en la misma transacción que el cambio, que es la garantía que hace del event
+            store algo más que un log paralelo que a veces coincide.
+
+            Si el `commit()` falla, la excepción se propaga y los eventos se descartan. Es lo
+            correcto: el cambio no ocurrió, así que el hecho tampoco.
             """
+            pendientes = self.collect_domain_events()
+
+            if self.event_store is not None and pendientes:
+                await self._append_to_store(pendientes)
+
             await self.session.commit()
+
             try:
-                await self.dispatch_events()
+                if self._publish_after_commit:
+                    await self._publish(pendientes)
             finally:
                 self.clear_tracked_entities()
+
+        async def _append_to_store(self, events: t.List[DomainEvent]) -> None:
+            """
+            Escribe los eventos en el almacén, dentro de la transacción en curso.
+
+            **Es el modo "event log", no event sourcing.** Los eventos que salen del UoW los
+            emitieron entidades clásicas, cuyo estado vive en sus propias tablas: no hay un
+            agregado que haya leído una versión y quiera defenderla, así que se escribe con
+            `EXPECTED_VERSION_ANY` y el stream sólo sirve para conservar el hecho y su orden.
+            Reconstruir estado desde estos streams no funciona, y confundir los dos modos es
+            donde esto se rompe.
+            """
+            from hexcore.domain.eventsourcing.stored import EXPECTED_VERSION_ANY
+
+            for stream_id, del_stream in self._agrupar_por_stream(events).items():
+                await self.event_store.append(
+                    stream_id, del_stream, expected_version=EXPECTED_VERSION_ANY
+                )
+
+        def _agrupar_por_stream(
+            self, events: t.List[DomainEvent]
+        ) -> dict[str, list[DomainEvent]]:
+            """
+            `{stream_id: eventos}`, preservando el orden dentro de cada stream.
+
+            El `stream_id` sale de la entidad que registró el evento. Uno que no se pueda
+            atribuir a ninguna va a un stream por tipo de evento: perder la agrupación es
+            mejor que perder el hecho.
+            """
+            por_stream: dict[str, list[DomainEvent]] = {}
+            atribuidos: set[int] = set()
+
+            for entidad in self._entidades_del_commit:
+                tipo = type(entidad).__name__.lower()
+                stream_id = f"{tipo}-{entidad.id}"
+                for evento in self._eventos_por_entidad.get(id(entidad), ()):
+                    por_stream.setdefault(stream_id, []).append(evento)
+                    atribuidos.add(id(evento))
+
+            for evento in events:
+                if id(evento) in atribuidos:
+                    continue
+                tipo = type(evento).__name__.lower()
+                por_stream.setdefault(f"evento-{tipo}", []).append(evento)
+
+            return por_stream
+
+        async def _publish(self, events: t.List[DomainEvent]) -> None:
+            for event in events:
+                await self.event_bus.publish(event)
 
         async def rollback(self) -> None:
             if self.session.in_transaction():
                 await self.session.rollback()
             self.clear_tracked_entities()
 
-        def collect_domain_entities(self) -> t.Set[BaseEntity]:
+        def collect_domain_entities(self) -> t.List[BaseEntity]:
             """
-            Recolecta todas las entidades de dominio rastreadas por la sesión de SQLAlchemy.
+            Las entidades de dominio que rastrea la sesión, **deduplicadas por identidad**.
+
+            Devuelve una lista y no un `set`, aunque el nombre de la operación pida un
+            conjunto: `BaseEntity` es un modelo de pydantic mutable, así que no define
+            `__hash__` y **no se puede meter en un set** — `set.add()` levanta
+            `TypeError: unhashable type`.
+
+            Esto nunca saltó porque hasta 9.0 el método no llegaba a ejecutarse con nada
+            adentro: `commit()` recolectaba **después** de comitear, cuando
+            `session.new | dirty | deleted` ya estaban vacías, así que el bucle no daba
+            ninguna vuelta. Un defecto tapaba al otro; al arreglar el orden, éste quedó a la
+            vista.
+
+            Se deduplica por `id()` y no por igualdad porque dos entidades distintas con los
+            mismos campos son iguales para pydantic, y drenarle los eventos a una sola
+            perdería los de la otra.
             """
-            domain_entities: t.Set[BaseEntity] = set()
+            entidades: t.List[BaseEntity] = []
+            vistas: set[int] = set()
             all_tracked_models = chain(
                 self.session.new, self.session.dirty, self.session.deleted
             )
@@ -111,18 +218,41 @@ try:
                     modelo = t.cast("BaseModel[BaseEntity]", model)
                     entity: BaseEntity = modelo.get_domain_entity()
                     assert isinstance(entity, BaseEntity)
-                    domain_entities.add(entity)
-            return domain_entities
+                    if id(entity) in vistas:
+                        continue
+                    vistas.add(id(entity))
+                    entidades.append(entity)
+            return entidades
 
         def collect_domain_events(self) -> t.List[DomainEvent]:
+            """
+            Drena los eventos de las entidades trackeadas.
+
+            De paso recuerda de qué entidad vino cada uno: `_append_to_store` lo necesita para
+            mandar cada evento a su propio stream, y después del drenado esa relación ya no se
+            puede reconstruir porque las listas quedaron vacías.
+            """
             events: t.List[DomainEvent] = []
+            self._entidades_del_commit = []
+            self._eventos_por_entidad = {}
+
             for entity in self.collect_domain_entities():
-                events.extend(entity.pull_domain_events())
+                propios = entity.pull_domain_events()
+                if not propios:
+                    continue
+                self._entidades_del_commit.append(entity)
+                self._eventos_por_entidad[id(entity)] = propios
+                events.extend(propios)
             return events
 
         async def dispatch_events(self) -> None:
-            for event in self.collect_domain_events():
-                await self.event_bus.publish(event)
+            """
+            Recolecta y publica.
+
+            Queda para quien la llame a mano; `commit()` ya no la usa, porque tiene que
+            recolectar **antes** de comitear y publicar después.
+            """
+            await self._publish(self.collect_domain_events())
 
         def clear_tracked_entities(self) -> None:
             # No es necesario limpiar entidades en SQL, pero se mantiene para simetría
@@ -146,10 +276,35 @@ except NameError:
 
 
 class BeanieUnitOfWork(IUnitOfWork):
-    def __init__(self) -> None:
+    """
+    Unit of Work para Beanie/MongoDB.
+
+    **Sin replica set, MongoDB no da transacciones multi-documento**, así que la garantía que
+    el UoW de SQLAlchemy sí ofrece —que el evento y el cambio entran o no entran juntos— acá
+    no existe: son dos escrituras independientes, y un fallo entre ellas deja el cambio hecho
+    sin su evento, o al revés. Con replica set configurado, el camino correcto es pasarle al
+    store la sesión de la transacción de Mongo.
+
+    Por eso, en Mongo el modo sano es Event Sourcing puro —el `append` *es* el cambio, y lo
+    hace `EventSourcedRepository`— en vez de este híbrido.
+    """
+
+    def __init__(
+        self,
+        *,
+        event_store: t.Any = None,
+        publish_after_commit: bool = True,
+    ) -> None:
         super().__init__()
         self.event_bus = LazyConfig.get_config().event_bus
-        self._entities: set[BaseEntity] = set()
+        self.event_store = event_store
+        self._publish_after_commit = publish_after_commit
+        # Lista y no `set`: `BaseEntity` es un modelo de pydantic mutable, así que no es
+        # hashable y `set.add()` levanta `TypeError`. Se deduplica por identidad en
+        # `collect_entity`.
+        self._entities: list[BaseEntity] = []
+        self._entidades_del_commit: list[BaseEntity] = []
+        self._eventos_por_entidad: dict[int, list[DomainEvent]] = {}
         self._inject_repositories()
 
     def _inject_repositories(self) -> None:
@@ -179,8 +334,56 @@ class BeanieUnitOfWork(IUnitOfWork):
             await self.rollback()
 
     async def commit(self) -> None:
-        await self.dispatch_events()
-        self.clear_tracked_entities()
+        """
+        Persiste los eventos en el almacén y los publica.
+
+        Mismo orden que el UoW de SQLAlchemy —primero al almacén, después al bus—, pero sin
+        la atomicidad: ver el docstring de la clase.
+        """
+        pendientes = self.collect_domain_events()
+
+        if self.event_store is not None and pendientes:
+            await self._append_to_store(pendientes)
+
+        try:
+            if self._publish_after_commit:
+                await self._publish(pendientes)
+        finally:
+            self.clear_tracked_entities()
+
+    async def _append_to_store(self, events: t.List[DomainEvent]) -> None:
+        """Modo event log, igual que en el UoW de SQLAlchemy."""
+        from hexcore.domain.eventsourcing.stored import EXPECTED_VERSION_ANY
+
+        for stream_id, del_stream in self._agrupar_por_stream(events).items():
+            await self.event_store.append(
+                stream_id, del_stream, expected_version=EXPECTED_VERSION_ANY
+            )
+
+    def _agrupar_por_stream(
+        self, events: t.List[DomainEvent]
+    ) -> dict[str, list[DomainEvent]]:
+        por_stream: dict[str, list[DomainEvent]] = {}
+        atribuidos: set[int] = set()
+
+        for entidad in self._entidades_del_commit:
+            tipo = type(entidad).__name__.lower()
+            stream_id = f"{tipo}-{entidad.id}"
+            for evento in self._eventos_por_entidad.get(id(entidad), ()):
+                por_stream.setdefault(stream_id, []).append(evento)
+                atribuidos.add(id(evento))
+
+        for evento in events:
+            if id(evento) in atribuidos:
+                continue
+            tipo = type(evento).__name__.lower()
+            por_stream.setdefault(f"evento-{tipo}", []).append(evento)
+
+        return por_stream
+
+    async def _publish(self, events: t.List[DomainEvent]) -> None:
+        for event in events:
+            await self.event_bus.publish(event)
 
     async def rollback(self) -> None:
         for entity in self._entities:
@@ -188,20 +391,31 @@ class BeanieUnitOfWork(IUnitOfWork):
         self.clear_tracked_entities()
 
     def collect_entity(self, entity: BaseEntity) -> None:
-        self._entities.add(entity)
+        """Trackea la entidad. Registrarla dos veces no la duplica."""
+        if any(trackeada is entity for trackeada in self._entities):
+            return
+        self._entities.append(entity)
 
-    def collect_domain_entities(self) -> t.Set[BaseEntity]:
-        return set(self._entities)
+    def collect_domain_entities(self) -> t.List[BaseEntity]:
+        return list(self._entities)
 
     def collect_domain_events(self) -> t.List[DomainEvent]:
+        """Drena los eventos, recordando de qué entidad vino cada uno."""
         events: t.List[DomainEvent] = []
+        self._entidades_del_commit = []
+        self._eventos_por_entidad = {}
+
         for entity in self.collect_domain_entities():
-            events.extend(entity.pull_domain_events())
+            propios = entity.pull_domain_events()
+            if not propios:
+                continue
+            self._entidades_del_commit.append(entity)
+            self._eventos_por_entidad[id(entity)] = propios
+            events.extend(propios)
         return events
 
     async def dispatch_events(self) -> None:
-        for event in self.collect_domain_events():
-            await self.event_bus.publish(event)
+        await self._publish(self.collect_domain_events())
 
     def clear_tracked_entities(self) -> None:
         self._entities.clear()

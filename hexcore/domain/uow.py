@@ -14,6 +14,13 @@ class IUnitOfWork(abc.ABC):
     def __init__(self):
         self.repositories: t.Dict[str, t.Any] = {}
         self.event_bus: t.Any = None
+        #: `AbstractEventStore | None`. Si está, los eventos de dominio se persisten en la
+        #: **misma transacción** que el cambio que los produjo, antes de publicarse.
+        #:
+        #: Es un atributo y no un `@abc.abstractmethod` a propósito: agregar un método
+        #: abstracto al puerto rompe a todo consumidor que tenga un UoW propio, y no compra
+        #: nada — un UoW que no sepa del event store simplemente lo deja en `None`.
+        self.event_store: t.Any = None
 
     async def __aenter__(self) -> IUnitOfWork:
         return self

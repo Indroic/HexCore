@@ -8,6 +8,7 @@ importa sin ningun extra instalado.
 from __future__ import annotations
 
 from .projector import Projector
+from .relay import EventStoreRelay
 from .repository import EventSourcedRepository
 
-__all__ = ["EventSourcedRepository", "Projector"]
+__all__ = ["EventSourcedRepository", "Projector", "EventStoreRelay"]
