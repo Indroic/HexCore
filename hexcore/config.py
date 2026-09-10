@@ -5,11 +5,27 @@ import typing as t
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pathlib import Path
 from hexcore.infrastructure.cache import ICache
-from hexcore.domain.events import EventBus
+from hexcore.domain.cqrs.buses import AbstractEventBus
 
 
 from hexcore.infrastructure.cache.cache_backends.memory import MemoryCache
-from hexcore.infrastructure.events.events_backends.memory import InMemoryEventBus
+
+
+def _bus_de_eventos_por_defecto() -> "AbstractEventBus":
+    """
+    El `InMemoryEventBus` de CQRS, importado tarde.
+
+    El import tiene que ser perezoso: `hexcore.application.cqrs.in_memory_buses` arrastra
+    `hexcore/application/__init__.py`, que carga los casos de uso, que importan
+    `hexcore.domain.services`, que importa **este módulo**. Traerlo arriba cierra el ciclo y
+    `hexcore` deja de importarse.
+
+    El puerto (`AbstractEventBus`) sí se importa arriba: `hexcore.domain.cqrs.buses` es
+    dominio puro y no arrastra nada.
+    """
+    from hexcore.application.cqrs.in_memory_buses import InMemoryEventBus
+
+    return InMemoryEventBus()
 
 
 class ServerConfig(BaseModel):
@@ -70,7 +86,18 @@ class ServerConfig(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # Event Bus
-    event_bus: EventBus = InMemoryEventBus()
+    #
+    # `default_factory` y no una instancia en el cuerpo de la clase. El default anterior se
+    # evaluaba **una vez, al definir la clase**, así que todo `ServerConfig()` del proceso
+    # compartía el mismo bus y el mismo diccionario de handlers. En una aplicación con una
+    # sola config eso no se nota; en la suite de tests sí, porque una suscripción hecha en un
+    # test la ve el siguiente, y el orden de ejecución pasa a importar.
+    #
+    # El tipo es `AbstractEventBus`, el puerto único desde 9.0. `hexcore.domain.events.EventBus`
+    # es ahora un alias suyo, así que un bus que lo subclasee sigue siendo válido — se importa
+    # el canónico y no el alias para no emitir el aviso de deprecación en cada import de
+    # HexCore.
+    event_bus: AbstractEventBus = Field(default_factory=_bus_de_eventos_por_defecto)
 
     # Repository Discovery
     # v2 (breaking): discovery explicito y folder-agnostic.

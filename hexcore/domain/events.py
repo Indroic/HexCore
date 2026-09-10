@@ -1,9 +1,10 @@
 from __future__ import annotations
 import typing as t
-import abc
 from datetime import datetime, UTC
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, ConfigDict, computed_field
+
+from hexcore._deprecation import deprecated_lazy_names
 
 from .base import BaseEntity
 
@@ -24,8 +25,19 @@ class DomainEvent(BaseModel):
     @computed_field
     @property
     def event_name(self) -> str:
-        """Nombre de la clase del evento, usado para serialización/deserialización."""
-        return self.__class__.__name__.replace("Event", "").upper()
+        """
+        Etiqueta legible del evento, para el ruteo de AMQP y para los logs.
+
+        Usa `removesuffix` y no `replace`, que quitaba **todas** las apariciones:
+        `EventLogCreatedEvent` daba `"LOGCREATED"` en vez de `"EVENTLOGCREATED"`, y cualquier
+        evento con "Event" en el medio del nombre quedaba mal ruteado.
+
+        **El event store no usa esto.** Persiste el FQN (`build_fqn`), que es único entre
+        módulos y es lo que el serializador sabe resolver; `event_name` no cumple ninguna de
+        las dos cosas. Sirve como routing key de AMQP —donde el nombre corto es la
+        convención— y como etiqueta en un log.
+        """
+        return self.__class__.__name__.removesuffix("Event").upper()
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -56,19 +68,39 @@ class EntityDeletedEvent(DomainEvent):
 EventHandler = t.Callable[[DomainEvent], t.Awaitable[None]]
 
 
-class EventBus(abc.ABC):
-    """
-    Puerto para publicar y suscribir eventos de dominio.
-    Reemplaza al antiguo IEventDispatcher con una API simplificada.
-    """
+# ── EventBus: deprecado en 9.0 ────────────────────────────────────────────────
+#
+# HexCore tenía **dos** puertos de bus de eventos, incompatibles entre sí: éste, que usaban
+# `ServerConfig`, los Unit of Work y Darwin, y `hexcore.domain.cqrs.buses.AbstractEventBus`,
+# que usaba todo el camino de CQRS. Los dos declaraban `subscribe`/`publish` con la misma
+# forma, los dos tenían una implementación llamada `InMemoryEventBus`, y no había ninguna
+# herencia entre ellos — así que un bus escrito contra uno no servía para el otro y los dos
+# grafos de handlers convivían sin verse.
+#
+# En 9.0 queda uno solo: `AbstractEventBus`, que es el que tiene pipeline de middlewares y
+# Smart Routing hacia las colas. Este nombre pasa a ser un alias suyo.
+#
+# Se aliasa **al reemplazo** (a diferencia de `hexcore.domain.auth`, que devuelve el objeto
+# viejo): los dos ABCs son estructuralmente idénticos, así que devolver el nuevo no rompe a
+# nadie en la línea siguiente. Lo único que cambia es que `issubclass(MiBus, AbstractEventBus)`
+# pasa de `False` a `True`, que es la corrección, no el daño.
+#
+# El alias es perezoso porque `hexcore.domain.cqrs.buses` importa `DomainEvent` **de este
+# módulo**: un `from ... import AbstractEventBus` arriba sería un ciclo de imports.
+if t.TYPE_CHECKING:
+    pass
 
-    @abc.abstractmethod
-    def subscribe(self, event_type: type, handler: EventHandler) -> None:
-        """Registra un handler para un tipo de evento."""
-        raise NotImplementedError
 
-    @abc.abstractmethod
-    async def publish(self, event: t.Any) -> None:
-        """Publica un evento a todos los handlers suscritos."""
-        raise NotImplementedError
+def _cargar_event_bus() -> t.Any:
+    from hexcore.domain.cqrs.buses import AbstractEventBus
+
+    return AbstractEventBus
+
+
+__getattr__ = deprecated_lazy_names(
+    __name__,
+    {"EventBus": "hexcore.domain.cqrs.buses.AbstractEventBus"},
+    {"EventBus": _cargar_event_bus},
+    since="9.0",
+)
 

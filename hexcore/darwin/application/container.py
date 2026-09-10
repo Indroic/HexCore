@@ -46,7 +46,7 @@ if t.TYPE_CHECKING:
         JoserfcTokenIssuer,
         JoserfcTokenVerifier,
     )
-    from hexcore.domain.events import EventBus
+    from hexcore.domain.cqrs.buses import AbstractEventBus as EventBus
 
 __all__ = [
     "IdentityContainer",

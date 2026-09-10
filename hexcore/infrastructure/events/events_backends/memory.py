@@ -1,28 +1,40 @@
+"""
+`InMemoryEventBus` — deprecado en 9.0, se elimina en 10.0.
+
+HexCore tenía dos clases con este nombre, colgadas de dos puertos incompatibles: ésta, un
+diccionario de handlers y poco más, y la de `hexcore.application.cqrs.in_memory_buses`, que
+además tiene pipeline de middlewares y Smart Routing hacia las colas de background. Gana la
+segunda, que es un superconjunto estricto de esta.
+
+El paquete `hexcore.infrastructure.events` entero se elimina en 10.0: no contiene nada más.
+
+El alias es perezoso —no un `from ... import` arriba— por dos motivos: para no cargar el
+módulo de CQRS en cada import de este, y sobre todo para que **importar este módulo no emita
+el aviso**. Si avisara al importar, el usuario no podría saber quién usa el nombre viejo, y
+el aviso se volvería ruido que se aprende a ignorar. Lo verifica
+`tests/test_deprecations.py::test_importar_no_avisa`.
+"""
+from __future__ import annotations
+
 import typing as t
-from hexcore.domain.events import EventBus, DomainEvent
+
+from hexcore._deprecation import deprecated_lazy_names
+
+if t.TYPE_CHECKING:
+    from hexcore.application.cqrs.in_memory_buses import InMemoryEventBus as InMemoryEventBus
+
+__all__ = ["InMemoryEventBus"]
 
 
-class InMemoryEventBus(EventBus):
-    """
-    Implementación básica en memoria del EventBus.
-    Mantiene un diccionario de tipo_de_evento -> lista_de_handlers.
-    """
+def _cargar_bus_en_memoria() -> t.Any:
+    from hexcore.application.cqrs.in_memory_buses import InMemoryEventBus
 
-    def __init__(self) -> None:
-        # dict[type, list[EventHandler]]
-        self._handlers: dict[type, list[t.Callable[[DomainEvent], t.Awaitable[None]]]] = {}
+    return InMemoryEventBus
 
-    def subscribe(
-        self, event_type: type, handler: t.Callable[[DomainEvent], t.Awaitable[None]]
-    ) -> None:
-        """
-        Registra un handler asíncrono para un tipo de evento específico.
-        """
-        if event_type not in self._handlers:
-            self._handlers[event_type] = []
-        self._handlers[event_type].append(handler)
 
-    async def publish(self, event: DomainEvent) -> None:
-        if event.__class__ in self._handlers:
-            for handler in self._handlers[event.__class__]:
-                await handler(event)
+__getattr__ = deprecated_lazy_names(
+    __name__,
+    {"InMemoryEventBus": "hexcore.cqrs.InMemoryEventBus"},
+    {"InMemoryEventBus": _cargar_bus_en_memoria},
+    since="9.0",
+)

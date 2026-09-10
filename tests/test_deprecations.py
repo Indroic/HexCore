@@ -175,7 +175,33 @@ def test_el_canonico_sigue_existiendo(module_path, _alias, canonical):
     assert getattr(modulo, canonical) is not None
 
 
-@pytest.mark.parametrize(("module_path", "_alias", "canonical"), TODOS)
+#: Los que en su momento fueron el reemplazo y ahora estan deprecados ellos mismos.
+#:
+#: `EventBus` reemplazo a `IEventDispatcher` en 5.0, y en 9.0 quedo deprecado a su vez en
+#: favor de `AbstractEventBus`: HexCore tenia dos puertos de bus de eventos incompatibles y
+#: quedo uno. Lo mismo con el `InMemoryEventBus` de `infrastructure.events`, que convivia con
+#: otra clase homonima en `application.cqrs`.
+#:
+#: Que un nombre pase por las dos etapas es lo normal en una deprecacion encadenada, y por
+#: eso la lista existe en vez de sacarlos de `TODOS`: el resto de las propiedades -- que el
+#: alias viejo ya no resuelva, que el reemplazo siga existiendo -- se siguen verificando.
+CANONICOS_AHORA_DEPRECADOS = {
+    ("hexcore.domain.events", "EventBus"),
+    ("hexcore.infrastructure.events.events_backends.memory", "InMemoryEventBus"),
+}
+
+
+# Se filtran de la parametrizacion en vez de saltarse adentro: el gate de CI exige cero
+# SKIPPED, y con razon -- un skip permanente es un test que nadie vuelve a mirar. Lo que estos
+# dos nombres si tienen que cumplir lo verifica `test_los_buses_viejos_avisan`.
+@pytest.mark.parametrize(
+    ("module_path", "_alias", "canonical"),
+    [
+        caso
+        for caso in TODOS
+        if (caso[0], caso[2]) not in CANONICOS_AHORA_DEPRECADOS
+    ],
+)
 def test_el_canonico_no_avisa(module_path, _alias, canonical):
     modulo = importlib.import_module(module_path)
 
@@ -187,6 +213,63 @@ def test_el_canonico_no_avisa(module_path, _alias, canonical):
         w for w in capturados if issubclass(w.category, DeprecationWarning)
     ]
     assert deprecaciones == []
+
+
+# ── Los dos buses de eventos que se unificaron en 9.0 ──────────────────────────
+@pytest.mark.parametrize(
+    ("module_path", "nombre", "reemplazo"),
+    [
+        ("hexcore.domain.events", "EventBus", "AbstractEventBus"),
+        (
+            "hexcore.infrastructure.events.events_backends.memory",
+            "InMemoryEventBus",
+            "hexcore.cqrs.InMemoryEventBus",
+        ),
+    ],
+)
+def test_los_buses_viejos_avisan(module_path, nombre, reemplazo):
+    modulo = importlib.import_module(module_path)
+
+    with warnings.catch_warnings(record=True) as capturados:
+        warnings.simplefilter("always")
+        getattr(modulo, nombre)
+
+    deprecaciones = [
+        w for w in capturados if issubclass(w.category, DeprecationWarning)
+    ]
+    assert len(deprecaciones) == 1, f"{nombre} tenia que avisar exactamente una vez"
+    assert reemplazo in str(deprecaciones[0].message)
+
+
+def test_el_event_bus_viejo_es_el_puerto_nuevo():
+    """
+    Se aliasa **al reemplazo**, no al objeto viejo.
+
+    Los dos ABCs eran estructuralmente identicos -- misma firma de subscribe y publish --,
+    asi que devolver el nuevo no rompe a nadie en la linea siguiente. Lo unico que cambia es
+    que un bus que subclaseaba el viejo ahora **si** pasa el issubclass contra
+    AbstractEventBus, que es la correccion, no el dano.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        from hexcore.domain.events import EventBus
+
+    from hexcore.domain.cqrs.buses import AbstractEventBus
+
+    assert EventBus is AbstractEventBus
+
+
+def test_el_in_memory_event_bus_viejo_es_el_de_cqrs():
+    """Gana el de CQRS: tiene pipeline de middlewares y Smart Routing, el otro no."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        from hexcore.infrastructure.events.events_backends.memory import InMemoryEventBus
+
+    from hexcore.application.cqrs.in_memory_buses import (
+        InMemoryEventBus as BusDeCQRS,
+    )
+
+    assert InMemoryEventBus is BusDeCQRS
 
 
 @pytest.mark.parametrize(
@@ -234,7 +317,9 @@ def test_event_bus_register_y_dispatch_se_removieron():
     subclases virtuales de la stdlib—, no el método deprecado. Se distingue por su
     `__qualname__`, no por su presencia.
     """
-    from hexcore.domain.events import EventBus
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        from hexcore.domain.events import EventBus
 
     assert EventBus.register.__qualname__ == "ABCMeta.register"
     assert not hasattr(EventBus, "dispatch")

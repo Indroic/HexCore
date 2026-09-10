@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import typing as t
 
+import pytest
 from pydantic import BaseModel
 
 from hexcore.domain.cqrs.dispatch import handlers_for, matching_types
@@ -134,3 +135,148 @@ class TestHandlersFor:
     def test_sin_handlers_no_falla(self):
         assert handlers_for(UsuarioIngreso(), {}) == []
         assert handlers_for(UsuarioIngreso(), _registro(ajeno=["h"])) == []
+
+
+# ── Los buses, ahora que despachan por jerarquia ──────────────────────────────
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+class TestElBusEnMemoria:
+    @pytest.mark.anyio
+    async def test_un_handler_en_la_base_recibe_la_subclase(self):
+        """
+        El comportamiento que cambia en 9.0. Antes el handler quedaba suscrito y no se
+        invocaba nunca -- sin error y sin aviso.
+        """
+        from hexcore.application.cqrs.in_memory_buses import InMemoryEventBus
+
+        recibidos: list[DomainEvent] = []
+
+        async def handler(evento: DomainEvent) -> None:
+            recibidos.append(evento)
+
+        bus = InMemoryEventBus()
+        bus.subscribe(EventoDeAuth, handler)
+
+        await bus.publish(UsuarioIngreso())
+
+        assert len(recibidos) == 1
+
+    @pytest.mark.anyio
+    async def test_domain_event_es_catch_all(self):
+        """Lo que necesita el relay del event store para republicar todo lo que se persistio."""
+        from hexcore.application.cqrs.in_memory_buses import InMemoryEventBus
+
+        recibidos: list[DomainEvent] = []
+
+        async def catch_all(evento: DomainEvent) -> None:
+            recibidos.append(evento)
+
+        bus = InMemoryEventBus()
+        bus.subscribe(DomainEvent, catch_all)
+
+        await bus.publish(UsuarioIngreso())
+        await bus.publish(EventoAjeno())
+
+        assert len(recibidos) == 2
+
+    @pytest.mark.anyio
+    async def test_suscrito_a_la_exacta_y_a_la_base_corre_una_vez(self):
+        from hexcore.application.cqrs.in_memory_buses import InMemoryEventBus
+
+        llamadas: list[int] = []
+
+        async def handler(evento: DomainEvent) -> None:
+            llamadas.append(1)
+
+        bus = InMemoryEventBus()
+        bus.subscribe(UsuarioIngreso, handler)
+        bus.subscribe(EventoDeAuth, handler)
+
+        await bus.publish(UsuarioIngreso())
+
+        assert len(llamadas) == 1
+
+    @pytest.mark.anyio
+    async def test_la_clase_exacta_sigue_funcionando(self):
+        """El comportamiento de siempre no cambia: el cambio es aditivo."""
+        from hexcore.application.cqrs.in_memory_buses import InMemoryEventBus
+
+        recibidos: list[DomainEvent] = []
+
+        async def handler(evento: DomainEvent) -> None:
+            recibidos.append(evento)
+
+        bus = InMemoryEventBus()
+        bus.subscribe(UsuarioIngreso, handler)
+
+        await bus.publish(UsuarioIngreso())
+        await bus.publish(UsuarioSalio())
+
+        assert len(recibidos) == 1
+
+
+class TestElBusPorDefectoDeLaConfig:
+    def test_cada_server_config_estrena_bus(self):
+        """
+        El default era una instancia evaluada al definir la clase, asi que todo ServerConfig
+        del proceso compartia el mismo diccionario de handlers: una suscripcion hecha en un
+        test la veia el siguiente, y el orden de ejecucion pasaba a importar.
+        """
+        from hexcore.config import ServerConfig
+
+        una, otra = ServerConfig(), ServerConfig()
+
+        assert una.event_bus is not otra.event_bus
+
+    def test_es_el_puerto_unificado(self):
+        from hexcore.config import ServerConfig
+        from hexcore.domain.cqrs.buses import AbstractEventBus
+
+        assert isinstance(ServerConfig().event_bus, AbstractEventBus)
+
+    def test_una_suscripcion_no_se_filtra_a_otra_config(self):
+        from hexcore.config import ServerConfig
+
+        async def handler(evento: DomainEvent) -> None: ...
+
+        una = ServerConfig()
+        una.event_bus.subscribe(UsuarioIngreso, handler)
+
+        otra = ServerConfig()
+
+        assert otra.event_bus._handlers == {}  # pyright: ignore[reportAttributeAccessIssue]
+
+
+class TestElNombreDelEvento:
+    def test_removesuffix_y_no_replace(self):
+        """
+        `replace` quitaba todas las apariciones: EventLogCreatedEvent daba "LOGCREATED".
+        Afectaba a cualquier evento con "Event" en el medio del nombre.
+        """
+
+        class EventLogCreatedEvent(DomainEvent):
+            pass
+
+        assert EventLogCreatedEvent().event_name == "EVENTLOGCREATED"
+
+    def test_el_caso_normal_no_cambia(self):
+        assert UsuarioIngreso().event_name == "USUARIOINGRESO"
+
+    def test_el_bus_de_rabbitmq_usa_la_misma_regla(self):
+        """
+        Las dos implementaciones tienen que coincidir. Si divergen, el publisher rutea con
+        una clave y el binding del consumidor esta armado con la otra: AMQP entrega a las
+        colas que matchean y descarta el resto **sin ningun error**.
+        """
+        pytest.importorskip("aio_pika")
+        import inspect
+
+        from hexcore.infrastructure.cqrs import rabbitmq
+
+        fuente = inspect.getsource(rabbitmq.RabbitMQEventBus.subscribe)
+
+        assert 'removesuffix("Event")' in fuente
+        assert 'replace("Event"' not in fuente
