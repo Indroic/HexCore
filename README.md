@@ -47,6 +47,8 @@ await cqrs.run_procrastinate_worker(
 - [Repositorios y entidades](#repositorios-y-entidades)
 - [Configuración](#configuración)
 - [Darwin: identidad](#darwin-identidad)
+- [Event Sourcing y Event Store](#event-sourcing-y-event-store)
+- [Lo que 9.0 depreca](#lo-que-90-depreca)
 - [Templates de proyecto (CLI)](#templates-de-proyecto-cli)
 - [Versiones y soporte](#versiones-y-soporte) ← **la API anterior a 5.0 se eliminó en 7.0**
 - [Guía de migración a 5.x](#guía-de-migración-a-5x)
@@ -1135,6 +1137,142 @@ los stubs generados, [`docs/ARCHITECTURE_TYPING.md`](./docs/ARCHITECTURE_TYPING.
 
 ---
 
+## Event Sourcing y Event Store
+
+Persistir los hechos, no sólo el estado. Antes de 9.0 un evento de dominio que nadie consumía
+se perdía: no se podía reconstruir el pasado, un modelo de lectura nuevo nacía vacío, y entre
+comitear y publicar había una ventana en la que el cambio existía y el hecho no llegaba a
+nadie.
+
+Hay **dos modos**, y conviven en la misma aplicación. Confundirlos es donde esto se rompe.
+
+### Modo *event log*: el estado sigue en sus tablas
+
+El Unit of Work escribe los eventos de tus entidades clásicas en el almacén, **en la misma
+transacción que el cambio**. Se conserva el hecho y su orden; el estado sigue donde estaba.
+
+```python
+from hexcore.eventsourcing import SqlAlchemyEventStore
+from hexcore.infrastructure.uow import SqlAlchemyUnitOfWork
+
+store = SqlAlchemyEventStore(session=session)
+uow = SqlAlchemyUnitOfWork(session=session, event_store=store)
+
+await uow.commit()   # el evento y el cambio entran juntos, o no entra ninguno
+```
+
+### Modo *event sourcing*: el stream **es** el estado
+
+El agregado no tiene tabla. Se reconstruye aplicando su historial.
+
+```python
+from hexcore.eventsourcing import AggregateRoot, EventSourcedRepository, when
+
+class Pedido(AggregateRoot):
+    cliente: str
+    total: int                      # sin default: no existe un pedido sin total
+
+    @when(PedidoCreado)
+    def _crear(self, evento: PedidoCreado) -> None:
+        self.cliente = evento.cliente
+        self.total = 0
+
+    @when(PedidoPagado)
+    def _pagar(self, evento: PedidoPagado) -> None:
+        self.total += evento.monto
+
+    def pagar(self, monto: int) -> None:            # acá van las reglas
+        if self.cancelado:
+            raise ValueError("un pedido cancelado no se puede pagar")
+        self.raise_event(PedidoPagado(monto=monto))
+
+repo = EventSourcedRepository(Pedido, store=store)
+
+pedido = await repo.get(pedido_id)
+pedido.pagar(4200)
+await repo.save(pedido)
+```
+
+El mutador **sólo muta**: lo que llega ahí ya pasó, y durante un replay se está reconstruyendo
+historia, no decidiendo. Las reglas van en el método de negocio.
+
+### Concurrencia optimista
+
+```python
+from hexcore.eventsourcing import ConcurrencyError
+
+try:
+    await repo.save(pedido)
+except ConcurrencyError:
+    pedido = await repo.get(pedido_id)   # otro escritor avanzó el stream
+    pedido.pagar(4200)                   # se reaplica la decisión
+    await repo.save(pedido)
+```
+
+Un `ConcurrencyError` deja el agregado **intacto**: conserva sus eventos pendientes y su
+versión, así que el reintento es posible. Y la garantía real no es el chequeo de versión —que
+es un TOCTOU— sino la restricción de unicidad del backend: `UNIQUE(stream_id, version)` en
+SQL, el índice único en Mongo, y el id explícito del `XADD` en Redis.
+
+### Proyecciones
+
+```python
+from hexcore.eventsourcing import AbstractProjection, Projector
+
+class ResumenDePedidos(AbstractProjection):
+    name = "resumen_de_pedidos"
+    handles = (PedidoEvent,)     # alcanza a todas sus subclases
+
+    async def apply(self, event, stored) -> None:
+        ...                      # tiene que ser idempotente
+
+    async def reset(self) -> None:
+        ...                      # obligatorio si escribe algo
+
+proyector = Projector(
+    store=store,
+    checkpoints=checkpoints,
+    projections=[ResumenDePedidos()],
+    safety_window=50,
+)
+await proyector.catch_up()
+await proyector.rebuild()        # destructivo: llama a reset() y reprocesa desde el evento 1
+```
+
+`rebuild()` es lo que hace innecesaria una migración de modelo de lectura.
+
+### Los cuatro backends
+
+| Backend | Extra | Para qué |
+| :-- | :-- | :-- |
+| `InMemoryEventStore` | ninguno | Tests y desarrollo. **No persiste.** |
+| `SqlAlchemyEventStore` | `[sql]` | **El recomendado** para el almacén primario. |
+| `BeanieEventStore` | `[mongo]` | Aplicaciones ya en Mongo. Sin replica set, sin atomicidad. |
+| `RedisEventStore` | `[redis]` | Log de vida corta o buffer de proyecciones. No como primario. |
+
+### Lo que **no** garantiza
+
+Hay que leerlo antes de diseñar encima:
+
+- **La entrega es at-least-once, no exactly-once.** El relay guarda el checkpoint después de
+  publicar, así que una caída republica el lote. **Tus handlers tienen que ser idempotentes**;
+  `event_id` es la clave para deduplicar.
+- **`global_position` es monotónica pero no contigua.** Una secuencia se toma al insertar, no
+  al comitear, así que la transacción que reservó la 10 puede comitear después de la que
+  reservó la 11. Se compensa con `safety_window`, o con `ordering="serialized"` en PostgreSQL.
+- **Con el relay activo, el UoW no debe publicar** (`publish_after_commit=False`), o cada
+  evento sale dos veces en silencio.
+
+El detalle completo está en
+[`docs/ARCHITECTURE_EVENTSOURCING.md`](docs/ARCHITECTURE_EVENTSOURCING.md), sección *"Lo que
+este event store no garantiza"*.
+
+### Alembic
+
+⚠️ Las tablas del event store tienen que estar en `Base.metadata` cuando corras
+`--autogenerate`, o Alembic les emite `op.drop_table`. `ensure_framework_models_loaded()` ya
+las incluye; el `env.py` que genera `hexcore init` la llama.
+
 ## Templates de proyecto (CLI)
 
 ```sh
@@ -1235,6 +1373,50 @@ python -m pytest -W "default::DeprecationWarning"
 ```
 
 ---
+
+## Lo que 9.0 depreca
+
+Se eliminan en **10.0**, o sea un major completo de aviso. Los dos avisan con
+`DeprecationWarning` al pedirlos, no al importar el módulo: si avisaran al importar, no habría
+forma de saber **quién** usa el nombre viejo.
+
+| Nombre deprecado | Reemplazo | Por qué |
+| :-- | :-- | :-- |
+| `hexcore.domain.events.EventBus` | `hexcore.domain.cqrs.buses.AbstractEventBus` | Había dos puertos de bus de eventos incompatibles entre sí, sin herencia común: un bus escrito contra uno no servía para el otro. Queda el de CQRS, que además tiene pipeline de middlewares y Smart Routing. |
+| `hexcore.infrastructure.events.events_backends.memory.InMemoryEventBus` | `hexcore.cqrs.InMemoryEventBus` | Dos clases homónimas colgadas de esos dos puertos. Gana la de CQRS, que es un superconjunto estricto. El paquete `hexcore.infrastructure.events` entero se elimina en 10.0. |
+
+El alias de `EventBus` **resuelve al reemplazo**, no al objeto viejo: los dos ABCs eran
+estructuralmente idénticos, así que devolver el nuevo no rompe a nadie en la línea siguiente.
+Lo único que cambia es que un bus que subclaseaba el viejo ahora sí pasa el `issubclass` contra
+`AbstractEventBus`, que es la corrección y no el daño.
+
+Para encontrar los usos antes de subir:
+
+```sh
+uv run pytest -W "error::DeprecationWarning"
+```
+
+### Cambios de comportamiento que no avisan
+
+Estos no tienen aviso posible porque no son nombres, son semántica. Van en el changelog y acá:
+
+- **Los buses de eventos despachan por jerarquía.** Un handler suscrito a una clase base ahora
+  recibe sus subclases, donde antes no recibía nada y tampoco fallaba. Un handler registrado en
+  dos niveles corre una sola vez.
+- **`DomainEvent.event_name` usa `removesuffix`.** `EventLogCreatedEvent` pasa de
+  `"LOGCREATED"` a `"EVENTLOGCREATED"`. Esto **cambia las routing keys de
+  `RabbitMQEventBus`**: un despliegue con mensajes en vuelo necesita bindear la clave vieja y
+  la nueva durante una versión. Los nombres que llevan "Event" sólo como sufijo —la convención
+  del proyecto, y todos los de Darwin— no cambian de valor.
+- **`SqlAlchemyUnitOfWork.commit()` recolecta los eventos antes de comitear.** El orden
+  anterior recolectaba después, cuando `session.new | dirty | deleted` ya están vacías: el UoW
+  **no publicaba ningún evento**. Al arreglarlo, un handler que estaba suscrito y nunca corría
+  empieza a correr.
+- **`collect_domain_entities()` devuelve una lista, no un set.**
+- **`ServerConfig.event_bus` usa `default_factory`**: cada `ServerConfig()` estrena bus, donde
+  antes todos compartían uno a nivel de módulo.
+- **`RedisEventBus` confirma el mensaje después de los handlers**, no antes. Un handler que
+  falla deja el mensaje en el PEL para poder reclamarlo, en vez de perderlo.
 
 ## Guía de migración a 5.x
 

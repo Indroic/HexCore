@@ -200,7 +200,9 @@ config = ServerConfig(
 ### Comportamiento de UoW
 
 - Si `repository_discovery_paths` está vacío o no contiene repositorios válidos, la inicialización de UoW falla con mensaje diagnóstico.
-- El `event_dispatcher` se toma desde `LazyConfig.get_config().event_dispatcher` durante la construcción del UoW.
+- El `event_bus` se toma desde `LazyConfig.get_config().event_bus` durante la construcción del UoW. (`event_dispatcher` se eliminó en 7.0; `ServerConfig` rechaza ese nombre con un error que indica el reemplazo.)
+- Desde 9.0, `commit()` recolecta los eventos de dominio **antes** de comitear y los publica después. El orden anterior recolectaba post-commit, cuando `session.new | dirty | deleted` ya están vacías: el UoW no publicaba nada.
+- El UoW acepta un `event_store` opcional. Con él, los eventos se persisten en la misma transacción que el cambio que los produjo.
 
 ---
 
@@ -396,6 +398,52 @@ await init_beanie_documents()
 ```
 
 Esto configura la conexión con MongoDB y registra todos los modelos Beanie implementados en el proyecto.
+
+---
+
+## 4.1 Event Sourcing: referencia estructural
+
+```
+hexcore/
+├─ eventsourcing.py                  # fachada perezosa: la superficie publica
+├─ domain/eventsourcing/             # puertos, sin dependencias opcionales
+│  ├─ stored.py                      # StoredEvent, EXPECTED_VERSION_*
+│  ├─ store.py                       # AbstractEventStore
+│  ├─ aggregate.py                   # AggregateRoot, @when
+│  ├─ snapshots.py                   # Snapshot, AbstractSnapshotStore
+│  ├─ projections.py                 # AbstractProjection, AbstractCheckpointStore
+│  └─ exceptions.py                  # ConcurrencyError y companía
+├─ application/eventsourcing/
+│  ├─ repository.py                  # EventSourcedRepository
+│  ├─ projector.py                   # Projector
+│  ├─ relay.py                       # EventStoreRelay
+│  ├─ config.py                      # EventStoreConfig, SnapshotConfig, ProjectionsConfig
+│  └─ factory.py                     # EventStoreFactory
+├─ infrastructure/eventsourcing/
+│  ├─ memory.py                      # sin extras
+│  ├─ sqlalchemy_models_mixins.py    # columnas, sin __tablename__: importar no registra
+│  ├─ sqlalchemy_models.py           # las tablas concretas: importar SI registra
+│  ├─ sqlalchemy_store.py            # [sql]
+│  ├─ beanie_documents.py            # [mongo]
+│  ├─ beanie_store.py                # [mongo]
+│  └─ redis_store.py                 # [redis]
+└─ infrastructure/api/eventsourcing.py   # contenedor y providers de FastAPI
+```
+
+**Tres reglas de la capa SQL**, y las tres se rompen de una línea:
+
+1. Los modelos **no** heredan `BaseModel[T]`: `collect_domain_entities()` del UoW les pediría
+   una entidad de dominio que no tienen, y lo haría durante el propio `commit()`.
+2. `sqlalchemy_models` está en `ensure_framework_models_loaded()`. Sin eso,
+   `alembic revision --autogenerate` le emite `op.drop_table` al event store — que no es una
+   caché que se reconstruya, es el registro de lo que pasó.
+3. Ninguna columna se llama `metadata`: pisaría `Base.metadata`.
+
+En Beanie, los documentos heredan `Document` directo y no `BaseDocument`, que trae
+`is_root = True` (una sola colección para todo) y `use_cache = True` (una versión rancia del
+stream justo antes de decidir si un append entra).
+
+Ver [`docs/ARCHITECTURE_EVENTSOURCING.md`](docs/ARCHITECTURE_EVENTSOURCING.md).
 
 ---
 

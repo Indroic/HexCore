@@ -797,16 +797,22 @@ un chequeo de arranque que avisa si una tabla de Darwin no está en `Base.metada
 
 `InMemoryEventBus.publish` despacha por **clase exacta**
 (`self._handlers.get(type(event), [])`, [`in_memory_buses.py:144`](../hexcore/application/cqrs/in_memory_buses.py#L144)):
-no hay recorrido de MRO, así que suscribirse a una clase base **no recibe nada**.
+no había recorrido de MRO, así que suscribirse a una clase base **no recibía nada**.
 
 Consecuencia de diseño: **no** se shippea un `AuthEvent` base invitando a suscribirse. Se
 emiten hojas concretas (`UserSignedInEvent`, `SessionRevokedEvent`,
-`ImpersonationStartedEvent`) y se documenta la limitación.
+`ImpersonationStartedEvent`).
 
-Y `event_name` usa `.replace("Event", "")`, **no** `removesuffix`
-([`events.py:28`](../hexcore/domain/events.py#L28)): verificado que
-`EventLogCreatedEvent` → `"LOGCREATED"`. Todo evento de Darwin lleva "Event" **sólo como
-sufijo**.
+Y `event_name` usaba `.replace("Event", "")` en vez de `removesuffix`, así que
+`EventLogCreatedEvent` daba `"LOGCREATED"`. Todo evento de Darwin lleva "Event" **sólo como
+sufijo**, que es lo que hacía la convención necesaria.
+
+> **Las dos limitaciones se corrigieron en 9.0.** Los buses despachan por jerarquía
+> ([`dispatch.py`](../hexcore/domain/cqrs/dispatch.py)) y `event_name` usa `removesuffix`
+> ([`events.py`](../hexcore/domain/events.py)). Ninguno de los catorce eventos de Darwin
+> cambió de `event_name`, porque todos respetaban la convención. La forma del módulo —hojas
+> sin base común— se mantiene: agregarle una base ahora sería un cambio de API de Darwin, no
+> una corrección.
 
 ---
 
