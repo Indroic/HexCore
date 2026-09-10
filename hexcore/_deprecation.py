@@ -42,13 +42,19 @@ __all__ = [
 #: al usuario que estos avisos no hay que leerlos. Ya pasó, y no por descuido sino porque en
 #: este repo dos majors salieron de commits `feat!:` involuntarios.
 #:
-#: En 7.0 los alias pre-5.0 **se eliminaron de verdad**, así que la constante pasa a 8.0: la
-#: próxima ventana real, para lo que se deprece de acá en adelante.
+#: En 7.0 los alias pre-5.0 **se eliminaron de verdad**, así que la constante pasó a 8.0: la
+#: próxima ventana real, para lo que se deprecara de ahí en adelante.
+#:
+#: 8.0.0 se publicó sin eliminar nada y sin correr la constante, así que el aviso quedó
+#: prometiendo una remoción "en 8.0" mientras corría **en** 8.0.0 — exactamente el defecto que
+#: este mecanismo existe para evitar, y con la suite en rojo desde el bump. En 9.0 pasa a
+#: **10.0**, que es la ventana de lo que 9.0 depreca (`hexcore.domain.events.EventBus` y el
+#: `InMemoryEventBus` de `infrastructure.events`): un major completo de aviso, no cero.
 #:
 #: Lo vigila `test_removed_in_is_ahead_of_the_published_version`: si un bump vuelve a alcanzar
 #: este valor, el fallo salta en CI y no en el aviso que lee el usuario. Ese test es el que
 #: convierte "se nos pasó" en "no se puede releasear".
-REMOVED_IN = "8.0"
+REMOVED_IN = "10.0"
 
 
 def warn_deprecated(

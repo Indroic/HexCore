@@ -1154,7 +1154,8 @@ estructura de migraciones con Alembic.
 
 | Serie | Estado | Qué significa |
 | :-- | :-- | :-- |
-| **7.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. Trae Darwin, elimina la superficie anterior a 5.0 y corrige los defectos de CORS y rate limiting. |
+| **8.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. Parte `[darwin]` en un extra por backend y por plugin, y hace que `import_all_models` propague los `ImportError` que antes se tragaba. |
+| **7.x** | ⛔ **Deprecada** | Trae Darwin, elimina la superficie anterior a 5.0 y corrige los defectos de CORS y rate limiting. Migrar a 8.x es ajustar los extras: `hexcore[darwin]` ya no arrastra SQLAlchemy. |
 | **6.x** | ⛔ **Deprecada** | Sigue funcionando pero no recibe correcciones. Incluye los defectos de seguridad de CORS y rate limiting corregidos en 7.0, y los alias anteriores a 5.0 todavía presentes. |
 | **5.x** | ⛔ **Deprecada** | Misma superficie de API que 6.x. Migrar a 6.x era actualizar la versión; a 7.x hay que sacar los alias `I*`. |
 | **4.x** | ⛔ **Deprecada** | Aplicación **parcial**: le faltan el fix del event loop de Celery, las fachadas y la documentación alineada. |
@@ -1162,14 +1163,14 @@ estructura de migraciones con Alembic.
 | **2.x** | ⛔ **Deprecada** | Contiene los bugs silenciosos corregidos en 5.x (ver abajo). |
 | **1.x** | ⛔ **Deprecada** | Sin soporte de ningún tipo. |
 
-**Todo lo anterior a 7.0 está deprecado. Migrá a 7.x.**
+**Todo lo anterior a 8.0 está deprecado. Migrá a 8.x.**
 
 Los alias anteriores a 5.0 avisaban que se eliminaban "en 6.0". 6.0.0 salió sin eliminarlos —
 se prefirió mover la fecha antes que romper retroactivamente a quien ya había actualizado
 confiando en que seguían. **En 7.0 se eliminan de verdad**, con dos majors completos de aviso
 acumulados. La tabla de reemplazos está más abajo.
 
-> La fila de la serie 7.x se agrega al publicarla: `tests/test_documentation_examples.py`
+> La fila de cada serie se agrega al publicarla: `tests/test_documentation_examples.py`
 > verifica que la serie marcada como activa sea la de `pyproject.toml`, así que la tabla y la
 > versión no pueden desincronizarse. Ese test es el que detectó que 6.0.0 salió con 5.x todavía
 > marcada como activa.
