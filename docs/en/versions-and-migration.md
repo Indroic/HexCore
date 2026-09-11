@@ -6,7 +6,8 @@
 
 | Series | Status | What it means |
 | :-- | :-- | :-- |
-| **8.x** | ✅ **Active** | The only supported one. Receives features and fixes. Ships Darwin. |
+| **9.x** | ✅ **Active** | The only supported one. Receives features and fixes. Adds the event store and Event Sourcing, and leaves a single event bus port. |
+| **8.x** | ⛔ Deprecated | Ships Darwin. Migrating to 9.x is mechanical: the two deprecated names still resolve and warn until 10.0. |
 | **7.x** | ⛔ Deprecated | Removes the pre-5.0 surface and fixes the CORS and rate-limiting defects. **No Darwin**: it shipped before the module landed on `master`. |
 | **6.x** | ⛔ Deprecated | Works, but receives no fixes. Contains the CORS and rate-limiting defects fixed in 7.0, and the pre-5.0 aliases still present. |
 | **5.x** | ⛔ Deprecated | Same API surface as 6.x. |
@@ -15,7 +16,7 @@
 | **2.x** | ⛔ Deprecated | Contains the silent bugs fixed in 5.x (below). |
 | **1.x** | ⛔ Deprecated | No support of any kind. |
 
-**Everything before 8.0 is deprecated.**
+**Everything before 9.0 is deprecated.**
 
 3.0.0 and 4.0.0 exist only because the work was merged in phases and each merge triggered an
 automatic bump: **they are not releases meant to be used**, they are intermediate cuts of the same

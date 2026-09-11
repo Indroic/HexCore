@@ -6,7 +6,8 @@
 
 | Serie | Estado | Qué significa |
 | :-- | :-- | :-- |
-| **8.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. Trae Darwin. |
+| **9.x** | ✅ **Activa** | La única soportada. Recibe features y correcciones. Agrega el event store y Event Sourcing, y deja un solo puerto de bus de eventos. |
+| **8.x** | ⛔ Deprecada | Trae Darwin. Migrar a 9.x es mecánico: los dos nombres deprecados siguen resolviendo y avisando hasta 10.0. |
 | **7.x** | ⛔ Deprecada | Elimina la superficie anterior a 5.0 y corrige los defectos de CORS y rate limiting. **No trae Darwin**: se publicó antes de que el módulo llegara a `master`. |
 | **6.x** | ⛔ Deprecada | Funciona, pero no recibe correcciones. Incluye los defectos de CORS y rate limiting corregidos en 7.0, y los alias anteriores a 5.0 todavía presentes. |
 | **5.x** | ⛔ Deprecada | Misma superficie de API que 6.x. |
@@ -15,7 +16,7 @@
 | **2.x** | ⛔ Deprecada | Contiene los bugs silenciosos corregidos en 5.x (abajo). |
 | **1.x** | ⛔ Deprecada | Sin soporte de ningún tipo. |
 
-**Todo lo anterior a 8.0 está deprecado.**
+**Todo lo anterior a 9.0 está deprecado.**
 
 3.0.0 y 4.0.0 existen sólo porque el trabajo se mergeó por fases y cada merge disparó un bump
 automático: **no son releases pensadas para usarse**, son cortes intermedios de la misma
