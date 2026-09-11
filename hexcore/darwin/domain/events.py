@@ -1,17 +1,21 @@
 """
 Eventos de dominio de Darwin.
 
-Dos restricciones verificadas del bus de eventos de HexCore que condicionan todo este módulo:
+Dos restricciones del bus de eventos de HexCore condicionaron la forma de este módulo. **Las
+dos se arreglaron en 9.0**, y quedan escritas porque explican por qué el módulo es como es:
 
-**1. El despacho es por clase exacta.** `InMemoryEventBus.publish` hace
-``self._handlers.get(type(event), [])``: no recorre el MRO, así que suscribirse a una clase
-base **no recibe nada**. Por eso acá no hay un `AuthEvent` base con hijos: hay hojas
-concretas, y cada una se suscribe por su nombre. Shippear una base invitaría a suscribirse a
-ella y a que el handler nunca corra, sin error.
+**1. El despacho era por clase exacta.** `InMemoryEventBus.publish` hacía
+``self._handlers.get(type(event), [])``: no recorría el MRO, así que suscribirse a una clase
+base **no recibía nada**, sin error. Por eso acá no hay un `AuthEvent` base con hijos: hay
+hojas concretas, y cada una se suscribe por su nombre. Desde 9.0 los buses despachan por
+jerarquía (`hexcore.domain.cqrs.dispatch.handlers_for`), así que una base sería viable —
+agregarla ahora sería un cambio de API de Darwin, no una corrección, y por eso no se hizo en
+el mismo movimiento.
 
-**2. `event_name` usa `.replace("Event", "")`, no `removesuffix`.** Verificado:
-``EventLogCreatedEvent`` sale como ``"LOGCREATED"``. O sea que "Event" en el medio del nombre
-se pierde. Todos los nombres de acá llevan "Event" **sólo como sufijo**.
+**2. `event_name` usaba `.replace("Event", "")`, no `removesuffix`.** ``EventLogCreatedEvent``
+salía como ``"LOGCREATED"``: "Event" en el medio del nombre se perdía. Corregido en 9.0. Los
+nombres de acá llevan "Event" **sólo como sufijo**, así que ninguno cambió de valor — que es
+justamente por qué la convención existía.
 
 Todos los eventos llevan **actor y sujeto**, no un solo `user_id`. Es lo que hace que la
 auditoría siga siendo cierta bajo impersonación: sin el actor, la acción queda atribuida a la

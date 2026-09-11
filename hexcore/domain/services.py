@@ -12,7 +12,7 @@ from hexcore.application.dtos.query import (
     SortDirection,
 )
 from hexcore.domain.base import BaseEntity
-from hexcore.domain.events import EventBus
+from hexcore.domain.cqrs.buses import AbstractEventBus
 from hexcore.domain.repositories import IBaseRepository
 from hexcore.config import LazyConfig
 
@@ -23,7 +23,7 @@ T = t.TypeVar("T", bound=BaseEntity)
 class BaseDomainService:
     def __init__(
         self,
-        event_bus: EventBus | None = None,
+        event_bus: AbstractEventBus | None = None,
     ) -> None:
         """
         Args:

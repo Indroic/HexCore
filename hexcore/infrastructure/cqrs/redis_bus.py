@@ -14,6 +14,8 @@ from hexcore.domain.cqrs.buses import AbstractEventBus
 from hexcore.domain.cqrs.context import is_worker_execution, local_execution
 from hexcore.domain.cqrs.envelope import restored_envelope_scope
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
+from hexcore.domain.cqrs.dispatch import handlers_for
+from hexcore.domain.cqrs.resolution import resolve_dotted
 from hexcore.domain.events import DomainEvent
 
 if t.TYPE_CHECKING:
@@ -37,7 +39,16 @@ class RedisEventBus(AbstractEventBus):
         group_name: str,
         consumer_name: str | None = None,
         enqueuer: ITaskEnqueuer | None = None,
+        resolve_unknown_events: bool = True,
     ) -> None:
+        """
+        Args:
+            resolve_unknown_events: Si un evento cuyo tipo no está en el registro de
+                suscripciones se intenta importar por su FQN. Es lo que permite que un
+                handler suscrito a una clase base reciba subclases que este proceso nunca
+                registró — sin esto, un catch-all no recibiría nada. `False` recupera la
+                semántica anterior a 9.0: se descarta lo que no esté registrado.
+        """
         self.redis = redis_client
         self._serializer = serializer
         self.stream_name = stream_name
@@ -48,6 +59,7 @@ class RedisEventBus(AbstractEventBus):
         self._handlers: dict[type[DomainEvent], list[t.Callable[..., t.Any]]] = {}
         self._event_types_by_name: dict[str, type[DomainEvent]] = {}
         self._stop_event = asyncio.Event()
+        self._resolve_unknown_events = resolve_unknown_events
 
     def subscribe(self, event_type: type[DomainEvent], handler: t.Callable[..., t.Any]) -> None:
         if event_type not in self._handlers:
@@ -114,15 +126,24 @@ class RedisEventBus(AbstractEventBus):
 
             payload_dict = json.loads(payload_bytes)
             event_name = payload_dict.get("__type__")
-            
-            event_type = self._event_types_by_name.get(event_name)
-            if not event_type:
-                # Evento no registrado localmente, lo saltamos y confirmamos
+
+            event_type = self._resolver_tipo(event_name)
+            if event_type is None:
+                # Ni suscrito ni importable: no hay forma de reconstruirlo. Se confirma para
+                # que no quede atascado en el PEL, y se loguea — antes se descartaba callado.
+                logger.warning(
+                    "Evento '%s' descartado: no hay ningun handler suscrito y el tipo no se "
+                    "pudo importar en este proceso.",
+                    event_name,
+                )
                 await self.redis.xack(self.stream_name, self.group_name, message_id)
                 return
 
             event, metadata = self._serializer.deserialize_envelope(payload_dict)
-            handlers = self._handlers.get(event_type, [])
+            handlers = handlers_for(event, self._handlers)
+            if not handlers:
+                await self.redis.xack(self.stream_name, self.group_name, message_id)
+                return
             
             # Ejecutar handlers (respetando Smart Routing).
             # Si ya estamos dentro de un worker, el mensaje viene de la cola:
@@ -148,11 +169,49 @@ class RedisEventBus(AbstractEventBus):
                         with local_execution():
                             await handler(event)
 
-            # Confirmar mensaje
-            await self.redis.xack(self.stream_name, self.group_name, message_id)
-            
         except Exception as e:
-            logger.error(f"Error parseando o ejecutando evento de Redis (ID {message_id}): {e}")
+            # **Sin `xack`.** El mensaje se queda en el PEL (Pending Entries List) del grupo,
+            # que es donde tiene que estar un mensaje que no se proceso: desde ahi se puede
+            # reclamar con `XAUTOCLAIM` y reintentar. Antes el `xack` estaba dentro del `try`
+            # y se ejecutaba igual cuando un handler fallaba, asi que el mensaje salia del PEL
+            # y se perdia sin dejar rastro mas alla de una linea de log.
+            logger.error(
+                f"Error parseando o ejecutando evento de Redis (ID {message_id!r}): {e}. "
+                "El mensaje queda pendiente en el grupo para poder reclamarlo."
+            )
+            return
+
+        # Confirmar recien despues de que todos los handlers locales terminaron bien.
+        await self.redis.xack(self.stream_name, self.group_name, message_id)
 
     async def stop(self) -> None:
         self._stop_event.set()
+
+    def _resolver_tipo(self, event_name: str | None) -> type | None:
+        """
+        El tipo del evento: primero el registro de suscripciones, y si no está, el FQN.
+
+        El registro sólo se puebla en `subscribe()`, así que un evento cuyo tipo concreto
+        nadie registró no estaba ahí y se descartaba. Con el despacho por jerarquía eso pasa
+        a ser el caso **normal**: quien se suscribe a una clase base —o a `DomainEvent`, como
+        hace el relay del event store— nunca registra los tipos concretos, así que su
+        catch-all no recibiría nada.
+
+        Resolver el FQN es lo que ya hace `PydanticSerializer.deserialize`, así que no agrega
+        ninguna capacidad nueva: sólo evita descartar antes de intentarlo.
+        """
+        if not event_name:
+            return None
+
+        registrado = self._event_types_by_name.get(event_name)
+        if registrado is not None:
+            return registrado
+
+        if not self._resolve_unknown_events:
+            return None
+
+        try:
+            resuelto = resolve_dotted(event_name)
+        except LookupError:
+            return None
+        return resuelto if isinstance(resuelto, type) else None

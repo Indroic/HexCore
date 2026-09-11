@@ -202,6 +202,86 @@ Si vas a usar Darwin, lo único que **no** es opcional leer es la sección de Al
 
 ---
 
+## 9.0: Event Sourcing, y un solo bus de eventos
+
+9.0 agrega el event store y Event Sourcing — ver
+**[Event Sourcing](./event-sourcing.md)** — y unifica algo que estaba duplicado desde que
+aterrizó la capa de CQRS.
+
+### Deprecado, se elimina en 10.0
+
+Un major completo de aviso. Los dos avisan con `DeprecationWarning` **al pedir el nombre**, no al
+importar el módulo: si avisaran al importar, no habría forma de saber *quién* usa el nombre
+viejo.
+
+| Nombre deprecado | Reemplazo | Por qué |
+| :-- | :-- | :-- |
+| `hexcore.domain.events.EventBus` | `hexcore.domain.cqrs.buses.AbstractEventBus` | Había dos puertos de bus de eventos, incompatibles entre sí y sin ancestro común: un bus escrito contra uno no servía para el otro, y los dos grafos de handlers convivían sin verse. Queda el de CQRS, que además tiene pipeline de middlewares y Smart Routing. |
+| `hexcore.infrastructure.events.events_backends.memory.InMemoryEventBus` | `hexcore.cqrs.InMemoryEventBus` | Dos clases homónimas colgadas de esos dos puertos. Gana la de CQRS, que es un superconjunto estricto. El paquete `hexcore.infrastructure.events` entero se elimina en 10.0. |
+
+El alias de `EventBus` **resuelve al reemplazo**, no al objeto viejo: los dos ABCs eran
+estructuralmente idénticos, así que devolver el nuevo no rompe a nadie en la línea siguiente. Lo
+único que cambia es que un bus que subclaseaba el viejo ahora sí pasa el `issubclass` contra
+`AbstractEventBus` — que es la corrección, no el daño.
+
+Para encontrar los usos antes de subir:
+
+```sh
+uv run pytest -W "error::DeprecationWarning"
+```
+
+### Cambios de comportamiento que no pueden avisar
+
+Son semántica, no nombres, así que no hay `DeprecationWarning` posible.
+
+**Los buses de eventos despachan por jerarquía.** Antes hacían
+`self._handlers.get(type(event))` — clase exacta. Suscribirse a una clase base no recibía nada
+**y tampoco fallaba**: el handler quedaba registrado y en silencio nunca se invocaba. Un handler
+suscrito a una clase base ahora recibe sus subclases, y uno registrado en dos niveles corre una
+sola vez.
+
+Esa limitación le estaba dando forma al dominio: `hexcore/darwin/domain/events.py` declara sus
+catorce eventos sin base común y lo dice explícitamente, porque con despacho exacto un
+`AuthEvent` base no habría servido de nada.
+
+**`DomainEvent.event_name` usa `removesuffix` en vez de `replace`.** `replace` quitaba *todas*
+las apariciones, así que `EventLogCreatedEvent` salía como `"LOGCREATED"`. Los nombres que
+llevan "Event" sólo como sufijo —la convención del proyecto, y todos los de Darwin— no cambian
+de valor.
+
+> ⚠️ **Esto cambia las routing keys de `RabbitMQEventBus`.** `rabbitmq.py` reimplementaba la
+> misma heurística del lado del `subscribe`, y las dos cambiaron juntas: si sólo hubiera
+> cambiado una, el publisher rutearía con una clave mientras el binding del consumidor usa la
+> otra, y AMQP descarta lo que no matchea **sin ningún error**. Un despliegue con mensajes en
+> vuelo necesita las dos claves bindeadas durante una versión.
+
+**`SqlAlchemyUnitOfWork.commit()` recolecta los eventos antes de comitear.** El orden anterior
+comiteaba primero y recién después llamaba a `collect_domain_events()`, que recorre
+`session.new | dirty | deleted` — y después de un commit esas tres colecciones están vacías. Así
+que el UoW no recolectaba ningún evento y no publicaba nada, sin error y sin log. Arreglarlo
+significa que un handler que estaba suscrito y nunca corría empieza a correr.
+
+**`collect_domain_entities()` devuelve una lista, no un set.** `BaseEntity` es un modelo de
+pydantic mutable, así que no define `__hash__` y `set.add()` levantaba `TypeError`. Nunca salió a
+la luz porque el defecto de arriba impedía que el método llegara a ejecutarse con algo adentro —
+uno tapaba al otro. La deduplicación es por identidad y no por igualdad: dos entidades distintas
+con los mismos campos son iguales para pydantic, y drenarle los eventos a una sola perdería los
+de la otra.
+
+**`ServerConfig.event_bus` usa `default_factory`.** El default anterior se evaluaba al definir la
+clase, así que todo `ServerConfig()` del proceso compartía el mismo bus y el mismo diccionario de
+handlers. En los tests, una suscripción hecha en un test la veía el siguiente.
+
+**`RedisEventBus` confirma después de los handlers, no antes.** El `xack` estaba dentro del `try`
+y se ejecutaba igual cuando un handler fallaba, así que el mensaje salía del PEL y se perdía.
+Ahora queda pendiente para poder reclamarlo con `XAUTOCLAIM`.
+
+Redis y Postgres, además, resuelven por FQN el tipo de un evento que no esté en el registro de
+suscripciones, en vez de descartarlo en silencio. Ese registro sólo se puebla en `subscribe()`,
+así que con despacho por jerarquía el caso normal pasa a ser que el tipo concreto no esté ahí —
+quien se suscribe a una clase base nunca lo registra. `resolve_unknown_events=False` recupera la
+semántica vieja.
+
 ## Versionado
 
 El proyecto usa [Commitizen](https://commitizen-tools.github.io/commitizen/) con

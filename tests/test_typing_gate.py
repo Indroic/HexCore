@@ -24,7 +24,7 @@ import pytest
 pytestmark = pytest.mark.typing
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FACHADAS = ("cqrs", "sql", "fastapi")
+FACHADAS = ("cqrs", "sql", "fastapi", "eventsourcing")
 
 
 def _pyright(*paths: str) -> dict:

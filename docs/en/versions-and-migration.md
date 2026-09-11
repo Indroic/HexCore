@@ -203,6 +203,83 @@ If you are going to use Darwin, the one section that is not optional reading is 
 
 ---
 
+## 9.0: Event Sourcing, and one event bus
+
+9.0 adds the event store and Event Sourcing — see
+**[Event Sourcing](./event-sourcing.md)** — and unifies something that had been duplicated
+since the CQRS layer landed.
+
+### Deprecated, removed in 10.0
+
+A full major of notice. Both warn with a `DeprecationWarning` **when you ask for the name**, not
+when the module is imported: if they warned on import, there would be no way to tell *who* uses
+the old name.
+
+| Deprecated name | Replacement | Why |
+| :-- | :-- | :-- |
+| `hexcore.domain.events.EventBus` | `hexcore.domain.cqrs.buses.AbstractEventBus` | There were two event bus ports, mutually incompatible and with no common ancestor: a bus written against one did not work for the other, and the two handler graphs coexisted without seeing each other. The CQRS one stays — it also has the middleware pipeline and Smart Routing. |
+| `hexcore.infrastructure.events.events_backends.memory.InMemoryEventBus` | `hexcore.cqrs.InMemoryEventBus` | Two classes with the same name hanging off those two ports. The CQRS one wins, being a strict superset. The whole `hexcore.infrastructure.events` package is removed in 10.0. |
+
+The `EventBus` alias **resolves to the replacement**, not to the old object: the two ABCs were
+structurally identical, so returning the new one does not break anyone on the next line. The
+only change is that a bus which subclassed the old one now does pass `issubclass` against
+`AbstractEventBus` — which is the fix, not the damage.
+
+To find the usages before upgrading:
+
+```sh
+uv run pytest -W "error::DeprecationWarning"
+```
+
+### Behavior changes that cannot warn
+
+These are semantics, not names, so no `DeprecationWarning` is possible.
+
+**The event buses dispatch by hierarchy.** They used to do `self._handlers.get(type(event))` —
+exact class. Subscribing to a base class received nothing **and did not fail either**: the
+handler stayed registered and was silently never invoked. A handler subscribed to a base class
+now receives its subclasses, and one registered at two levels runs once.
+
+That limitation was shaping the domain: `hexcore/darwin/domain/events.py` declares its fourteen
+events with no common base and says so explicitly, because with exact dispatch an `AuthEvent`
+base would have been useless.
+
+**`DomainEvent.event_name` uses `removesuffix` instead of `replace`.** `replace` removed *every*
+occurrence, so `EventLogCreatedEvent` came out as `"LOGCREATED"`. Names that carry "Event" only
+as a suffix — the project's convention, and every Darwin event — do not change value.
+
+> ⚠️ **This changes `RabbitMQEventBus`'s routing keys.** `rabbitmq.py` reimplemented the same
+> heuristic on the `subscribe` side, and both changed together: if only one had, the publisher
+> would route with one key while the consumer's binding used the other, and AMQP discards what
+> does not match **with no error at all**. A deployment with messages in flight needs both keys
+> bound for one version.
+
+**`SqlAlchemyUnitOfWork.commit()` collects the events before committing.** The previous order
+committed first and only then called `collect_domain_events()`, which walks
+`session.new | dirty | deleted` — and after a commit those three collections are empty. So the
+UoW collected no events and published nothing, with no error and no log. Fixing it means a
+handler that was subscribed and never ran starts running.
+
+**`collect_domain_entities()` returns a list, not a set.** `BaseEntity` is a mutable pydantic
+model, so it does not define `__hash__` and `set.add()` raised `TypeError`. It never surfaced
+because the defect above kept the method from ever running with anything in it — one was hiding
+the other. Deduplication is by identity, not equality: two different entities with the same
+fields are equal to pydantic, and draining the events of only one would lose the other's.
+
+**`ServerConfig.event_bus` uses `default_factory`.** The previous default was evaluated when the
+class was defined, so every `ServerConfig()` in the process shared the same bus and the same
+handler dictionary. In tests, a subscription made by one test was seen by the next.
+
+**`RedisEventBus` acknowledges after the handlers, not before.** The `xack` was inside the `try`
+and ran even when a handler failed, so the message left the PEL and was lost. It now stays
+pending so it can be claimed with `XAUTOCLAIM`.
+
+Redis and Postgres also resolve an event's type by FQN when it is not in the subscription
+registry, instead of discarding it silently. That registry is only populated in `subscribe()`, so
+with hierarchical dispatch the normal case becomes that the concrete type is not there —
+whoever subscribes to a base class never registers it. `resolve_unknown_events=False` restores
+the old semantics.
+
 ## Versioning
 
 The project uses [Commitizen](https://commitizen-tools.github.io/commitizen/) with

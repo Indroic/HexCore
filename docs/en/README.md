@@ -32,6 +32,7 @@ production-correct engine.
 | 7 | **[CQRS architecture](./cqrs.md)** | Commands, queries, events, buses, middleware, factory |
 | 8 | **[Queues and workers](./queues-and-workers.md)** | Smart Routing, enqueuers, the consumer and the runner |
 | 9 | **[Scheduled tasks](./cron.md)** | Dynamic cron, distributed locks, catch-up |
+| 9b | **[Event Sourcing](./event-sourcing.md)** | Event store, aggregates, projections, the outbox — and what it does not guarantee |
 | 10 | **[Testing](./testing.md)** | Test buses, fakes, fixtures, overrides |
 | 11 | **[CLI](./cli.md)** | `hexcore init`, migrations, `hexcore identity` |
 

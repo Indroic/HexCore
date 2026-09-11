@@ -51,6 +51,7 @@ await cqrs.run_procrastinate_worker(
 | CQRS architecture | [cqrs](./docs/en/cqrs.md) | [cqrs](./docs/es/cqrs.md) |
 | Queues and workers | [queues-and-workers](./docs/en/queues-and-workers.md) | [colas-y-workers](./docs/es/colas-y-workers.md) |
 | Scheduled tasks | [cron](./docs/en/cron.md) | [cron](./docs/es/cron.md) |
+| **Event Sourcing** | [event-sourcing](./docs/en/event-sourcing.md) | [event-sourcing](./docs/es/event-sourcing.md) |
 | Testing | [testing](./docs/en/testing.md) | [testing](./docs/es/testing.md) |
 | CLI | [cli](./docs/en/cli.md) | [cli](./docs/es/cli.md) |
 | **Darwin** (identity) | [darwin/](./docs/en/darwin/) | [darwin/](./docs/es/darwin/) |

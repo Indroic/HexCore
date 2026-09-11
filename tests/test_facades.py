@@ -22,7 +22,7 @@ def anyio_backend():
     return "asyncio"
 
 
-FACADES = ["hexcore.cqrs", "hexcore.sql", "hexcore.fastapi"]
+FACADES = ["hexcore.cqrs", "hexcore.sql", "hexcore.fastapi", "hexcore.eventsourcing"]
 
 
 @pytest.mark.parametrize("facade_name", FACADES)

@@ -45,7 +45,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #: `darwin` es un **paquete**, así que su fachada vive en `hexcore/darwin/__init__.py`: un
 #: módulo y un paquete con el mismo nombre no pueden coexistir (el paquete gana y el módulo
 #: queda muerto), así que el `__init__` es la fachada. `_rutas()` resuelve las dos formas.
-FACHADAS = ("cqrs", "sql", "fastapi", "darwin")
+FACHADAS = ("cqrs", "sql", "fastapi", "darwin", "eventsourcing")
 
 
 def _rutas(modulo: str) -> tuple[Path, Path]:

@@ -43,15 +43,16 @@ __all__ = [
 #: este repo dos majors salieron de commits `feat!:` involuntarios.
 #:
 #: En 7.0 los alias pre-5.0 **se eliminaron de verdad**. La constante apunta siempre al
-#: próximo major por publicar: hoy 9.0, porque 8.0.0 es la serie que se está por sacar.
-#: No hay nada deprecado esperando esa fecha — la constante es la ventana disponible para
-#: lo que se deprece de acá en adelante, y por eso se corre con cada major en vez de
-#: quedarse fija.
+#: próximo major por publicar, y por eso se corre con cada major en vez de quedarse fija.
+#:
+#: Con 9.0 pasa a **10.0**, y esta vez la fecha no está vacía: 9.0 depreca
+#: `hexcore.domain.events.EventBus` y el `InMemoryEventBus` de `infrastructure.events`, que
+#: son los dos nombres que esperan esa remoción. Un major completo de aviso.
 #:
 #: Lo vigila `test_removed_in_is_ahead_of_the_published_version`: si un bump vuelve a alcanzar
 #: este valor, el fallo salta en CI y no en el aviso que lee el usuario. Ese test es el que
 #: convierte "se nos pasó" en "no se puede releasear".
-REMOVED_IN = "9.0"
+REMOVED_IN = "10.0"
 
 
 def warn_deprecated(

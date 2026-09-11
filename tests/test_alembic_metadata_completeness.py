@@ -109,6 +109,28 @@ def test_las_tablas_del_framework_entran_al_metadata():
     )
 
 
+#: Las tablas del event store. Van aparte porque su modo de falla es de otra categoría: una
+#: tabla de cron jobs dropeada se recrea sembrándola de nuevo, y el event store **es** la
+#: fuente de verdad. Un `op.drop_table` ahí no pierde una caché, pierde lo que pasó.
+TABLAS_DEL_EVENT_STORE = (
+    "hexcore_event_store",
+    "hexcore_snapshots",
+    "hexcore_projection_checkpoints",
+)
+
+
+@pytest.mark.parametrize("tabla", TABLAS_DEL_EVENT_STORE)
+def test_las_tablas_del_event_store_entran_al_metadata(tabla: str):
+    from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
+
+    ensure_framework_models_loaded()
+
+    assert tabla in Base.metadata.tables, (
+        f"{tabla} no está en Base.metadata: `alembic revision --autogenerate` va a emitir "
+        f"op.drop_table sobre el event store, que es la fuente de verdad y no se reconstruye"
+    )
+
+
 def test_ensure_framework_models_loaded_es_idempotente():
     primera = ensure_framework_models_loaded()
     segunda = ensure_framework_models_loaded()
@@ -123,11 +145,16 @@ def test_ensure_framework_models_loaded_no_explota_sin_el_extra(monkeypatch):
     Se simula ocultando el módulo: la función tiene que devolver una lista vacía, no
     propagar el ImportError.
     """
-    monkeypatch.setitem(
-        sys.modules, "hexcore.infrastructure.cqrs.cron_sql", None
-    )
     # `sys.modules[x] = None` hace que el import lance ImportError, que es exactamente lo
-    # que pasa cuando el extra no está instalado.
+    # que pasa cuando el extra no está instalado. Se ocultan **todos** los candidatos: sin
+    # `[sql]` no hay ninguno, y dejar uno visible probaría lo contrario de lo que dice el
+    # nombre del test.
+    for modulo in (
+        "hexcore.infrastructure.cqrs.cron_sql",
+        "hexcore.infrastructure.eventsourcing.sqlalchemy_models",
+    ):
+        monkeypatch.setitem(sys.modules, modulo, None)
+
     assert ensure_framework_models_loaded() == []
 
 

@@ -113,9 +113,17 @@ class RabbitMQEventBus(AbstractEventBus):
         Nota: Esto solo guarda en memoria. Para empezar a consumir RabbitMQ,
         debes llamar a `start_consuming()`.
         """
-        # Obtenemos un event_name estandarizado (usamos una instancia temporal para leer properties o usar una heuristica estática)
-        # Por seguridad creamos un string fijo a partir del nombre de clase (como hace DomainEvent.event_name)
-        event_name = event_type.__name__.replace("Event", "").upper()
+        # La misma regla que `DomainEvent.event_name`, reimplementada acá porque del lado del
+        # `subscribe` sólo hay una clase, no una instancia a la que preguntarle.
+        #
+        # **Las dos tienen que cambiar juntas.** Si sólo cambia una, el publisher rutea con
+        # una clave y el binding del consumidor está armado con la otra, y los mensajes se
+        # pierden en el exchange **sin ningún error**: AMQP entrega a las colas que matchean
+        # y descarta el resto en silencio.
+        #
+        # Ojo al desplegar este cambio: los mensajes que ya estaban en vuelo llevan la clave
+        # vieja. Un despliegue sin corte necesita bindear **las dos** durante una versión.
+        event_name = event_type.__name__.removesuffix("Event").upper()
         
         if event_name not in self._handlers:
             self._handlers[event_name] = []

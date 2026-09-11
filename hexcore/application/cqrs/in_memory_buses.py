@@ -9,6 +9,7 @@ import logging
 from hexcore.domain.cqrs.buses import AbstractCommandBus, AbstractQueryBus, AbstractEventBus
 from hexcore.domain.cqrs.commands import Command
 from hexcore.domain.cqrs.context import is_worker_execution, local_execution
+from hexcore.domain.cqrs.dispatch import handlers_for
 from hexcore.domain.cqrs.queries import Query
 from hexcore.domain.events import DomainEvent
 from hexcore.domain.cqrs.task_queues import ITaskEnqueuer
@@ -152,7 +153,10 @@ class InMemoryEventBus(AbstractEventBus):
         self._handlers.setdefault(event_type, []).append(handler)
 
     async def publish(self, event: DomainEvent) -> None:
-        handlers = self._handlers.get(type(event), [])
+        # `handlers_for` y no `self._handlers.get(type(event))`: el despacho recorre la
+        # jerarquía del evento, así que suscribirse a una clase base alcanza a sus
+        # subclases. Antes no lo hacía, y el handler quedaba registrado sin invocarse nunca.
+        handlers = handlers_for(event, self._handlers)
         # Si el evento viene de un worker, sus handlers de background se ejecutan
         # aquí; reencolarlos sería un bucle infinito.
         in_worker = is_worker_execution()

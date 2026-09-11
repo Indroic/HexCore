@@ -33,6 +33,7 @@ producción.
 | 7 | **[Arquitectura CQRS](./cqrs.md)** | Comandos, queries, eventos, buses, middlewares, factory |
 | 8 | **[Colas y workers](./colas-y-workers.md)** | Smart Routing, enqueuers, el consumer y el runner |
 | 9 | **[Tareas periódicas](./cron.md)** | Cron dinámico, locks distribuidos, catch-up |
+| 9b | **[Event Sourcing](./event-sourcing.md)** | Event store, agregados, proyecciones, el outbox — y lo que no garantiza |
 | 10 | **[Testing](./testing.md)** | Buses de prueba, fakes, fixtures, overrides |
 | 11 | **[CLI](./cli.md)** | `hexcore init`, migraciones, `hexcore identity` |
 

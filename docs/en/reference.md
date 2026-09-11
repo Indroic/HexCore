@@ -219,6 +219,32 @@ checkers read. See **[Darwin](./darwin/)** for the guides.
 
 ---
 
+## `hexcore.eventsourcing` (53 symbols) — extras depend on the adapter
+
+The event store. The ports and the aggregate need no extras; each adapter only requires its own
+**at the exact moment you ask for it**, which is what lets SQL, Mongo and Redis live on the same
+facade.
+
+| Group | Symbols | Extra |
+| :-- | :-- | :-- |
+| Aggregate | `AggregateRoot`, `when`, `EventRecorder` | — |
+| The persisted event | `StoredEvent`, `EXPECTED_VERSION_ANY`, `EXPECTED_VERSION_NO_STREAM` | — |
+| Ports | `AbstractEventStore`, `AbstractSnapshotStore`, `Snapshot`, `AbstractProjection`, `AbstractCheckpointStore` | — |
+| Exceptions | `EventSourcingError`, `ConcurrencyError`, `AggregateNotFoundError`, `UnhandledEventError` | — |
+| Application | `EventSourcedRepository`, `Projector`, `EventStoreRelay` | — |
+| Configuration | `EventStoreConfig`, `SnapshotConfig`, `ProjectionsConfig`, `EventStoreFactory` | — |
+| In memory | `InMemoryEventStore`, `InMemorySnapshotStore`, `InMemoryCheckpointStore` | — |
+| SQLAlchemy | `SqlAlchemyEventStore`, `SqlAlchemySnapshotStore`, `SqlAlchemyCheckpointStore`, `EventStoreModel`, `SnapshotModel`, `ProjectionCheckpointModel`, `EventStoreMixin`, `SnapshotMixin`, `ProjectionCheckpointMixin`, `create_eventstore_tables`, `drop_eventstore_tables` | `[sql]` |
+| Beanie | `BeanieEventStore`, `BeanieSnapshotStore`, `BeanieCheckpointStore`, `StoredEventDocument`, `SnapshotDocument`, `ProjectionCheckpointDocument`, `init_eventstore_documents` | `[mongo]` |
+| Redis | `RedisEventStore`, `RedisCheckpointStore` | `[redis]` |
+| Container and providers | `EventStoreContainer`, `configure_event_store`, `get_event_store_container`, `reset_event_store`, `provide_event_store`, `provide_snapshot_store`, `provide_checkpoint_store`, `provide_projector` | — |
+
+The exact, typed listing is in the generated stub
+[`hexcore/eventsourcing.pyi`](../../hexcore/eventsourcing.pyi). See
+**[Event Sourcing](./event-sourcing.md)** for the guide.
+
+---
+
 ## Modules without a facade
 
 Some things are imported by their long path because they are niche, and giving them a short name

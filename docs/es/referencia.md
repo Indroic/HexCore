@@ -219,6 +219,32 @@ type checkers. Ver **[Darwin](./darwin/)** para las guías.
 
 ---
 
+## `hexcore.eventsourcing` (53 símbolos) — los extras dependen del adaptador
+
+El event store. Los puertos y el agregado no necesitan extras; cada adaptador exige el suyo
+**en el momento exacto en que se lo pide**, que es lo que permite que SQL, Mongo y Redis
+convivan en la misma fachada.
+
+| Grupo | Símbolos | Extra |
+| :-- | :-- | :-- |
+| Agregado | `AggregateRoot`, `when`, `EventRecorder` | — |
+| El evento persistido | `StoredEvent`, `EXPECTED_VERSION_ANY`, `EXPECTED_VERSION_NO_STREAM` | — |
+| Puertos | `AbstractEventStore`, `AbstractSnapshotStore`, `Snapshot`, `AbstractProjection`, `AbstractCheckpointStore` | — |
+| Excepciones | `EventSourcingError`, `ConcurrencyError`, `AggregateNotFoundError`, `UnhandledEventError` | — |
+| Aplicación | `EventSourcedRepository`, `Projector`, `EventStoreRelay` | — |
+| Configuración | `EventStoreConfig`, `SnapshotConfig`, `ProjectionsConfig`, `EventStoreFactory` | — |
+| En memoria | `InMemoryEventStore`, `InMemorySnapshotStore`, `InMemoryCheckpointStore` | — |
+| SQLAlchemy | `SqlAlchemyEventStore`, `SqlAlchemySnapshotStore`, `SqlAlchemyCheckpointStore`, `EventStoreModel`, `SnapshotModel`, `ProjectionCheckpointModel`, `EventStoreMixin`, `SnapshotMixin`, `ProjectionCheckpointMixin`, `create_eventstore_tables`, `drop_eventstore_tables` | `[sql]` |
+| Beanie | `BeanieEventStore`, `BeanieSnapshotStore`, `BeanieCheckpointStore`, `StoredEventDocument`, `SnapshotDocument`, `ProjectionCheckpointDocument`, `init_eventstore_documents` | `[mongo]` |
+| Redis | `RedisEventStore`, `RedisCheckpointStore` | `[redis]` |
+| Contenedor y providers | `EventStoreContainer`, `configure_event_store`, `get_event_store_container`, `reset_event_store`, `provide_event_store`, `provide_snapshot_store`, `provide_checkpoint_store`, `provide_projector` | — |
+
+El listado exacto y tipado está en el stub generado
+[`hexcore/eventsourcing.pyi`](../../hexcore/eventsourcing.pyi). Ver
+**[Event Sourcing](./event-sourcing.md)** para la guía.
+
+---
+
 ## Módulos que no tienen fachada
 
 Algunas cosas se importan por su ruta larga porque son de nicho, y darles un nombre corto en la
