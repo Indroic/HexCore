@@ -71,6 +71,9 @@ try:
             self._publish_after_commit = publish_after_commit
             self._entidades_del_commit: list[BaseEntity] = []
             self._eventos_por_entidad: dict[int, list[DomainEvent]] = {}
+            # Registro explícito, independiente de session.new/dirty/deleted. Ver los
+            # docstrings de collect_entity() y collect_domain_entities() para el porqué.
+            self._entidades_registradas: list[BaseEntity] = []
             self._inject_repositories()
 
         def _inject_repositories(self) -> None:
@@ -187,25 +190,50 @@ try:
 
         def collect_domain_entities(self) -> t.List[BaseEntity]:
             """
-            Las entidades de dominio que rastrea la sesión, **deduplicadas por identidad**.
+            Las entidades de dominio con eventos por recoger, **deduplicadas por identidad**.
+
+            Junta dos fuentes:
+
+            1. `self._entidades_registradas` — lo que llegó por `collect_entity()`.
+               `SqlAlchemyRepository.save()` la llama explícitamente (vía el decorador
+               `@register_entity_on_uow`) en el momento en que la entidad todavía tiene el
+               link vivo en la pila, sin importar qué le pase después a la sesión.
+            2. `session.new | dirty | deleted` — para quien haga `session.add()` a mano con
+               `set_domain_entity()`, sin pasar por un repositorio.
+
+            La (2) sola —que fue el único mecanismo hasta acá— alcanza sólo si la entidad
+            sigue en esas tres colecciones **en el instante exacto del commit**, y dos cosas
+            se lo comen sin avisar ni tirar excepción:
+
+            - `save_entity()` (el `save()` genérico) hace `session.merge()` seguido de un
+              `flush()` propio. El objeto que `db_save()` devuelve queda persistente y
+              limpio —afuera de `new` y de `dirty`— apenas termina ese `flush()`, mucho antes
+              de que el `commit()` del UoW llegue a mirar la sesión. Ni siquiera hace falta
+              una segunda escritura: un solo `repo.save()` ya alcanza para perder el evento.
+            - Cualquier segunda escritura en el mismo `uow` (una auditoría, otro
+              `repo.save()`) puede disparar un flush de sesión completa que evict-ea a la
+              primera de esas colecciones, aunque el link a la entidad de dominio esté hecho
+              correctamente.
+
+            Por eso (1) no es una comodidad, es lo que hace confiable a un `uow` con más de
+            una escritura antes del commit.
 
             Devuelve una lista y no un `set`, aunque el nombre de la operación pida un
             conjunto: `BaseEntity` es un modelo de pydantic mutable, así que no define
             `__hash__` y **no se puede meter en un set** — `set.add()` levanta
-            `TypeError: unhashable type`.
-
-            Esto nunca saltó porque hasta 9.0 el método no llegaba a ejecutarse con nada
-            adentro: `commit()` recolectaba **después** de comitear, cuando
-            `session.new | dirty | deleted` ya estaban vacías, así que el bucle no daba
-            ninguna vuelta. Un defecto tapaba al otro; al arreglar el orden, éste quedó a la
-            vista.
-
-            Se deduplica por `id()` y no por igualdad porque dos entidades distintas con los
-            mismos campos son iguales para pydantic, y drenarle los eventos a una sola
-            perdería los de la otra.
+            `TypeError: unhashable type`. Se deduplica por `id()` y no por igualdad porque dos
+            entidades distintas con los mismos campos son iguales para pydantic, y drenarle
+            los eventos a una sola perdería los de la otra.
             """
             entidades: t.List[BaseEntity] = []
             vistas: set[int] = set()
+
+            for entity in self._entidades_registradas:
+                if id(entity) in vistas:
+                    continue
+                vistas.add(id(entity))
+                entidades.append(entity)
+
             all_tracked_models = chain(
                 self.session.new, self.session.dirty, self.session.deleted
             )
@@ -216,7 +244,7 @@ try:
                     # `T` sin resolver. El `cast` dice lo que el `assert` de la línea siguiente
                     # comprueba de verdad: acá dentro, el modelo es de una entidad de dominio.
                     modelo = t.cast("BaseModel[BaseEntity]", model)
-                    entity: BaseEntity = modelo.get_domain_entity()
+                    entity = modelo.get_domain_entity()
                     assert isinstance(entity, BaseEntity)
                     if id(entity) in vistas:
                         continue
@@ -255,12 +283,21 @@ try:
             await self._publish(self.collect_domain_events())
 
         def clear_tracked_entities(self) -> None:
-            # No es necesario limpiar entidades en SQL, pero se mantiene para simetría
-            pass
+            self._entidades_registradas.clear()
 
         def collect_entity(self, entity: BaseEntity) -> None:
-            # No es necesario en SQLAlchemy, pero se define para compatibilidad
-            pass
+            """
+            Registra la entidad para que `collect_domain_entities()` la recoja pase lo que
+            pase con el estado de la sesión. Ver el docstring de `collect_domain_entities()`
+            para el porqué hace falta esto además del escaneo de la sesión.
+
+            Registrarla dos veces no la duplica: `SqlAlchemyRepository.save()` pasa por acá
+            en cada `save()`, así que una entidad guardada más de una vez en el mismo `uow`
+            (por ejemplo, un `update` después de un `create`) no se acumula.
+            """
+            if any(trackeada is entity for trackeada in self._entidades_registradas):
+                return
+            self._entidades_registradas.append(entity)
 except NameError:
     # `NameError` y no `ImportError`: el import de arriba ya falló y se tragó, así que lo que
     # falta acá es el **nombre**. Sin `[sql]`, `IUnitOfWork` se queda sin su implementación de

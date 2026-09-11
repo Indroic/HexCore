@@ -30,6 +30,9 @@ from hexcore.infrastructure.eventsourcing.sqlalchemy_models import (  # noqa: E4
 from hexcore.infrastructure.eventsourcing.sqlalchemy_store import (  # noqa: E402
     SqlAlchemyEventStore,
 )
+from hexcore.infrastructure.repositories.implementations import (  # noqa: E402
+    SqlAlchemyRepository,
+)
 from hexcore.infrastructure.repositories.orms.sqlalchemy import Base, BaseModel  # noqa: E402
 from hexcore.infrastructure.uow import SqlAlchemyUnitOfWork  # noqa: E402
 
@@ -50,6 +53,23 @@ class CosaModel(BaseModel[Cosa]):
     __tablename__ = "cosas_de_prueba_es"
 
     nombre: Mapped[str] = mapped_column(String(50), default="x")
+
+
+class CosaRepository(SqlAlchemyRepository[Cosa, CosaModel]):
+    """El repositorio real —no el patrón manual de `guardar_cosa()`— para las regresiones
+    de `save_entity()` que no se pueden ver con `session.add()` a mano."""
+
+    @property
+    def entity_cls(self) -> type[Cosa]:
+        return Cosa
+
+    @property
+    def model_cls(self) -> type[CosaModel]:
+        return CosaModel
+
+    @property
+    def not_found_exception(self) -> type[Exception]:
+        return ValueError
 
 
 class BusQueGraba(AbstractEventBus):
@@ -104,6 +124,25 @@ def armar_uow(
         patch(
             "hexcore.infrastructure.uow.discover_sql_repositories",
             return_value={"dummy": lambda uow: object()},
+        ),
+    ):
+        return SqlAlchemyUnitOfWork(session=session, **opciones)
+
+
+def armar_uow_con_repo(
+    session: t.Any, bus: AbstractEventBus, **opciones: t.Any
+) -> SqlAlchemyUnitOfWork:
+    """El UoW real, con `CosaRepository` inyectado como `uow.cosas` — a diferencia de
+    `armar_uow()`, acá el `save()` pasa de verdad por `SqlAlchemyRepository.save()` y por
+    `save_entity()`, que es donde vive la regresión que este módulo reproduce."""
+    with (
+        patch(
+            "hexcore.infrastructure.uow.LazyConfig.get_config",
+            return_value=_ConfigConBus(bus),
+        ),
+        patch(
+            "hexcore.infrastructure.uow.discover_sql_repositories",
+            return_value={"cosas": CosaRepository},
         ),
     ):
         return SqlAlchemyUnitOfWork(session=session, **opciones)
@@ -258,6 +297,68 @@ class TestConEventStore:
             await uow.commit()
 
         assert len(bus.publicados) == 1
+
+
+class TestElRegistroExplicitoDeEntidades:
+    """
+    `guardar_cosa()` linkea la entidad a mano y hace `session.add()` directo: nunca pasa por
+    `save_entity()` ni dispara un flush antes del `commit()`, así que no puede reproducir la
+    regresión reportada contra un downstream real. Estos tests usan `CosaRepository.save()`
+    de verdad —el mismo camino que `SqlAlchemyRepository.save()`— para probarla.
+    """
+
+    async def test_un_save_sobrevive_al_flush_interno_de_save_entity(
+        self, motor: t.Any, bus: BusQueGraba
+    ):
+        """
+        `save_entity()` hace `session.merge()` + `session.flush()` + `session.refresh()`
+        puertas adentro. Ese flush deja al objeto guardado fuera de `session.new` y de
+        `session.dirty` **antes** de que el `commit()` del UoW llegue a escanear la sesión:
+        con un solo `collect_entity()` explícito de por medio, ni siquiera hace falta una
+        segunda escritura para perder el evento.
+        """
+        fabrica = async_sessionmaker(motor, expire_on_commit=False)
+
+        async with fabrica() as session:
+            uow = armar_uow_con_repo(session, bus)
+            entidad = Cosa()
+            entidad.register_event(CosaCreada())
+            await uow.cosas.save(entidad)
+            await uow.commit()
+
+        assert len(bus.publicados) == 1, (
+            "el evento de un unico repo.save() se perdio: save_entity() flushea antes del "
+            "commit y el escaneo de session.new/dirty/deleted ya no lo encuentra"
+        )
+
+    async def test_una_segunda_escritura_no_tapa_la_primera(
+        self, motor: t.Any, bus: BusQueGraba
+    ):
+        """
+        El caso central del reporte: una segunda escritura en el mismo `uow` (acá, otro
+        `repo.save()`; en un downstream real puede ser una auditoria) flushea la sesion
+        entera y evict-ea a la primera entidad de `session.new`/`dirty`, aunque el link a la
+        entidad de dominio este bien hecho.
+        """
+        fabrica = async_sessionmaker(motor, expire_on_commit=False)
+
+        async with fabrica() as session:
+            uow = armar_uow_con_repo(session, bus)
+
+            primera = Cosa(nombre="primera")
+            primera.register_event(CosaCreada())
+            await uow.cosas.save(primera)
+
+            segunda = Cosa(nombre="segunda")
+            segunda.register_event(CosaCreada())
+            await uow.cosas.save(segunda)
+
+            await uow.commit()
+
+        assert len(bus.publicados) == 2, (
+            "el segundo repo.save() tapo al primero: cada flush intermedio evict-ea de "
+            "session.new/dirty a lo que ya se habia guardado antes"
+        )
 
 
 class TestLaDoblePublicacion:
