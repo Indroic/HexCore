@@ -1,3 +1,9 @@
+## 9.0.1 (2026-09-11)
+
+### Fix
+
+- **uow**: SqlAlchemyUnitOfWork ya no pierde eventos con más de una escritura
+
 ## 9.0.0 (2026-09-11)
 
 ### BREAKING CHANGE
