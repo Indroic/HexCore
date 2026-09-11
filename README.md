@@ -178,7 +178,8 @@ Both generate a root `config.py` and leave Alembic configured. See
 
 | Series | Status | What it means |
 | :-- | :-- | :-- |
-| **8.x** | ✅ **Active** | The only supported one. Receives features and fixes. Ships Darwin. |
+| **9.x** | ✅ **Active** | The only supported one. Receives features and fixes. Adds the event store and Event Sourcing, and leaves a single event bus port. |
+| **8.x** | ⛔ **Deprecated** | Ships Darwin. Migrating to 9.x is mechanical: the two deprecated names still resolve and warn. |
 | **7.x** | ⛔ **Deprecated** | Removes the pre-5.0 surface and fixes the CORS and rate-limiting defects. No Darwin: it shipped before the module landed on `master`. |
 | **6.x** | ⛔ **Deprecated** | No longer receives fixes. Contains the CORS and rate-limiting security defects fixed in 7.0, and the pre-5.0 aliases still present. |
 | **5.x** | ⛔ **Deprecated** | Same API surface as 6.x. |
@@ -187,7 +188,7 @@ Both generate a root `config.py` and leave Alembic configured. See
 | **2.x** | ⛔ **Deprecated** | Contains silent bugs fixed in 5.x: the worker re-enqueued instead of executing, the cron skipped or duplicated runs, and a Redis outage switched off the entire cron. |
 | **1.x** | ⛔ **Deprecated** | No support of any kind. |
 
-**Everything before 8.0 is deprecated. Migrate to 8.x.** The detail of each series, the silent
+**Everything before 9.0 is deprecated. Migrate to 9.x.** The detail of each series, the silent
 2.x bugs and the step-by-step guides are in
 [versions and migration](./docs/en/versions-and-migration.md) ·
 [versiones y migración](./docs/es/versiones-y-migracion.md).
