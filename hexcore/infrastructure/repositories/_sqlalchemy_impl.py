@@ -28,6 +28,7 @@ import typing as t
 from uuid import UUID
 
 from hexcore.application.dtos.query import QueryRequestDTO
+from hexcore.infrastructure.uow.decorators import register_entity_on_uow
 
 from .base import BaseSQLAlchemyRepository, T
 from .implementations import HasBasicArgs
@@ -118,6 +119,7 @@ class SqlAlchemyRepository(
         ]
         return CursorPageDTO[T](items=entities, next_cursor=next_cursor)
 
+    @register_entity_on_uow
     async def save(self, entity: T) -> T:
         saved = await sql_save_entity(
             self.session,

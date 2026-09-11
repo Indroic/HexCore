@@ -413,6 +413,14 @@ async def save_entity(
     if relations:
         await assign_relations(session, model_instance, relations)
     saved = await db_save(session, model_instance)
+    if hasattr(saved, "set_domain_entity"):
+        # `session.merge()`, adentro de `db_save()`, copia los valores de columna a **otro**
+        # objeto (`saved`) y no copia atributos Python arbitrarios como el que `to_model()`
+        # dejó en `model_instance` — el link a la entidad de dominio se pierde con el merge.
+        # Sin este re-link, el objeto que de verdad queda trackeado por la sesión nunca
+        # resuelve `get_domain_entity()`, y el escaneo de `session.new/dirty/deleted` en
+        # `collect_domain_entities()` no lo puede identificar como entidad de dominio.
+        saved.set_domain_entity(entity)
     return saved
 
 
