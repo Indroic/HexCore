@@ -1,3 +1,69 @@
+## 9.0.0 (2026-09-11)
+
+### BREAKING CHANGE
+
+- SqlAlchemyUnitOfWork.commit() recolecta los eventos ANTES de
+comitear. El orden anterior era un defecto silencioso: comiteaba primero y recien
+despues llamaba a collect_domain_events(), que recorre session.new|dirty|deleted
+-- y post-commit esas tres colecciones estan vacias. O sea que el UoW no recogia
+ningun evento y no publicaba nada, sin error y sin log. Toda aplicacion que use
+este UoW empieza a recibir eventos que antes no llegaban, asi que un handler
+suscrito y nunca ejecutado ahora se ejecuta.
+- collect_domain_entities() devuelve una lista, no un set.
+BaseEntity es un modelo de pydantic mutable, asi que no define __hash__ y
+set.add() levanta TypeError: unhashable type. Nunca salto porque el metodo no
+llegaba a ejecutarse con nada adentro -- un defecto tapaba al otro. Se deduplica
+por identidad y no por igualdad, porque dos entidades distintas con los mismos
+campos son iguales para pydantic y drenarle los eventos a una sola perderia los
+de la otra.
+- hexcore.domain.events.EventBus queda como alias deprecado de
+AbstractEventBus y se elimina en 10.0. Se aliasa al reemplazo porque los dos
+ABCs eran estructuralmente identicos: lo unico que cambia es que un bus que
+subclaseaba el viejo ahora si pasa el issubclass contra AbstractEventBus.
+- hexcore.infrastructure.events.events_backends.memory.InMemoryEventBus
+queda deprecado en favor del de hexcore.cqrs, que es un superconjunto estricto.
+El paquete hexcore.infrastructure.events entero se elimina en 10.0.
+- los buses de eventos despachan por MRO. Un handler suscrito a
+una clase base ahora recibe sus subclases, donde antes no recibia nada. Los
+handlers registrados en dos niveles corren una sola vez.
+- DomainEvent.event_name usa removesuffix en vez de replace, que
+quitaba todas las apariciones: EventLogCreatedEvent daba "LOGCREATED". Esto
+cambia las routing keys de RabbitMQEventBus, y rabbitmq.py reimplementaba la
+misma heuristica del lado del subscribe -- las dos cambian en este commit, o el
+publisher rutearia con una clave y el binding del consumidor estaria armado con
+la otra, y AMQP descarta lo que no matchea sin ningun error. Un despliegue con
+mensajes en vuelo necesita bindear las dos claves durante una version.
+- ServerConfig.event_bus usa default_factory. El default anterior
+se evaluaba una vez al definir la clase, asi que todo ServerConfig del proceso
+compartia el mismo bus y el mismo diccionario de handlers.
+- RedisEventBus confirma el mensaje despues de que los handlers
+terminan, no antes. El xack estaba dentro del try y se ejecutaba igual cuando un
+handler fallaba, asi que el mensaje salia del PEL y se perdia. Ahora queda
+pendiente y se puede reclamar con XAUTOCLAIM.
+
+### Feat
+
+- **eventsourcing**: configuracion declarativa, contenedor y fachada publica
+- **eventsourcing**: adaptadores sobre MongoDB y sobre Redis Streams
+- **eventsourcing**: el UoW persiste los eventos antes de comitear, y el relay
+- **eventsourcing**: adaptador del event store sobre SQLAlchemy
+- **cqrs**: un solo puerto de bus de eventos, y despacho por jerarquia
+- **eventsourcing**: Projector con checkpoint, rebuild y ventana de seguridad
+- **eventsourcing**: EventSourcedRepository
+- **eventsourcing**: adaptadores en memoria del store, snapshots y checkpoints
+- **eventsourcing**: AggregateRoot con replay, version y snapshots
+- **eventsourcing**: los puertos del event store
+- **cqrs**: handlers_for resuelve handlers por jerarquia de eventos
+
+### Fix
+
+- **testing**: FakeUnitOfWork lee los eventos donde BaseEntity los guarda
+- **deprecation**: REMOVED_IN vuelve a apuntar a un major futuro
+
+### Refactor
+
+- **domain**: extrae EventRecorder de BaseEntity
+
 ## 8.0.0 (2026-08-27)
 
 ### BREAKING CHANGE
