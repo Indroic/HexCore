@@ -19,17 +19,24 @@ from pathlib import Path
 
 import pytest
 
+#: Deliberadamente **no** importado de `rutas.py`: este archivo mide con su propio cálculo,
+#: independiente del que usan los anclajes de producción. Si `rutas.py` tuviera un bug, un
+#: test que reusara su cómputo no lo detectaría nunca — mediría el mismo número equivocado
+#: dos veces y pasaría en verde igual.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PAQUETE = REPO_ROOT / "hexcore"
 
-#: Los mismos 11 archivos de §1.2 del plan de monorepo: 3 scripts + 8 tests que anclan con
-#: `Path(__file__).resolve().parent.parent`. Si uno de estos deja de anclar correctamente,
-#: el archivo pasa a apuntar a un directorio ajeno sin que ningún import falle.
+#: Los 12 archivos que anclan con `from rutas import ...` / `from _rutas import ...` (antes
+#: de centralizarlos, cada uno recalculaba `Path(__file__).resolve().parent.parent` a mano).
+#: Si uno de estos deja de anclar correctamente, el archivo pasa a apuntar a un directorio
+#: ajeno sin que ningún import falle.
 ARCHIVOS_CON_ANCLA = (
+    "scripts/_rutas.py",
     "scripts/gen_stubs.py",
     "scripts/house_rules.py",
     "scripts/stub_quality.py",
     "scripts/typing_ratchet.py",
+    "tests/rutas.py",
     "tests/test_darwin_backend_neutrality.py",
     "tests/test_darwin_cli.py",
     "tests/test_darwin_models.py",

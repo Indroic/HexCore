@@ -40,11 +40,10 @@ import pathlib
 import sys
 import typing as t
 
-RAIZ = pathlib.Path(__file__).resolve().parent.parent
-PAQUETE = RAIZ / "hexcore"
+from _rutas import FUENTE, PAQUETE
 
-#: Piso anti-verde-falso: hoy `PAQUETE.rglob("*.py")` recorre 240 archivos. Si una
-#: reorganización de directorios (por ejemplo, un monorepo) deja `PAQUETE` apuntando a un
+#: Piso anti-verde-falso: hoy `FUENTE.rglob("*.py")` recorre 240 archivos. Si una
+#: reorganización de directorios (por ejemplo, un monorepo) deja `FUENTE` apuntando a un
 #: directorio vacío o inexistente, `rglob` no lanza — devuelve cero resultados, el bucle no
 #: entra nunca a `_revisar()`, y el script imprime "en verde" habiendo revisado nada. El piso
 #: convierte ese silencio en un fallo ruidoso.
@@ -66,7 +65,7 @@ def _es_type_checking(prueba: ast.expr) -> bool:
 
 
 def _revisar(archivo: pathlib.Path) -> list[Falta]:
-    rel = archivo.relative_to(RAIZ).as_posix()
+    rel = archivo.relative_to(PAQUETE).as_posix()
     try:
         arbol = ast.parse(archivo.read_text(encoding="utf-8"))
     except SyntaxError as exc:
@@ -129,15 +128,15 @@ def _revisar(archivo: pathlib.Path) -> list[Falta]:
 def main() -> int:
     archivos = [
         archivo
-        for archivo in sorted(PAQUETE.rglob("*.py"))
+        for archivo in sorted(FUENTE.rglob("*.py"))
         if "__pycache__" not in archivo.parts
     ]
 
     if len(archivos) < PISO_DE_ARCHIVOS:
         print(
-            f"::error::Sólo se encontraron {len(archivos)} archivo(s) bajo {PAQUETE} — "
+            f"::error::Sólo se encontraron {len(archivos)} archivo(s) bajo {FUENTE} — "
             f"menos que el piso de {PISO_DE_ARCHIVOS}. Antes de asumir que la regla está en "
-            f"verde, revisá si {PAQUETE} sigue siendo la ruta correcta del paquete (por "
+            f"verde, revisá si {FUENTE} sigue siendo la ruta correcta del paquete (por "
             f"ejemplo, tras mover directorios)."
         )
         return 1

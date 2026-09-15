@@ -21,13 +21,11 @@ from __future__ import annotations
 import importlib
 import tomllib
 import warnings
-from pathlib import Path
 
 import pytest
 
 from hexcore._deprecation import REMOVED_IN
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from rutas import PAQUETE as REPO_ROOT
 
 
 @pytest.fixture
@@ -431,10 +429,7 @@ def test_la_fecha_de_remocion_sigue_estando_en_el_futuro():
     removés lo deprecado, o corrés la constante, pero no podés releasear con la promesa
     vencida.
     """
-    import tomllib
-    from pathlib import Path
-
-    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    pyproject = REPO_ROOT / "pyproject.toml"
     version = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
 
     major_actual = int(version.split(".")[0])

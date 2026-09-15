@@ -36,7 +36,8 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from _rutas import PAQUETE as REPO_ROOT
+
 BASELINE_PATH = REPO_ROOT / "typing-baseline.json"
 
 #: Banda muerta de la completeness, en puntos porcentuales. Sin ella, el ruido de coma

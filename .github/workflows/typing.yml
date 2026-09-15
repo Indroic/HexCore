@@ -49,6 +49,9 @@ jobs:
   house-rules:
     name: "Regla de tipado de la casa"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/hexcore
 
     steps:
       - name: Checkout code
@@ -72,6 +75,9 @@ jobs:
   stubs-drift:
     name: "Stubs sincronizados con _EXPORTS"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/hexcore
 
     steps:
       - name: Checkout code
@@ -93,6 +99,9 @@ jobs:
   typecheck:
     name: "Pyright strict sobre hexcore/"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/hexcore
 
     steps:
       - name: Checkout code
@@ -128,12 +137,18 @@ jobs:
       - name: Anotaciones en el PR
         # Un `::error file=…,line=…::` por diagnóstico, así el error aparece **en la línea**
         # del diff y no hay que abrir el log. No falla el job: el veredicto es del ratchet.
+        #
+        # La anotación necesita la ruta relativa a la raíz del **repo** (para que GitHub la
+        # ubique en el diff del PR), no a la raíz del **paquete**. Con `working-directory:
+        # packages/hexcore`, `Path.cwd()` ya no es la raíz del repo — `GITHUB_WORKSPACE` sí lo
+        # es siempre, sin importar el `working-directory` del job.
         run: |
           uv run python - <<'PY'
           import json
+          import os
           from pathlib import Path
 
-          raiz = Path.cwd()
+          raiz = Path(os.environ["GITHUB_WORKSPACE"])
           reporte = json.load(open("pyright.json", encoding="utf-8"))
           for d in reporte.get("generalDiagnostics", []):
               if d.get("severity") != "error":
@@ -169,6 +184,9 @@ jobs:
   no-extras-import:
     name: "Imports sin ningún extra"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/hexcore
 
     steps:
       - name: Checkout code
@@ -204,6 +222,9 @@ jobs:
   extras-matrix:
     name: "Extra ${{ matrix.extra }}"
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/hexcore
 
     # El punto ciego que esto cierra: hasta acá CI instalaba `--extra all` y nada más. Con
     # todo puesto, un extra al que le falta una dependencia declarada anda igual, porque se la

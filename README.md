@@ -1,265 +1,28 @@
-# HexCore [![PyPI Downloads](https://static.pepy.tech/personalized-badge/hexcore?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/hexcore)
+# HexCore — monorepo
 
-A reusable core for Python applications built on **hexagonal architecture**, **DDD**, **CQRS**
-and **background tasks**. HexCore ships the abstractions (entities, repositories, unit of work,
-buses) *and* the infrastructure every project otherwise rewrites: the SQL session layer, the
-FastAPI factories, the worker runner, the dynamic cron, identity, and the testing utilities.
+Este repositorio es un monorepo con dos paquetes:
 
-The design goal is that the happy path takes **zero configuration**: `create_app()` with no
-arguments gives you a usable app, `init_engine()` with no arguments gives you a
-production-correct engine.
+- **[`packages/hexcore/`](./packages/hexcore/)** — la librería Python de arquitectura
+  hexagonal + DDD + CQRS, publicada en PyPI como `hexcore`. Es el paquete original de este
+  repo; toda su documentación vive en [`packages/hexcore/README.md`](./packages/hexcore/README.md)
+  y en [`packages/hexcore/docs/`](./packages/hexcore/docs/).
+- **`packages/darwin-client/`** — cliente TypeScript agnóstico de framework, runtime y backend
+  para Darwin (el módulo de identidad de HexCore), publicado en npm como
+  `@hexcore/darwin-client`.
 
-> 🇪🇸 **¿Preferís español?** La documentación está completa en los dos idiomas:
-> **[docs/es/](./docs/es/)**.
+## Por qué un monorepo
 
-```python
-# main.py — a complete HexCore app
-from hexcore.fastapi import build_lifespan, create_app, SqlEngineStep
+Darwin expone su contrato HTTP sólo desde el código Python: sin un cliente TypeScript
+versionado junto al servidor, cualquier frontend reimplementa a mano el refresh rotativo, el
+CSRF double-submit y la elección de transporte — y equivocarse en cualquiera de los tres es un
+bug de seguridad, no de comodidad. Tener los dos paquetes en el mismo repo permite un gate de
+CI que falla cuando el cliente y el servidor divergen.
 
-app = create_app(
-    lifespan=build_lifespan(SqlEngineStep()),
-    routers=[users_router, tickets_router],
-)
+## Desarrollo
+
+```bash
+cd packages/hexcore && uv run pytest -q
 ```
 
-```python
-# worker.py — the complete worker, with cron, mutual death and SIGTERM
-import hexcore.cqrs as cqrs
-
-await cqrs.run_procrastinate_worker(
-    procrastinate_app,
-    queues=["default", "reactive"],
-    scheduler=cqrs.DynamicScheduler(repo, enqueuer, lock_provider=lock),
-    on_startup=[lambda: cqrs.seed_cron_jobs(CRON_JOBS)],
-)
-```
-
----
-
-## 📚 Documentation
-
-**→ [`docs/`](./docs/) — 🇬🇧 [English](./docs/en/) · 🇪🇸 [español](./docs/es/)**
-
-| | English | Español |
-| :-- | :-- | :-- |
-| Installation and extras | [installation](./docs/en/installation.md) | [instalacion](./docs/es/instalacion.md) |
-| Quickstart | [quickstart](./docs/en/quickstart.md) | [inicio-rapido](./docs/es/inicio-rapido.md) |
-| Configuration | [configuration](./docs/en/configuration.md) | [configuracion](./docs/es/configuracion.md) |
-| SQL layer | [sql](./docs/en/sql.md) | [sql](./docs/es/sql.md) |
-| Repositories and entities | [repositories](./docs/en/repositories.md) | [repositorios](./docs/es/repositorios.md) |
-| FastAPI utilities | [fastapi](./docs/en/fastapi.md) | [fastapi](./docs/es/fastapi.md) |
-| CQRS architecture | [cqrs](./docs/en/cqrs.md) | [cqrs](./docs/es/cqrs.md) |
-| Queues and workers | [queues-and-workers](./docs/en/queues-and-workers.md) | [colas-y-workers](./docs/es/colas-y-workers.md) |
-| Scheduled tasks | [cron](./docs/en/cron.md) | [cron](./docs/es/cron.md) |
-| **Event Sourcing** | [event-sourcing](./docs/en/event-sourcing.md) | [event-sourcing](./docs/es/event-sourcing.md) |
-| Testing | [testing](./docs/en/testing.md) | [testing](./docs/es/testing.md) |
-| CLI | [cli](./docs/en/cli.md) | [cli](./docs/es/cli.md) |
-| **Darwin** (identity) | [darwin/](./docs/en/darwin/) | [darwin/](./docs/es/darwin/) |
-| API reference | [reference](./docs/en/reference.md) | [referencia](./docs/es/referencia.md) |
-| Versions and migration | [versions-and-migration](./docs/en/versions-and-migration.md) | [versiones-y-migracion](./docs/es/versiones-y-migracion.md) |
-| Typing | [typing](./docs/en/typing.md) | [tipado](./docs/es/tipado.md) |
-
----
-
-## Installation
-
-```sh
-pip install hexcore
-```
-
-Requires Python ≥ 3.12. HexCore pulls in no heavy dependencies: everything that is not the core
-lives in **extras**, and the modules that need them only import them when you use them.
-
-```sh
-pip install "hexcore[api,sql,procrastinate]"
-pip install "hexcore[darwin-sqlalchemy]"
-pip install "hexcore[all]"
-```
-
-| Group | Extras |
-| :-- | :-- |
-| Core | `api`, `sql`, `mongo`, `redis`, `rabbitmq`, `procrastinate`, `celery` |
-| Identity | `darwin`, `darwin-sqlalchemy`, `darwin-beanie`, `darwin-magic-link`, `darwin-two-factor`, `darwin-oauth`, `darwin-impersonate`, `darwin-passkey`, `darwin-organization` |
-| Everything | `all` |
-
-The full table, with what each one enables, is in
-[installation](./docs/en/installation.md) · [instalación](./docs/es/instalacion.md).
-
-> `import hexcore.cqrs` works with no extras at all: name resolution is lazy, so
-> `hexcore.cqrs.SqlAlchemyCronJobRepository` only requires `[sql]` at the moment you ask for it.
-
----
-
-## The four imports
-
-There is one facade module per task. They re-export the public surface **without moving
-anything**: the long paths keep resolving to the same object.
-
-```python
-import hexcore.fastapi as hx     # create_app, build_lifespan, providers, middlewares, health
-import hexcore.cqrs as cqrs      # Command, Query, handlers, decorators, buses, worker, cron
-import hexcore.sql as sql        # init_engine, session_scope, uow_scope, Base, query DTOs
-import hexcore.darwin as darwin  # IdentityConfig, configure_identity, build_identity_router
-```
-
-The facades expose **only the canonical names**. The historical `I*` aliases were removed in
-7.0 — see [Removed API](#removed-api-and-its-replacement).
-
----
-
-## What you get, at a glance
-
-| You need | API | Extra |
-| :-- | :-- | :-- |
-| A wired-up FastAPI app | `hx.create_app()`, `hx.AppFeatures` | `api` |
-| Orchestrated startup and shutdown | `hx.build_lifespan()` + steps | `api` |
-| SQL engine and sessions | `sql.init_engine()`, `sql.PoolSettings` | `sql` |
-| A session or UoW outside a request | `sql.session_scope()`, `sql.uow_scope()` | `sql` |
-| Health checks that actually probe | `hx.register_health_routes()` | `api` |
-| Rate limiting | `hx.rate_limit()` | `api` |
-| SSE / WebSocket / connection caps | `hx.sse_stream()`, `hx.connection_slot()` | `api` |
-| Commands, queries and events | `cqrs.Command`, `cqrs.Query`, `cqrs.HandlerRegistry` | — |
-| Running work in the background | `cqrs.background_command`, `cqrs.background_task` | — |
-| The worker entrypoint | `cqrs.run_cqrs_worker()`, `cqrs.run_procrastinate_worker()` | — |
-| Cron you can edit without a restart | `cqrs.DynamicScheduler`, `cqrs.SqlAlchemyCronJobRepository` | `sql` |
-| Distributed locks | `cqrs.RedisLockProvider`, `cqrs.PostgresLockProvider` | `redis` / `sql` |
-| Identity and authentication | `darwin.configure_identity()`, `darwin.build_identity_router()` | `darwin` + storage |
-| Testing all of the above | `hexcore.testing` | — |
-
----
-
-## Darwin: the identity module
-
-Registration, email verification, sign-in, sessions with rotating refresh, revocation, audited
-impersonation, and a plugin system that adds second factor, OAuth, magic links, passkeys and
-organizations without the core knowing about them.
-
-```python
-from hexcore.darwin import (
-    IdentityConfig,
-    build_identity_router,
-    configure_identity,
-    identity_startup_steps,
-)
-from hexcore.fastapi import AppFeatures, SqlEngineStep, build_lifespan, create_app
-
-configure_identity(IdentityConfig())
-
-app = create_app(
-    features=AppFeatures(auth_context=True, csrf=True),
-    lifespan=build_lifespan(SqlEngineStep(), *identity_startup_steps()),
-    routers=[build_identity_router()],
-)
-```
-
-⚠️ If you use SQL, the most important thing to read before deploying is the Alembic section:
-[storage](./docs/en/darwin/storage.md) · [almacenamiento](./docs/es/darwin/almacenamiento.md).
-A plugin missing from your `env.py` makes `alembic revision --autogenerate` emit
-`op.drop_table` for its tables.
-
----
-
-## Project templates (CLI)
-
-```sh
-hexcore init my_project --template hexagonal
-hexcore init my_project --template vertical-slice
-```
-
-- `hexagonal` → `src/domain`, `src/application`, `src/infrastructure`.
-- `vertical-slice` → `src/features`, `src/shared/{domain,application,infrastructure}`.
-
-Both generate a root `config.py` and leave Alembic configured. See
-[CLI](./docs/en/cli.md) · [CLI](./docs/es/cli.md).
-
----
-
-## Versions and support
-
-| Series | Status | What it means |
-| :-- | :-- | :-- |
-| **9.x** | ✅ **Active** | The only supported one. Receives features and fixes. Adds the event store and Event Sourcing, and leaves a single event bus port. |
-| **8.x** | ⛔ **Deprecated** | Ships Darwin. Migrating to 9.x is mechanical: the two deprecated names still resolve and warn. |
-| **7.x** | ⛔ **Deprecated** | Removes the pre-5.0 surface and fixes the CORS and rate-limiting defects. No Darwin: it shipped before the module landed on `master`. |
-| **6.x** | ⛔ **Deprecated** | No longer receives fixes. Contains the CORS and rate-limiting security defects fixed in 7.0, and the pre-5.0 aliases still present. |
-| **5.x** | ⛔ **Deprecated** | Same API surface as 6.x. |
-| **4.x** | ⛔ **Deprecated** | **Partial** application: missing the Celery event-loop fix, the facades, and the aligned documentation. |
-| **3.x** | ⛔ **Deprecated** | **Partial** application: has the P0/P1 fixes but none of the FastAPI factories. |
-| **2.x** | ⛔ **Deprecated** | Contains silent bugs fixed in 5.x: the worker re-enqueued instead of executing, the cron skipped or duplicated runs, and a Redis outage switched off the entire cron. |
-| **1.x** | ⛔ **Deprecated** | No support of any kind. |
-
-**Everything before 9.0 is deprecated. Migrate to 9.x.** The detail of each series, the silent
-2.x bugs and the step-by-step guides are in
-[versions and migration](./docs/en/versions-and-migration.md) ·
-[versiones y migración](./docs/es/versiones-y-migracion.md).
-
-### Removed API and its replacement
-
-The v1/v2 aliases were deprecated since 5.0 — two full majors of notice — and were removed in
-7.0. The replacement is mechanical: they are renames, not behavior changes.
-
-| Removed in 7.0 (was v1/v2) | Use instead |
-| :-- | :-- |
-| `ICommandBus`, `IQueryBus`, `IEventBus` | `AbstractCommandBus`, `AbstractQueryBus`, `AbstractEventBus` |
-| `ICommandHandler`, `IQueryHandler` | `AbstractCommandHandler`, `AbstractQueryHandler` |
-| `IMiddleware` | `AbstractMiddleware` |
-| `ISerializer` | `AbstractSerializer` |
-| `IEventDispatcher` | `EventBus` |
-| `EventBus.register()` / `.dispatch()` | `EventBus.subscribe()` / `.publish()` |
-| `ServerConfig.event_dispatcher` | `ServerConfig.event_bus` |
-| `SQLAlchemyCommonImplementationsRepo` | `SqlAlchemyRepository` |
-| `BeanieODMCommonImplementationsRepo` | `BeanieRepository` |
-| `NoSqlUnitOfWork` | `BeanieUnitOfWork` |
-| `reset_sqlalchemy_engine()` | `dispose_engine()` |
-| `MiddlewareConfig` | **Removed in 3.0.** It was dead code: never read. |
-
-Passing `event_dispatcher=` to `ServerConfig` **fails with an error that says what to use**,
-rather than being silently ignored: pydantic discards keyword arguments it does not know, and
-keeping the default bus without noticing would surface much later as "my events never arrive".
-
-If you are still on 6.x, run your tests with warnings visible to see what you have left to
-migrate:
-
-```sh
-python -m pytest -W "default::DeprecationWarning"
-```
-
----
-
-## Contributing
-
-1. **Code of conduct** — read the [Code of Conduct](CODE_OF_CONDUCT.md) before interacting.
-2. **Branches** — fork and create a branch (`feat/name`, `fix/name`, `docs/name`).
-3. **Tests** — every fix lands with at least one test that fails before and passes after:
-
-   ```sh
-   uv sync --extra all --group dev
-   uv run python -m pytest -q
-   ```
-
-   CI fails if any test is **skipped**: a skip means an extra is missing, and we would be
-   reporting green without having run half the suite.
-4. **Typecheck** — `uv run pyright hexcore`. The verdict comes from the ratchet, not the exit
-   code: see [typing](./docs/en/typing.md) · [tipado](./docs/es/tipado.md).
-5. **Style** — [PEP8](https://pep8.org/). Comment the *why*, not the *what*.
-6. **Commits** — [Commitizen](https://commitizen-tools.github.io/commitizen/): `feat:`, `fix:`,
-   `docs:`, `refactor:`, and `!` for breaking changes. The version bump and the CHANGELOG are
-   automatic on merge to `master`.
-7. **PRs** — describe the problem, the reproduction, the solution and **why that option**.
-
-Full detail in [CONTRIBUTING.md](CONTRIBUTING.md).
-
-### Project skills
-
-There is a set of skills for extending HexCore in VS Code and compatible environments:
-[HexCore Skills repository](https://github.com/Indroic/hexcore-skill).
-
----
-
-## References
-
-- [docs/](./docs/) — the complete documentation, in English and Spanish.
-- [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md) — type system and stubs.
-- [CHANGELOG.md](./CHANGELOG.md) — change history.
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — collaboration guidelines.
-- [SECURITY.md](./SECURITY.md) — security policy.
+Ver `CONTRIBUTING.md` para el flujo completo de contribución, incluido el layout de
+`packages/` y por qué.
