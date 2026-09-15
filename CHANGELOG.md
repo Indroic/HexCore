@@ -1,3 +1,13 @@
+## hexcore-v9.3.0 (2026-09-15)
+
+### Feat
+
+- **darwin-client**: esqueleto del paquete + capa de transporte
+
+### Fix
+
+- **ci**: working-directory de node.yml a nivel de job, no de workflow
+
 ## hexcore-v9.2.1 (2026-09-15)
 
 ### Fix
