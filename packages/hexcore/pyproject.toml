@@ -186,7 +186,17 @@ namespaces = false
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-tag_format = "$version"
+# Con dos paquetes en el mismo repo, un tag sin prefijo es ambiguo: un `0.1.0` del cliente TS
+# publicaría a PyPI si `publish-to-pypi.yml` sigue disparando con `push: tags: ['*']`.
+tag_format = "hexcore-v$version"
+# Los tags publicados hasta 9.0.1 son números pelados (`9.0.1`, no `hexcore-v9.0.1`). Sin esta
+# lista, `cz bump` no reconoce ninguno como versión anterior, no encuentra el punto de partida,
+# y `cz changelog` regenera el archivo entero desde el primer commit. No se tocan: PyPI no los
+# mira y las releases conservan su `tag_name`.
+legacy_tag_formats = ["$version"]
+# Los tres tags de la prehistoria (`v1.3.1a`, `v1.3.1b`, `v1.3.2`) no son versiones PEP 440
+# válidas y `cz` los rechaza al parsearlos si no se ignoran explícitamente.
+ignored_tag_formats = ["v$version"]
 version_scheme = "pep440"
 version_provider = "uv"
 update_changelog_on_bump = false
