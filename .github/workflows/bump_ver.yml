@@ -8,8 +8,8 @@ name: Bump version
 #
 # El checkout usa `PERSONAL_ACCESS_TOKEN` y no `GITHUB_TOKEN` a propósito: un push hecho con
 # `GITHUB_TOKEN` no dispara otros workflows (protección de GitHub contra recursión), y
-# `publish-to-pypi.yml` necesita que el `git push --follow-tags` de este job dispare el
-# workflow de publicación por el tag. Con `GITHUB_TOKEN` ese disparo nunca llega.
+# `publish-to-pypi.yml` necesita que el push de este job dispare el workflow de publicación
+# por el tag. Con `GITHUB_TOKEN` ese disparo nunca llega.
 #
 # Verificar antes de depender de este workflow para una release real: que
 # `PERSONAL_ACCESS_TOKEN` sea un token con permiso de escritura sobre contenidos de este repo
@@ -48,17 +48,27 @@ jobs:
       - name: Install commitizen
         run: uv sync --group dev
 
-      - name: Bump version and changelog
+      - name: Configurar identidad de git
+        # `cz bump` commitea localmente. Sin esto, `git commit` falla en un runner limpio con
+        # "Author identity unknown" antes de llegar a ningún otro paso.
+        working-directory: ${{ github.workspace }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version y changelog
         id: cz
         # `cz bump` sale con 21 (`NoCommitsFoundError`) cuando no hay commits desde el último
         # tag que ameriten un bump — por ejemplo, un merge sólo de `chore:`/`test:`/`build:`.
         # Sin este manejo, ese caso normal dejaba "Bump version" en rojo en cada push a
         # `master` que no fuera un `feat`/`fix`, y un workflow rojo de forma rutinaria enseña
-        # a ignorarlo. `push = true` en `[tool.commitizen]` hace que `cz bump` empuje el
-        # commit y el tag por su cuenta — no hace falta un `git push` separado acá.
+        # a ignorarlo.
+        #
+        # No pushea todavía: el siguiente step sincroniza `uv.lock` y lo agrega al mismo
+        # commit antes de empujar nada.
         run: |
           set +e
-          uv run cz bump --yes --changelog
+          uv run cz bump --yes --changelog --no-verify
           exit_code=$?
           set -e
           if [ "$exit_code" -eq 21 ]; then
@@ -70,6 +80,27 @@ jobs:
           fi
           echo "bumped=true" >> "$GITHUB_OUTPUT"
           echo "tag=hexcore-v$(uv run cz version --project)" >> "$GITHUB_OUTPUT"
+
+      - name: Sincronizar uv.lock con la nueva versión
+        # `version_provider = "pep621"` sólo toca `[project].version` en `pyproject.toml` —
+        # `uv.lock`, que vive en la raíz del workspace y no junto al pyproject, se sincroniza
+        # a mano. Se amenda al mismo commit del bump (todavía sin pushear, así que reescribir
+        # el commit local no reescribe nada publicado) y se retaggea, para no dejar un commit
+        # separado de "chore: sync lock" colgando de la release.
+        if: steps.cz.outputs.bumped == 'true'
+        working-directory: ${{ github.workspace }}
+        run: |
+          uv lock --project packages/hexcore
+          if ! git diff --quiet -- uv.lock; then
+            git add uv.lock
+            git commit --amend --no-edit
+            git tag -f "${{ steps.cz.outputs.tag }}"
+          fi
+
+      - name: Pushear el commit y el tag
+        if: steps.cz.outputs.bumped == 'true'
+        working-directory: ${{ github.workspace }}
+        run: git push origin HEAD:master --follow-tags
 
       - name: Release
         if: steps.cz.outputs.bumped == 'true'

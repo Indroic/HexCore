@@ -198,10 +198,24 @@ legacy_tag_formats = ["$version"]
 # válidas y `cz` los rechaza al parsearlos si no se ignoran explícitamente.
 ignored_tag_formats = ["v$version"]
 version_scheme = "pep440"
-version_provider = "uv"
+# No "uv": `UvProvider.lock_file` es `Path() / "uv.lock"`, hardcodeado relativo al cwd y sin
+# forma de configurarlo — asume que `uv.lock` vive junto a `pyproject.toml`. En este repo
+# `uv.lock` vive en la raíz del workspace y `pyproject.toml` en `packages/hexcore/`, así que
+# con "uv" el bump real (no `--dry-run`, que nunca llega a esta rama de código) explota con
+# `FileNotFoundError: uv.lock`. `pep621` sólo toca `[project].version` en `pyproject.toml`; el
+# workflow sincroniza `uv.lock` a mano después (ver `bump_ver.yml`).
+version_provider = "pep621"
+# `changelog_file` (como todo en commitizen) se resuelve relativo al cwd, no al pyproject —
+# mismo problema de fondo que `uv.lock`. Sin esto, `cz bump --changelog` corrido con
+# `working-directory: packages/hexcore` crea un `packages/hexcore/CHANGELOG.md` nuevo en vez
+# de actualizar el `CHANGELOG.md` real de la raíz del monorepo.
+changelog_file = "../../CHANGELOG.md"
 update_changelog_on_bump = false
 major_version_zero = false
-push = true
+# No hay una clave `push` real en commitizen (no aparece en `DEFAULT_SETTINGS`): esto era
+# config muerta que no hacía nada por sí sola — el push lo hacía `commitizen-action`, la
+# GitHub Action que `bump_ver.yml` dejó de usar. El push ahora es un paso explícito del
+# workflow, después de sincronizar `uv.lock`.
 
 [tool.pyright]
 # Fase 0 del plan de tipado: se **mide**, no se rompe. `strict` iguala lo que
