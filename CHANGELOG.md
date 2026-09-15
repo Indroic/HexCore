@@ -1,3 +1,9 @@
+## hexcore-v9.0.2 (2026-09-15)
+
+### Fix
+
+- **release**: version_provider a pep621 y push explícito en bump_ver.yml
+
 ## 9.0.1 (2026-09-11)
 
 ### Fix
