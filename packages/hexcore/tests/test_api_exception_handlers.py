@@ -184,6 +184,95 @@ def test_headers_for_agrega_www_authenticate_en_un_401():
     assert response.json()["error"] == "_TokenInvalido"
 
 
+# ── payload_for: claves extra en el cuerpo, Fase 0.1 ────────────────────────────
+
+
+def test_payload_for_agrega_claves_al_cuerpo():
+    def payload(exc: Exception) -> dict[str, object]:
+        if isinstance(exc, _TokenInvalido):
+            return {"challenge": "abc123"}
+        return {}
+
+    app = FastAPI()
+    register_exception_handlers(
+        app, mapping={_TokenInvalido: 401}, payload_for=payload
+    )
+
+    @app.get("/protegido")
+    async def protegido() -> None:
+        raise _TokenInvalido("token vencido")
+
+    response = TestClient(app, raise_server_exceptions=False).get("/protegido")
+
+    assert response.status_code == 401
+    cuerpo = response.json()
+    assert cuerpo["challenge"] == "abc123"
+    assert cuerpo["error"] == "_TokenInvalido"
+
+
+def test_payload_for_no_puede_pisar_detail_ni_error():
+    """
+    `detail` y `error` son el discriminante que el cliente usa para distinguir el caso sin
+    parsear texto. Un `payload_for` de un plugin de terceros no puede pisarlos.
+    """
+    def payload(exc: Exception) -> dict[str, object]:
+        return {"detail": "mentira", "error": "OtraCosa", "challenge": "abc123"}
+
+    app = FastAPI()
+    register_exception_handlers(
+        app, mapping={_TokenInvalido: 401}, payload_for=payload
+    )
+
+    @app.get("/protegido")
+    async def protegido() -> None:
+        raise _TokenInvalido("token vencido")
+
+    response = TestClient(app, raise_server_exceptions=False).get("/protegido")
+
+    cuerpo = response.json()
+    assert cuerpo["error"] == "_TokenInvalido"
+    assert cuerpo["detail"] == "token vencido"
+    assert cuerpo["challenge"] == "abc123"
+
+
+def test_un_payload_for_que_explota_no_arruina_la_respuesta():
+    """El payload es accesorio, igual que los headers: no puede degradar a 500."""
+    def payload(exc: Exception) -> dict[str, object]:
+        raise RuntimeError("bug en la fábrica de payload")
+
+    app = FastAPI()
+    register_exception_handlers(
+        app, mapping={_TokenInvalido: 401}, payload_for=payload
+    )
+
+    @app.get("/protegido")
+    async def protegido() -> None:
+        raise _TokenInvalido("nope")
+
+    response = TestClient(app, raise_server_exceptions=False).get("/protegido")
+
+    assert response.status_code == 401
+    assert response.json()["error"] == "_TokenInvalido"
+
+
+def test_create_app_reenvia_exception_payload():
+    from hexcore.infrastructure.api.app import create_app
+
+    app = create_app(
+        exception_mapping={_TokenInvalido: 401},
+        exception_payload=lambda exc: {"challenge": "abc123"},
+    )
+
+    @app.get("/protegido")
+    async def protegido() -> None:
+        raise _TokenInvalido("nope")
+
+    response = TestClient(app, raise_server_exceptions=False).get("/protegido")
+
+    assert response.status_code == 401
+    assert response.json()["challenge"] == "abc123"
+
+
 def test_headers_for_vacio_no_agrega_nada():
     app = FastAPI()
     register_exception_handlers(

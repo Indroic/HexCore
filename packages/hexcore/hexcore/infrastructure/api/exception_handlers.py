@@ -41,6 +41,13 @@ DEFAULT_EXCEPTION_STATUS_MAP: dict[type[Exception], int] = {
 
 DetailFactory = t.Callable[[Exception], str]
 HeadersFactory = t.Callable[[Exception], t.Mapping[str, str]]
+PayloadFactory = t.Callable[[Exception], t.Mapping[str, t.Any]]
+
+#: Claves que un `payload_for` no puede pisar: son el discriminante que el cliente usa para
+#: distinguir el caso sin parsear el texto de `detail`. Sin este filtro, un plugin de
+#: terceros mal escrito podría hacer que un 409 se disfrace de otra cosa devolviendo
+#: `{"error": "OtraCosa"}`.
+_CLAVES_RESERVADAS = frozenset({"detail", "error"})
 
 
 def register_exception_handlers(
@@ -49,6 +56,7 @@ def register_exception_handlers(
     mapping: dict[type[Exception], int] | None = None,
     include_detail: bool | DetailFactory = True,
     headers_for: HeadersFactory | None = None,
+    payload_for: PayloadFactory | None = None,
 ) -> None:
     """
     Registra handlers que traducen excepciones a respuestas JSON.
@@ -65,9 +73,16 @@ def register_exception_handlers(
             status codes que **exigen** un header por especificación y no se pueden
             expresar sólo con un número: un 401 tiene que llevar `WWW-Authenticate`
             (RFC 6750 §3), y un 429 un `Retry-After`.
+        payload_for: Claves extra para el **cuerpo** del error. Recibe la excepción y
+            devuelve un mapa; devolvé uno vacío para no agregar nada. Existe por el mismo
+            motivo que `headers_for` pero para el body: hay excepciones que llevan datos que
+            el cliente necesita para completar el flujo —el `challenge` de un segundo
+            factor, por ejemplo— y que no caben en `detail` sin que el cliente tenga que
+            parsear texto. Las claves `detail` y `error` se descartan si `payload_for` las
+            devuelve: son el discriminante y no se pisan.
 
-    El cuerpo es siempre ``{"detail": ..., "error": "<NombreDeLaExcepción>"}``, para que
-    el cliente pueda distinguir el caso sin parsear el texto.
+    El cuerpo es siempre ``{"detail": ..., "error": "<NombreDeLaExcepción>", **payload_for(exc)}``,
+    para que el cliente pueda distinguir el caso sin parsear el texto.
 
     Se eligió un callable aparte antes que cambiar el tipo de valor de
     `DEFAULT_EXCEPTION_STATUS_MAP` a ``int | tuple[int, Mapping]``: el mapa es público y
@@ -94,7 +109,9 @@ def register_exception_handlers(
     for exc_type in sorted(resolved, key=_specificity, reverse=True):
         app.add_exception_handler(
             exc_type,
-            _build_handler(exc_type, resolved[exc_type], include_detail, headers_for),
+            _build_handler(
+                exc_type, resolved[exc_type], include_detail, headers_for, payload_for
+            ),
         )
 
 
@@ -108,6 +125,7 @@ def _build_handler(
     status_code: int,
     include_detail: bool | DetailFactory,
     headers_for: HeadersFactory | None = None,
+    payload_for: PayloadFactory | None = None,
 ) -> t.Callable[[Request, Exception], t.Awaitable[JSONResponse]]:
     async def handler(request: Request, exc: Exception) -> JSONResponse:
         if status_code >= 500:
@@ -142,11 +160,30 @@ def _build_handler(
             else:
                 headers = {str(k): str(v) for k, v in dict(extra).items()} or None
 
+        payload_extra: dict[str, t.Any] = {}
+        if payload_for is not None:
+            # Mismo trato que `headers_for`: un `payload_for` que explota no puede
+            # convertir un error prolijo en un 500. El extra es accesorio.
+            try:
+                extra_payload = payload_for(exc)
+            except Exception:
+                logger.exception(
+                    "payload_for falló para %s; se responde sin el payload extra.",
+                    type(exc).__name__,
+                )
+            else:
+                payload_extra = {
+                    str(k): v
+                    for k, v in dict(extra_payload).items()
+                    if k not in _CLAVES_RESERVADAS
+                }
+
         return JSONResponse(
             status_code=status_code,
             content={
                 "detail": _detail_for(exc, status_code, include_detail),
                 "error": type(exc).__name__,
+                **payload_extra,
             },
             headers=headers,
         )

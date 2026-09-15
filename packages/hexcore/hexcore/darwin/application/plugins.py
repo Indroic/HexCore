@@ -333,6 +333,18 @@ class PluginRegistry:
             acumulado.update(plugin.exception_status_map())
         return acumulado
 
+    def exception_payload(self, exc: Exception) -> dict[str, t.Any]:
+        """
+        El payload extra combinado que los plugins agregan al body de `exc`.
+
+        Espejo de `exception_status_map()`: el del último plugin gana, y `create_app`
+        mergea esto debajo del identity-level y del consumidor.
+        """
+        acumulado: dict[str, t.Any] = {}
+        for plugin in self.plugins:
+            acumulado.update(plugin.exception_payload(exc))
+        return acumulado
+
     def register_handlers(self, registry: t.Any) -> t.Any:
         for plugin in self.plugins:
             plugin.register_handlers(registry)

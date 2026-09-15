@@ -953,8 +953,77 @@ class TestHttp:
         assert not respuesta.headers.get_list("set-cookie"), "no se emite ninguna cookie"
 
     @pytest.mark.anyio
-    async def test_el_flujo_completo_por_http(self, contenedor, servicio, reloj, cliente):
-        usuario = await _alta(contenedor)
+    async def test_el_401_trae_el_challenge_en_el_cuerpo(
+        self, contenedor, servicio, reloj, cliente
+    ):
+        """
+        Fase 0.1: sin el `challenge` en el cuerpo, `POST /auth/2fa/challenge` es
+        incompletable desde HTTP — el cliente nunca recibe el token que esa ruta exige de
+        vuelta, y tendría que guardar la contraseña o volver a pedirla, que es exactamente lo
+        que el docstring de `TwoFactorRequiredError` dice que hay que evitar.
+        """
+        await _con_2fa(contenedor, servicio, reloj)
+
+        respuesta = cliente.post(
+            "/auth/sign-in", json={"email": MAIL, "password": PASS}
+        )
+
+        assert respuesta.status_code == 401
+        cuerpo = respuesta.json()
+        assert cuerpo["error"] == "TwoFactorRequiredError"
+        assert isinstance(cuerpo["challenge"], str) and cuerpo["challenge"]
+
+    @pytest.mark.anyio
+    async def test_el_challenge_del_401_completa_el_login(
+        self, contenedor, reloj, cliente
+    ):
+        """
+        El test que prueba que el flujo **es completable desde HTTP**: toma el `challenge`
+        tal como lo recibiría un cliente real (del cuerpo del 401, no de una llamada directa
+        al servicio Python) y lo canjea.
+        """
+        await _alta(contenedor)
+
+        inicio = cliente.post(
+            "/auth/sign-in",
+            json={"email": MAIL, "password": PASS},
+            headers={"X-Darwin-Transport": "bearer"},
+        )
+        assert inicio.status_code == 200
+        auth = {"Authorization": f"Bearer {inicio.json()['access_token']}"}
+
+        inscripcion = cliente.post("/auth/2fa/enroll", headers=auth)
+        secreto = inscripcion.json()["secret"]
+        reloj.advance(seconds=DEFAULT_STEP)
+        cliente.post(
+            "/auth/2fa/confirm",
+            json={"code": totp_code(secreto, reloj.now().timestamp())},
+            headers=auth,
+        )
+
+        reloj.advance(seconds=DEFAULT_STEP)
+        parcial = cliente.post(
+            "/auth/sign-in",
+            json={"email": MAIL, "password": PASS},
+            headers={"X-Darwin-Transport": "bearer"},
+        )
+        assert parcial.status_code == 401
+        desafio = parcial.json()["challenge"]
+
+        canje = cliente.post(
+            "/auth/2fa/challenge",
+            json={
+                "challenge": desafio,
+                "code": totp_code(secreto, reloj.now().timestamp()),
+            },
+            headers={"X-Darwin-Transport": "bearer"},
+        )
+        assert canje.status_code == 200
+        assert canje.json()["access_token"]
+
+    @pytest.mark.anyio
+    async def test_el_flujo_completo_por_http(self, contenedor, reloj, cliente):
+        await _alta(contenedor)
 
         # 1. Login normal, sin 2FA todavía.
         entrada = cliente.post(
@@ -999,10 +1068,10 @@ class TestHttp:
         )
         assert parcial.status_code == 401
 
-        # El desafío no viaja en el cuerpo del 401 del handler genérico, así que el segundo
-        # paso se arma con el que emite el servicio — que es lo que haría una app que envuelve
-        # la ruta para incluirlo.
-        desafio = await servicio.issue_challenge(user=usuario)
+        # El desafío viaja en el cuerpo del 401 (Fase 0.1): el segundo paso del login es
+        # completable desde HTTP sin que el cliente tenga que guardar la contraseña ni
+        # llamar al servicio Python directamente.
+        desafio = parcial.json()["challenge"]
 
         # 6. El canje.
         canje = cliente.post(

@@ -33,6 +33,7 @@ __all__ = [
     "require_roles",
     "require_not_impersonated",
     "identity_exception_headers",
+    "identity_exception_payload",
 ]
 
 #: El valor de `WWW-Authenticate` de un 401. RFC 6750 §3.
@@ -174,3 +175,27 @@ def identity_exception_headers(exc: Exception) -> t.Mapping[str, str]:
     if isinstance(exc, AuthenticationError):
         return {"WWW-Authenticate": WWW_AUTHENTICATE}
     return {}
+
+
+def identity_exception_payload(exc: Exception) -> t.Mapping[str, t.Any]:
+    """
+    El payload extra que las excepciones de identidad agregan al cuerpo del error.
+
+    Se pasa a `create_app(exception_payload=...)`, y `create_app` lo hace sólo cuando
+    `AppFeatures.auth_context` está prendido — mismo cableado que `identity_exception_headers`.
+
+    A diferencia de los headers —genéricos para toda `AuthenticationError`—, qué payload
+    corresponde es específico de cada plugin (el `challenge` de `TwoFactorRequiredError`, por
+    ejemplo), así que esta función delega en `PluginRegistry.exception_payload()` del
+    despliegue en curso en vez de chequear un tipo fijo.
+
+    Sin un despliegue configurado (`create_app` corrido antes de `configure_identity`, o sin
+    Darwin) devuelve vacío en vez de lanzar — mismo trato que `_mapa_de_plugins()` en `app.py`.
+    """
+    from hexcore.darwin.application.container import get_identity_container
+
+    try:
+        contenedor = get_identity_container()
+    except Exception:
+        return {}
+    return contenedor.plugins.exception_payload(exc)

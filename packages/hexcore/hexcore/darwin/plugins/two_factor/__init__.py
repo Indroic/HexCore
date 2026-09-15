@@ -179,6 +179,18 @@ class TwoFactorPlugin(DarwinPlugin):
     def exception_status_map(self) -> t.Mapping[type[Exception], int]:
         return TWO_FACTOR_EXCEPTION_STATUS_MAP
 
+    def exception_payload(self, exc: Exception) -> t.Mapping[str, t.Any]:
+        """
+        El `challenge` de `TwoFactorRequiredError`, en el cuerpo del 401.
+
+        Sin esto el segundo paso del login no es completable desde HTTP: `POST
+        /auth/2fa/challenge` exige el `challenge` de vuelta, y hasta la Fase 0 el cliente
+        nunca lo recibía — sólo vivía en el atributo Python de la excepción.
+        """
+        if isinstance(exc, TwoFactorRequiredError) and exc.challenge is not None:
+            return {"challenge": exc.challenge}
+        return {}
+
     def hooks(self) -> t.Sequence[HookBinding]:
         from hexcore.darwin.application.services import SIGN_IN_AUTHENTICATED
 

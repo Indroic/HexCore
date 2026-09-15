@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from .exception_handlers import HeadersFactory, register_exception_handlers
+from .exception_handlers import HeadersFactory, PayloadFactory, register_exception_handlers
 from .health import Probe, ResponseFactory, register_health_routes
 from .middlewares import RequestIDMiddleware, TimingMiddleware
 from .routing import MountableRouter, mount_routers
@@ -101,6 +101,7 @@ def create_app(
     health_probes: t.Sequence[Probe] | None = None,
     exception_mapping: dict[type[Exception], int] | None = None,
     exception_headers: HeadersFactory | None = None,
+    exception_payload: PayloadFactory | None = None,
     **fastapi_kwargs: t.Any,
 ) -> FastAPI:
     """
@@ -120,6 +121,9 @@ def create_app(
         exception_headers: Headers extra por excepción. Necesario para los status que
             los exigen por especificación: un 401 tiene que llevar `WWW-Authenticate`
             (RFC 6750 §3).
+        exception_payload: Claves extra para el **cuerpo** de una excepción. Para datos que
+            el cliente necesita para completar un flujo — el `challenge` de un segundo
+            factor, por ejemplo — y que no caben en `detail` sin parsear texto.
         **fastapi_kwargs: Se pasan tal cual a `FastAPI` (`title`, `version`,
             `docs_url`, `openapi_tags`…). Lo que pases gana sobre los defaults derivados
             de la configuración.
@@ -164,10 +168,12 @@ def create_app(
         app.add_middleware(RequestIDMiddleware)
 
     if resolved_features.exception_handlers:
-        mapping, headers_for = _con_darwin(
-            resolved_features, exception_mapping, exception_headers
+        mapping, headers_for, payload_for = _con_darwin(
+            resolved_features, exception_mapping, exception_headers, exception_payload
         )
-        register_exception_handlers(app, mapping=mapping, headers_for=headers_for)
+        register_exception_handlers(
+            app, mapping=mapping, headers_for=headers_for, payload_for=payload_for
+        )
 
     if resolved_features.health:
         health_routes = (
@@ -195,9 +201,15 @@ def _con_darwin(
     features: AppFeatures,
     mapping: dict[type[Exception], int] | None,
     headers_for: HeadersFactory | None,
-) -> tuple[dict[type[Exception], int] | None, HeadersFactory | None]:
+    payload_for: PayloadFactory | None,
+) -> tuple[
+    dict[type[Exception], int] | None,
+    HeadersFactory | None,
+    PayloadFactory | None,
+]:
     """
-    Mergea el mapa de excepciones de Darwin y su fábrica de headers, si `auth_context`.
+    Mergea el mapa de excepciones de Darwin, su fábrica de headers y la de payload, si
+    `auth_context`.
 
     **`IDENTITY_EXCEPTION_STATUS_MAP` no se agrega a `DEFAULT_EXCEPTION_STATUS_MAP`.**
     Importar las excepciones de Darwin en tiempo de import de esta capa la acoplaría al
@@ -208,11 +220,12 @@ def _con_darwin(
     Lo que pase el consumidor **gana**: se mergea con el de Darwin debajo, no encima.
     """
     if not features.auth_context:
-        return mapping, headers_for
+        return mapping, headers_for, payload_for
 
     from hexcore.darwin.domain.exceptions import IDENTITY_EXCEPTION_STATUS_MAP
     from hexcore.darwin.infrastructure.api.dependencies import (
         identity_exception_headers,
+        identity_exception_payload,
     )
 
     combinado = {
@@ -221,14 +234,24 @@ def _con_darwin(
         **(mapping or {}),
     }
 
-    if headers_for is None:
-        return combinado, identity_exception_headers
+    resultado_headers = identity_exception_headers
+    if headers_for is not None:
 
-    def combinar(exc: Exception) -> t.Mapping[str, str]:
-        # El del consumidor gana sobre el de Darwin, igual que con el mapa.
-        return {**identity_exception_headers(exc), **headers_for(exc)}
+        def combinar_headers(exc: Exception) -> t.Mapping[str, str]:
+            # El del consumidor gana sobre el de Darwin, igual que con el mapa.
+            return {**identity_exception_headers(exc), **headers_for(exc)}
 
-    return combinado, combinar
+        resultado_headers = combinar_headers
+
+    resultado_payload = identity_exception_payload
+    if payload_for is not None:
+
+        def combinar_payload(exc: Exception) -> t.Mapping[str, t.Any]:
+            return {**identity_exception_payload(exc), **payload_for(exc)}
+
+        resultado_payload = combinar_payload
+
+    return combinado, resultado_headers, resultado_payload
 
 
 def _mapa_de_plugins() -> dict[type[Exception], int]:
