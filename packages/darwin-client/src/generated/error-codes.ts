@@ -1,0 +1,51 @@
+// Generado por scripts/gen-error-codes.mjs desde openapi/darwin.errors.json.
+// No editar a mano: se sobreescribe con `npm run gen:errors`.
+
+/** Los códigos de error de Darwin y su status HTTP, tal como los emite el servidor. */
+export const ERROR_CODES = {
+  AccountLockedError: 423,
+  AlreadyAMemberError: 409,
+  CsrfValidationError: 403,
+  EmailAlreadyRegisteredError: 409,
+  EmailNotVerifiedError: 403,
+  ImpersonationChainError: 403,
+  ImpersonationDeniedError: 403,
+  ImpersonationNotActiveError: 409,
+  ImpersonationNotPermittedError: 403,
+  ImpersonationSelfError: 409,
+  ImpersonationTargetProtectedError: 403,
+  InsufficientOrgRoleError: 403,
+  InsufficientScopeError: 403,
+  InvalidCredentialsError: 401,
+  InvitationEmailMismatchError: 403,
+  InvitationError: 401,
+  LastOwnerError: 409,
+  NotAMemberError: 403,
+  OAuthAccountAlreadyLinkedError: 409,
+  OAuthAccountNotLinkedError: 409,
+  OAuthEmailNotVerifiedError: 403,
+  OAuthExchangeError: 502,
+  OAuthProviderNotConfiguredError: 404,
+  OAuthStateError: 401,
+  OrganizationNotFoundError: 404,
+  PasskeyAlreadyRegisteredError: 409,
+  PasskeyChallengeError: 401,
+  PasskeyClonedAuthenticatorError: 401,
+  PasskeyLastFactorError: 409,
+  PasskeyNotFoundError: 404,
+  PasskeyVerificationError: 401,
+  SlugAlreadyTakenError: 409,
+  TokenAudienceMismatchError: 401,
+  TokenExpiredError: 401,
+  TokenMalformedError: 401,
+  TokenRevokedError: 401,
+  TwoFactorAlreadyConfirmedError: 409,
+  TwoFactorInvalidCodeError: 401,
+  TwoFactorNotEnrolledError: 409,
+  TwoFactorRequiredError: 401,
+  UnauthenticatedError: 401,
+  WorkerContextIntegrityError: 500,
+} as const;
+
+/** El discriminante de `DarwinError.code`: un `switch` sobre esto es exhaustivo. */
+export type DarwinErrorCode = keyof typeof ERROR_CODES;
