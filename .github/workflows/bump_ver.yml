@@ -45,8 +45,10 @@ jobs:
         with:
           enable-cache: true
 
+      # `--extra all`: además de commitizen, este job corre `darwin_openapi.py` más abajo,
+      # que monta los seis plugins de Darwin para regenerar el contrato con la versión nueva.
       - name: Install commitizen
-        run: uv sync --group dev
+        run: uv sync --extra all --group dev
 
       - name: Configurar identidad de git
         # `cz bump` commitea localmente. Sin esto, `git commit` falla en un runner limpio con
@@ -93,6 +95,22 @@ jobs:
           uv lock --project packages/hexcore
           if ! git diff --quiet -- uv.lock; then
             git add uv.lock
+            git commit --amend --no-edit
+            git tag -f "${{ steps.cz.outputs.tag }}"
+          fi
+
+      - name: Regenerar el contrato de Darwin con la versión nueva
+        # `openapi/VERSION` guarda la versión de hexcore que generó el contrato. Sin este
+        # paso, cada bump lo deja desactualizado de inmediato y el job `contrato-http` de
+        # typing.yml falla en el primer PR después de cualquier release — no porque el
+        # contrato haya cambiado, sino porque nadie lo volvió a volcar. Mismo tratamiento que
+        # uv.lock: se amenda al commit del bump, todavía sin pushear.
+        if: steps.cz.outputs.bumped == 'true'
+        run: |
+          uv run python scripts/darwin_openapi.py --write
+          cd "${{ github.workspace }}"
+          if ! git diff --quiet -- packages/darwin-client/openapi; then
+            git add packages/darwin-client/openapi
             git commit --amend --no-edit
             git tag -f "${{ steps.cz.outputs.tag }}"
           fi
