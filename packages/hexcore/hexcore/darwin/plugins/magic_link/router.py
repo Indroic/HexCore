@@ -18,7 +18,14 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-__all__ = ["RequestMagicLinkBody", "ConsumeMagicLinkBody", "build_magic_link_router"]
+from hexcore.darwin.infrastructure.api.routers import SessionResponse
+
+__all__ = [
+    "RequestMagicLinkBody",
+    "ConsumeMagicLinkBody",
+    "MagicLinkRequested",
+    "build_magic_link_router",
+]
 
 
 class RequestMagicLinkBody(BaseModel):
@@ -28,6 +35,18 @@ class RequestMagicLinkBody(BaseModel):
 class ConsumeMagicLinkBody(BaseModel):
     email: str
     token: str
+
+
+class MagicLinkRequested(BaseModel):
+    """
+    La respuesta de `POST /auth/magic-link/request`.
+
+    `token` sólo viaja en un despliegue que no manda mails de verdad — ver la advertencia del
+    docstring de la ruta: en producción no se devuelve, y el campo queda `None`.
+    """
+
+    sent: bool
+    token: str | None = None
 
 
 def build_magic_link_router(
@@ -58,8 +77,18 @@ def build_magic_link_router(
     vida = ttl or DEFAULT_TTL
     limite = _rate_limit(rate_limit)
 
-    @router.post("/request", dependencies=limite)
-    async def request(payload: RequestMagicLinkBody) -> dict[str, t.Any]:
+    @router.post(
+        "/request",
+        dependencies=limite,
+        response_model=MagicLinkRequested,
+        # `exclude_none`: antes de este `response_model` la ruta devolvía un `dict` que
+        # directamente omitía la clave `token` cuando era `None`. Sin esto, el modelo la
+        # incluiría como `null` en los dos casos — no filtra nada (la ruta sigue
+        # respondiendo igual exista o no la cuenta), pero cambiaría el shape que un
+        # cliente ya integrado contra el dict viejo espera.
+        response_model_exclude_none=True,
+    )
+    async def request(payload: RequestMagicLinkBody) -> MagicLinkRequested:
         """
         Pide un magic link. **Responde igual exista o no la cuenta.**
 
@@ -74,12 +103,9 @@ def build_magic_link_router(
 
         # La forma de la respuesta es idéntica en los dos casos. Que el token venga o no es lo
         # único que cambia, y en producción no se devuelve.
-        cuerpo: dict[str, t.Any] = {"sent": True}
-        if emitido.token is not None:
-            cuerpo["token"] = emitido.token
-        return cuerpo
+        return MagicLinkRequested(sent=True, token=emitido.token)
 
-    @router.post("/consume")
+    @router.post("/consume", response_model=SessionResponse)
     async def consume(
         payload: ConsumeMagicLinkBody,
         request: Request,

@@ -23,6 +23,8 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from hexcore.darwin.infrastructure.api.routers import SessionResponse
+
 __all__ = [
     "FinishRegistrationBody",
     "AuthenticationOptionsBody",
@@ -99,7 +101,20 @@ def build_passkey_router(
     limite = _rate_limit(rate_limit)
 
     # ── Registro (con sesión) ─────────────────────────────────────────────────
-    @router.post("/register/options")
+    # Sin `response_model`: la forma es la de `PublicKeyCredentialCreationOptions` del spec
+    # WebAuthn (https://www.w3.org/TR/webauthn-3/#dictionary-makecredentialoptions).
+    # Remodelarla en pydantic sería mantener una copia de un estándar ajeno para ganar un
+    # schema que un cliente ya escribe a mano contra el spec — `openapi_extra` documenta la
+    # referencia sin pagar esa copia.
+    @router.post(
+        "/register/options",
+        openapi_extra={
+            "externalDocs": {
+                "description": "PublicKeyCredentialCreationOptions (WebAuthn L3)",
+                "url": "https://www.w3.org/TR/webauthn-3/#dictionary-makecredentialoptions",
+            }
+        },
+    )
     async def register_options(
         auth: t.Any = Depends(provide_auth),
     ) -> dict[str, t.Any]:
@@ -140,7 +155,18 @@ def build_passkey_router(
         return _resumen(guardada)
 
     # ── Login (público) ───────────────────────────────────────────────────────
-    @router.post("/authenticate/options", dependencies=limite)
+    # Mismo motivo que `/register/options`: la forma es la de
+    # `PublicKeyCredentialRequestOptions` del spec WebAuthn.
+    @router.post(
+        "/authenticate/options",
+        dependencies=limite,
+        openapi_extra={
+            "externalDocs": {
+                "description": "PublicKeyCredentialRequestOptions (WebAuthn L3)",
+                "url": "https://www.w3.org/TR/webauthn-3/#dictionary-assertion-options",
+            }
+        },
+    )
     async def authenticate_options(
         payload: AuthenticationOptionsBody,
     ) -> dict[str, t.Any]:
@@ -166,7 +192,9 @@ def build_passkey_router(
         opciones = await get_passkey_service().start_authentication(user_id=user_id)
         return opciones.options
 
-    @router.post("/authenticate", dependencies=limite)
+    @router.post(
+        "/authenticate", dependencies=limite, response_model=SessionResponse
+    )
     async def authenticate(
         payload: FinishAuthenticationBody,
         request: Request,

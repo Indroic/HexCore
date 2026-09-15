@@ -25,9 +25,12 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from hexcore.darwin.infrastructure.api.routers import SessionResponse
+
 __all__ = [
     "AuthorizationResponse",
     "LinkedProviders",
+    "OAuthCallbackResponse",
     "build_oauth_router",
 ]
 
@@ -48,6 +51,17 @@ class AuthorizationResponse(BaseModel):
 
 class LinkedProviders(BaseModel):
     providers: list[str]
+
+
+class OAuthCallbackResponse(SessionResponse):
+    """
+    La respuesta de `GET /auth/oauth/{provider}/callback`.
+
+    `created` distingue un signup implícito de un login: es lo que el cliente necesita para
+    mandar a un usuario nuevo a onboarding en vez de al home.
+    """
+
+    created: bool
 
 
 def build_oauth_router(
@@ -84,7 +98,12 @@ def build_oauth_router(
 
         return LinkedProviders(providers=list(get_oauth_service().provider_ids))
 
-    @router.get("/{provider}/start", dependencies=limite)
+    @router.get(
+        "/{provider}/start",
+        dependencies=limite,
+        response_model=AuthorizationResponse,
+        responses={302: {"description": "Con `?redirect=1`: redirect directo al proveedor."}},
+    )
     async def start(
         provider: str,
         redirect_uri: str = Query(..., description="A dónde vuelve el usuario."),
@@ -110,7 +129,9 @@ def build_oauth_router(
             ).model_dump()
         )
 
-    @router.get("/{provider}/callback", dependencies=limite)
+    @router.get(
+        "/{provider}/callback", dependencies=limite, response_model=OAuthCallbackResponse
+    )
     async def callback(
         provider: str,
         request: Request,
