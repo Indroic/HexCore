@@ -1,0 +1,2998 @@
+{
+  "components": {
+    "schemas": {
+      "AcceptInvitationBody": {
+        "properties": {
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "AcceptInvitationBody",
+        "type": "object"
+      },
+      "AuthenticationOptionsBody": {
+        "description": "El cuerpo de `POST /auth/passkey/authenticate/options`.\n\n`email` es opcional: sin él, el flujo es con credenciales descubribles y el navegador ofrece\nlo que tenga. Con él, se limita a las credenciales de esa cuenta — y **no se revela si la\ncuenta existe**: un mail desconocido devuelve opciones sin `allowCredentials`, exactamente\nigual que el flujo sin mail.",
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          }
+        },
+        "title": "AuthenticationOptionsBody",
+        "type": "object"
+      },
+      "AuthorizationResponse": {
+        "description": "A dónde mandar al usuario.\n\nSe devuelve la URL en JSON en vez de responder un 302 porque el llamador suele ser una SPA\ncon `fetch`, y un 302 seguido automáticamente por `fetch` termina con la página de\nconsentimiento del proveedor cargada en un contexto que no puede navegar. Quien quiera el\nredirect pasa `?redirect=1`.",
+        "properties": {
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "state"
+        ],
+        "title": "AuthorizationResponse",
+        "type": "object"
+      },
+      "ChallengeBody": {
+        "properties": {
+          "challenge": {
+            "title": "Challenge",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge",
+          "code"
+        ],
+        "title": "ChallengeBody",
+        "type": "object"
+      },
+      "ConfirmBody": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "ConfirmBody",
+        "type": "object"
+      },
+      "ConsumeMagicLinkBody": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "token"
+        ],
+        "title": "ConsumeMagicLinkBody",
+        "type": "object"
+      },
+      "CreateOrganizationBody": {
+        "properties": {
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateOrganizationBody",
+        "type": "object"
+      },
+      "DisableBody": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "DisableBody",
+        "type": "object"
+      },
+      "EnrollmentResponse": {
+        "description": "La respuesta de inscribir.\n\n⚠️ Lleva el secreto en claro: es la única vez que sale de la aplicación, porque el usuario\ntiene que escanearlo. No lo loguees ni lo guardes del lado del cliente más allá de mostrar\nel QR.",
+        "properties": {
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "string"
+          },
+          "uri": {
+            "title": "Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret",
+          "uri",
+          "confirmed"
+        ],
+        "title": "EnrollmentResponse",
+        "type": "object"
+      },
+      "FinishAuthenticationBody": {
+        "properties": {
+          "credential": {
+            "additionalProperties": true,
+            "title": "Credential",
+            "type": "object"
+          }
+        },
+        "required": [
+          "credential"
+        ],
+        "title": "FinishAuthenticationBody",
+        "type": "object"
+      },
+      "FinishRegistrationBody": {
+        "description": "El cuerpo de `POST /auth/passkey/register`.\n\nNo lleva `user_id`: sale del desafío. Ver la advertencia del docstring del módulo.",
+        "properties": {
+          "credential": {
+            "additionalProperties": true,
+            "title": "Credential",
+            "type": "object"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "credential"
+        ],
+        "title": "FinishRegistrationBody",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ImpersonationStartedResponse": {
+        "description": "La respuesta de `POST /auth/impersonate/{user_id}`.\n\n`impersonating` queda **deprecado**: en esta ruta lleva el id del sujeto impersonado como\nstring, mientras que en `MeResponse.impersonating` es un `bool` — el mismo nombre significa\ndos cosas distintas según la ruta, y un cliente TypeScript no puede tipar las dos con el\nmismo campo sin mentir. Renombrarlo sería breaking y no lo amerita un major; en su lugar,\n`subject_id` es el mismo valor con un nombre que no colisiona.",
+        "properties": {
+          "access_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Token"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "impersonating": {
+            "title": "Impersonating",
+            "type": "string"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "expires_in",
+          "impersonating",
+          "subject_id"
+        ],
+        "title": "ImpersonationStartedResponse",
+        "type": "object"
+      },
+      "ImpersonationStatus": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "title": "ImpersonationStatus",
+        "type": "object"
+      },
+      "ImpersonationStoppedResponse": {
+        "description": "La respuesta de `POST /auth/impersonate/stop`.",
+        "properties": {
+          "stopped": {
+            "title": "Stopped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "stopped"
+        ],
+        "title": "ImpersonationStoppedResponse",
+        "type": "object"
+      },
+      "InvitationIssued": {
+        "description": "La respuesta de `POST /organizations/{organization_id}/invitations`.",
+        "properties": {
+          "invitation": {
+            "$ref": "#/components/schemas/InvitationOut"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invitation",
+          "token"
+        ],
+        "title": "InvitationIssued",
+        "type": "object"
+      },
+      "InvitationOut": {
+        "description": "Una invitación pendiente, para la pantalla de administración.\n\n**No lleva el token ni su hash.** El token existe una sola vez, en la respuesta de invitar; el\nhash no le sirve a nadie del otro lado y devolverlo sería superficie gratis.",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrgRole"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "expires_at"
+        ],
+        "title": "InvitationOut",
+        "type": "object"
+      },
+      "InviteBody": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrgRole",
+            "default": "member"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "InviteBody",
+        "type": "object"
+      },
+      "LinkedProviders": {
+        "properties": {
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "title": "LinkedProviders",
+        "type": "object"
+      },
+      "MagicLinkRequested": {
+        "description": "La respuesta de `POST /auth/magic-link/request`.\n\n`token` sólo viaja en un despliegue que no manda mails de verdad — ver la advertencia del\ndocstring de la ruta: en producción no se devuelve, y el campo queda `None`.",
+        "properties": {
+          "sent": {
+            "title": "Sent",
+            "type": "boolean"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          }
+        },
+        "required": [
+          "sent"
+        ],
+        "title": "MagicLinkRequested",
+        "type": "object"
+      },
+      "MeResponse": {
+        "description": "Quién sos, y **a nombre de quién** estás actuando.\n\n`actor_id` y `subject_id` separados incluso acá: un operador que impersona tiene que ver\nen su propia UI que está dentro de la cuenta de otro. Devolver un solo id haría que la\ninterfaz no pueda mostrarlo.",
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "impersonating": {
+            "default": false,
+            "title": "Impersonating",
+            "type": "boolean"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_id",
+          "subject_id"
+        ],
+        "title": "MeResponse",
+        "type": "object"
+      },
+      "MemberOut": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OrgRole"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "role"
+        ],
+        "title": "MemberOut",
+        "type": "object"
+      },
+      "OAuthCallbackResponse": {
+        "description": "La respuesta de `GET /auth/oauth/{provider}/callback`.\n\n`created` distingue un signup implícito de un login: es lo que el cliente necesita para\nmandar a un usuario nuevo a onboarding en vez de al home.",
+        "properties": {
+          "access_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Token"
+          },
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "expires_in",
+          "created"
+        ],
+        "title": "OAuthCallbackResponse",
+        "type": "object"
+      },
+      "OrgRole": {
+        "description": "El rol de alguien dentro de una organización.\n\nSólo tres, y ordenados. Más roles se resuelven con `RoleRegistry` del lado del consumidor: acá\nel orden es lo único que se necesita, porque es lo que decide quién administra a quién.",
+        "enum": [
+          "owner",
+          "admin",
+          "member"
+        ],
+        "title": "OrgRole",
+        "type": "string"
+      },
+      "OrganizationOut": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "metadata"
+        ],
+        "title": "OrganizationOut",
+        "type": "object"
+      },
+      "PasskeySummary": {
+        "description": "Lo que se le muestra al usuario en la pantalla de ajustes.",
+        "properties": {
+          "aaguid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aaguid"
+          },
+          "backed_up": {
+            "title": "Backed Up",
+            "type": "boolean"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "aaguid",
+          "backed_up",
+          "created_at",
+          "last_used_at"
+        ],
+        "title": "PasskeySummary",
+        "type": "object"
+      },
+      "RequestMagicLinkBody": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "RequestMagicLinkBody",
+        "type": "object"
+      },
+      "RevokedResponse": {
+        "description": "La respuesta de `POST /auth/sign-out-everywhere`: cuántas sesiones se revocaron.",
+        "properties": {
+          "revoked": {
+            "title": "Revoked",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revoked"
+        ],
+        "title": "RevokedResponse",
+        "type": "object"
+      },
+      "SessionInfo": {
+        "description": "Una fila de `GET /auth/sessions`, para una pantalla de seguridad.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "impersonated": {
+            "title": "Impersonated",
+            "type": "boolean"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Address"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "transport": {
+            "title": "Transport",
+            "type": "string"
+          },
+          "user_agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Agent"
+          }
+        },
+        "required": [
+          "session_id",
+          "transport",
+          "created_at",
+          "expires_at",
+          "ip_address",
+          "user_agent",
+          "impersonated",
+          "current"
+        ],
+        "title": "SessionInfo",
+        "type": "object"
+      },
+      "SessionResponse": {
+        "description": "La respuesta de un sign-in o un refresh.\n\nLos tokens son **opcionales** porque el camino de cookie no los devuelve: van en\n`Set-Cookie` y devolverlos además daría una copia que puede terminar en `localStorage`,\nque es justamente lo que `HttpOnly` evita.",
+        "properties": {
+          "access_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Token"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "refresh_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "token_type": {
+            "default": "Bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "expires_in"
+        ],
+        "title": "SessionResponse",
+        "type": "object"
+      },
+      "SetRoleBody": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/OrgRole"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "SetRoleBody",
+        "type": "object"
+      },
+      "SignInRequest": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "SignInRequest",
+        "type": "object"
+      },
+      "SignUpRequest": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "password": {
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "SignUpRequest",
+        "type": "object"
+      },
+      "SignedOutResponse": {
+        "description": "La respuesta de `POST /auth/sign-out`.",
+        "properties": {
+          "signed_out": {
+            "title": "Signed Out",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "signed_out"
+        ],
+        "title": "SignedOutResponse",
+        "type": "object"
+      },
+      "StartImpersonationBody": {
+        "description": "El cuerpo de `POST /auth/impersonate/{user_id}`.\n\n`reason` con `min_length=1` para que el 422 salga del borde y no del modelo de dominio: el\nerror de validación de FastAPI dice qué campo falta, y el `ValueError` del servicio no.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "StartImpersonationBody",
+        "type": "object"
+      },
+      "TwoFactorStatus": {
+        "properties": {
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "enrolled": {
+            "title": "Enrolled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enrolled",
+          "confirmed"
+        ],
+        "title": "TwoFactorStatus",
+        "type": "object"
+      },
+      "UpdateOrganizationBody": {
+        "description": "Nombre y metadata. **El slug no está**, y no es un olvido: cambiarlo rompe cada link guardado,\ncada bookmark y cada integración que lo tenga fijo.",
+        "properties": {
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "UpdateOrganizationBody",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyEmailRequest": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "code"
+        ],
+        "title": "VerifyEmailRequest",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "darwinBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "darwinCookie": {
+        "in": "cookie",
+        "name": "access_token",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "title": "Darwin",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/auth/2fa": {
+      "get": {
+        "description": "El estado del segundo factor del actor de la sesión.",
+        "operationId": "estado_auth_2fa_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TwoFactorStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Estado",
+        "tags": [
+          "auth",
+          "2fa"
+        ]
+      }
+    },
+    "/auth/2fa/challenge": {
+      "post": {
+        "description": "El segundo paso del login: canjea el desafío con el código y abre la sesión.\n\n**Pública**, y no puede no serlo: quien llega acá está a mitad de un login y todavía no\ntiene sesión. Reusa `emit_tokens` y `session_response_body` del router de identidad, así\nque el transporte dual, los atributos de la cookie y el valor anti-CSRF salen idénticos a\nun sign-in normal — replicarlos sería la copia que se olvida de uno.",
+        "operationId": "challenge_auth_2fa_challenge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChallengeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Challenge",
+        "tags": [
+          "auth",
+          "2fa"
+        ]
+      }
+    },
+    "/auth/2fa/confirm": {
+      "post": {
+        "description": "Activa el factor del actor.",
+        "operationId": "confirm_auth_2fa_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Confirm Auth 2Fa Confirm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Confirm",
+        "tags": [
+          "auth",
+          "2fa"
+        ]
+      }
+    },
+    "/auth/2fa/disable": {
+      "post": {
+        "description": "Desactiva el factor del actor, exigiendo un código válido.\n\n**No se permite estando impersonado.** Un administrador que entra como el usuario no\ntiene por qué poder bajarle el segundo factor: sería la escalada más barata del sistema.",
+        "operationId": "disable_auth_2fa_disable_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisableBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Disable Auth 2Fa Disable Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Disable",
+        "tags": [
+          "auth",
+          "2fa"
+        ]
+      }
+    },
+    "/auth/2fa/enroll": {
+      "post": {
+        "description": "Inscribe un factor nuevo, **sin activarlo**.\n\nInscribe siempre al **actor**, nunca a un `user_id` del cuerpo: aceptarlo del cliente\ndejaría que cualquiera con sesión le inscriba un segundo factor a otro y le tome la\ncuenta. Es la misma razón por la que `/auth/me` mira el contexto y no un parámetro.",
+        "operationId": "enroll_auth_2fa_enroll_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Enroll",
+        "tags": [
+          "auth",
+          "2fa"
+        ]
+      }
+    },
+    "/auth/impersonate": {
+      "get": {
+        "description": "El estado de impersonación de la sesión actual.\n\nEs lo que alimenta la barra de \"estás viendo como…\", y esa barra no es cosmética: sin\nella, un operador olvida que está impersonando y toma decisiones creyendo que actúa como\nél mismo.",
+        "operationId": "status_auth_impersonate_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpersonationStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Status",
+        "tags": [
+          "auth",
+          "impersonate"
+        ]
+      }
+    },
+    "/auth/impersonate/stop": {
+      "post": {
+        "description": "Termina la impersonación: revoca la sesión impersonada y borra sus cookies.\n\nNo devuelve una sesión: la del operador nunca se tocó. Con cookie hay que volver a\niniciar sesión, y esa asimetría es deliberada — ver el docstring del módulo.",
+        "operationId": "stop_auth_impersonate_stop_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpersonationStoppedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Stop",
+        "tags": [
+          "auth",
+          "impersonate"
+        ]
+      }
+    },
+    "/auth/impersonate/{user_id}": {
+      "post": {
+        "description": "Empieza una impersonación. Ver la advertencia del docstring del módulo sobre cookies.\n\nReusa `emit_tokens` y `session_response_body` del router de identidad: la sesión\nimpersonada es una sesión normal en todo lo demás, y armar su respuesta a mano sería la\ncopia que se olvida de un atributo de cookie.",
+        "operationId": "start_auth_impersonate__user_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartImpersonationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpersonationStartedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Start",
+        "tags": [
+          "auth",
+          "impersonate"
+        ]
+      }
+    },
+    "/auth/magic-link/consume": {
+      "post": {
+        "description": "Canjea el link y abre la sesión, con el mismo transporte dual que `/auth/sign-in`.\n\nReusa `emit_tokens` del router de identidad: si el plugin escribiera las cookies por su\ncuenta, tendría que replicar los atributos seguros y el valor anti-CSRF — y la copia\nque se olvida de uno es la que se explota.",
+        "operationId": "consume_auth_magic_link_consume_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsumeMagicLinkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Consume",
+        "tags": [
+          "auth",
+          "magic-link"
+        ]
+      }
+    },
+    "/auth/magic-link/request": {
+      "post": {
+        "description": "Pide un magic link. **Responde igual exista o no la cuenta.**\n\nDevuelve el token en el cuerpo cuando existe, por la misma razón que\n`/auth/sign-up` devuelve el código de verificación: el framework no manda mails.\n⚠️ **En producción, no devuelvas este valor**: mandalo por mail y respondé sólo\n`{\"sent\": true}`. Suscribite al evento o envolvé esta ruta.",
+        "operationId": "request_auth_magic_link_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestMagicLinkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MagicLinkRequested"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Request",
+        "tags": [
+          "auth",
+          "magic-link"
+        ]
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "description": "Quién sos. **Lee la fila del usuario**, y es la excepción deliberada al \"cero DB en\nel camino caliente\".\n\nEl mail no viaja en el token a propósito: es PII, y un access token que el cliente\nguarda —en `localStorage`, en el keychain, en un log de proxy— no es el lugar para\nponerla. La regla de no tocar la base vale para **cada petición autenticada**, no\npara el endpoint cuyo propósito es justamente devolver los datos del usuario.",
+        "operationId": "me_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/oauth/linked": {
+      "get": {
+        "description": "Los proveedores vinculados al actor.",
+        "operationId": "linked_auth_oauth_linked_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkedProviders"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Linked",
+        "tags": [
+          "auth",
+          "oauth"
+        ]
+      }
+    },
+    "/auth/oauth/providers": {
+      "get": {
+        "description": "Los proveedores configurados. Es lo que la interfaz necesita para dibujar botones.",
+        "operationId": "providers_auth_oauth_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkedProviders"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Providers",
+        "tags": [
+          "auth",
+          "oauth"
+        ]
+      }
+    },
+    "/auth/oauth/{provider}": {
+      "delete": {
+        "description": "Desvincula un proveedor del actor.\n\nSe niega a dejar la cuenta sin ningún método de acceso — ver el docstring del servicio.",
+        "operationId": "unlink_auth_oauth__provider__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Unlink Auth Oauth  Provider  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Unlink",
+        "tags": [
+          "auth",
+          "oauth"
+        ]
+      }
+    },
+    "/auth/oauth/{provider}/callback": {
+      "get": {
+        "description": "El callback: canjea el código y abre la sesión.\n\nReusa `emit_tokens` y `session_response_body` del router de identidad, así que el\ntransporte dual, los atributos de la cookie y el valor anti-CSRF salen idénticos a un\nsign-in normal. Ver el docstring del módulo sobre por qué no redirige.",
+        "operationId": "callback_auth_oauth__provider__callback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "redirect_uri",
+            "required": true,
+            "schema": {
+              "title": "Redirect Uri",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuthCallbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Callback",
+        "tags": [
+          "auth",
+          "oauth"
+        ]
+      }
+    },
+    "/auth/oauth/{provider}/link": {
+      "get": {
+        "description": "Inicia una **vinculación**: el mismo flujo, atado al actor de la sesión.\n\nA qué usuario se vincula se fija acá, en el `state`, y no se lee del callback: el\ncallback lo controla en parte quien maneja el navegador, y aceptarlo de ahí dejaría\nvincular una identidad propia a la cuenta de otro.\n\n**No se permite estando impersonado**: vincular un proveedor propio a la cuenta de la\npersona que estás impersonando es tomarle la cuenta.",
+        "operationId": "link_auth_oauth__provider__link_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "redirect_uri",
+            "required": true,
+            "schema": {
+              "title": "Redirect Uri",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Link",
+        "tags": [
+          "auth",
+          "oauth"
+        ]
+      }
+    },
+    "/auth/oauth/{provider}/start": {
+      "get": {
+        "description": "Inicia el flujo: emite el `state`, guarda el verificador de PKCE y arma la URL.\n\n**Pública.** Quien la usa todavía no tiene sesión — es el login.",
+        "operationId": "start_auth_oauth__provider__start_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A dónde vuelve el usuario.",
+            "in": "query",
+            "name": "redirect_uri",
+            "required": true,
+            "schema": {
+              "description": "A dónde vuelve el usuario.",
+              "title": "Redirect Uri",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Responder 302 en vez de JSON.",
+            "in": "query",
+            "name": "redirect",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Responder 302 en vez de JSON.",
+              "title": "Redirect",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "302": {
+            "description": "Con `?redirect=1`: redirect directo al proveedor."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start",
+        "tags": [
+          "auth",
+          "oauth"
+        ]
+      }
+    },
+    "/auth/passkey": {
+      "get": {
+        "description": "Las credenciales del actor.",
+        "operationId": "listar_auth_passkey_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PasskeySummary"
+                  },
+                  "title": "Response Listar Auth Passkey Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Listar",
+        "tags": [
+          "auth",
+          "passkey"
+        ]
+      }
+    },
+    "/auth/passkey/authenticate": {
+      "post": {
+        "description": "Verifica la aserción y abre la sesión.\n\nReusa `emit_tokens` y `session_response_body` del router de identidad: una sesión abierta\ncon passkey es una sesión normal, y armar su respuesta a mano sería la copia que se olvida\nde un atributo de cookie.",
+        "operationId": "authenticate_auth_passkey_authenticate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishAuthenticationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authenticate",
+        "tags": [
+          "auth",
+          "passkey"
+        ]
+      }
+    },
+    "/auth/passkey/authenticate/options": {
+      "post": {
+        "description": "Las opciones para `navigator.credentials.get()`.\n\n**No revela si la cuenta existe.** Un mail desconocido devuelve opciones sin\n`allowCredentials`, que es exactamente la misma forma que el flujo sin mail: el cliente no\npuede distinguir \"no existe\" de \"usá una credencial descubrible\".",
+        "externalDocs": {
+          "description": "PublicKeyCredentialRequestOptions (WebAuthn L3)",
+          "url": "https://www.w3.org/TR/webauthn-3/#dictionary-assertion-options"
+        },
+        "operationId": "authenticate_options_auth_passkey_authenticate_options_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthenticationOptionsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Authenticate Options Auth Passkey Authenticate Options Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Authenticate Options",
+        "tags": [
+          "auth",
+          "passkey"
+        ]
+      }
+    },
+    "/auth/passkey/register": {
+      "post": {
+        "description": "Guarda la credencial.\n\n**No se permite estando impersonado**: registrar una credencial propia en la cuenta de la\npersona que estás impersonando es tomarle la cuenta, y de forma permanente.",
+        "operationId": "register_auth_passkey_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinishRegistrationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeySummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Register",
+        "tags": [
+          "auth",
+          "passkey"
+        ]
+      }
+    },
+    "/auth/passkey/register/options": {
+      "post": {
+        "description": "Las opciones para `navigator.credentials.create()`.\n\nRegistra siempre al **actor** del contexto. Ver la advertencia del docstring del módulo.",
+        "externalDocs": {
+          "description": "PublicKeyCredentialCreationOptions (WebAuthn L3)",
+          "url": "https://www.w3.org/TR/webauthn-3/#dictionary-makecredentialoptions"
+        },
+        "operationId": "register_options_auth_passkey_register_options_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Register Options Auth Passkey Register Options Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Register Options",
+        "tags": [
+          "auth",
+          "passkey"
+        ]
+      }
+    },
+    "/auth/passkey/{passkey_id}": {
+      "delete": {
+        "description": "Borra una credencial del actor.\n\nSe niega a dejar la cuenta sin ningún método de acceso — ver el docstring del servicio.",
+        "operationId": "borrar_auth_passkey__passkey_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "passkey_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Passkey Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Borrar Auth Passkey  Passkey Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Borrar",
+        "tags": [
+          "auth",
+          "passkey"
+        ]
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "description": "Rota la sesión.\n\n**Sin rate limit**, y no es un olvido: un cliente legítimo refresca cada dos minutos\n—el TTL del access token— así que un límite por IP cortaría a los usuarios detrás de\nun NAT compartido. La protección de este endpoint es la detección de reuso: un refresh\nrobado revoca la familia entera en el primer intento.",
+        "operationId": "refresh_auth_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Refresh",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/sessions": {
+      "get": {
+        "description": "Las sesiones vivas del sujeto, para una pantalla de seguridad.\n\n**No devuelve el `token_hash`.** Es un hash, no el token, pero publicar el hash de\nuna credencial en una API no aporta nada y sí le da a un atacante con acceso de\nlectura el índice por el que buscar.",
+        "operationId": "sessions_auth_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SessionInfo"
+                  },
+                  "title": "Response Sessions Auth Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/sign-in": {
+      "post": {
+        "description": "Autentica y abre la sesión. **El mismo endpoint para los dos transportes.**\n\nDevuelve `JSONResponse` a mano en vez de un modelo, porque hay que escribir cookies\nen la respuesta y para eso hace falta el objeto.",
+        "operationId": "sign_in_auth_sign_in_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sign In",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/sign-out": {
+      "post": {
+        "description": "Cierra la sesión en curso: revoca la fila **y** borra las cookies.\n\nLas dos cosas: borrar la cookie sin revocar deja el token vivo para quien lo haya\ncopiado, y revocar sin borrar la cookie le deja al navegador una credencial muerta\nque va a mandar en cada petición.",
+        "operationId": "sign_out_auth_sign_out_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignedOutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Sign Out",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/sign-out-everywhere": {
+      "post": {
+        "description": "Revoca **todas** las sesiones del sujeto.\n\nNo se permite impersonado: es el flujo que la víctima ejecuta para echar a un\natacante, y dejar que un operador lo dispare desde una sesión impersonada le daría la\ncapacidad de expulsar al dueño de su propia cuenta.",
+        "operationId": "sign_out_everywhere_auth_sign_out_everywhere_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevokedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Sign Out Everywhere",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/sign-up": {
+      "post": {
+        "description": "Crea una cuenta y **devuelve el código de verificación**.\n\nEl código vuelve en el cuerpo porque el framework no manda mails: quién lo manda\ny con qué plantilla es de la aplicación. Suscribite a `UserRegisteredEvent` o usá\neste valor para mandarlo vos.\n\n**No lo loguees ni lo devuelvas en una ruta pública**: es la credencial que\nverifica el mail.",
+        "operationId": "sign_up_auth_sign_up_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignUpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Sign Up Auth Sign Up Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sign Up",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/verify-email": {
+      "post": {
+        "operationId": "verify_email_auth_verify_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Verify Email Auth Verify Email Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Email",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/organizations": {
+      "get": {
+        "description": "Las membresías del actor, para el selector de organización.\n\nDevuelve membresías y no organizaciones porque el rol es la mitad de la información: la\ninterfaz necesita saber si mostrar el botón de administrar.",
+        "operationId": "mias_organizations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemberOut"
+                  },
+                  "title": "Response Mias Organizations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Mias",
+        "tags": [
+          "organizations"
+        ]
+      },
+      "post": {
+        "description": "Crea una organización y hace `owner` al actor.",
+        "operationId": "crear_organizations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrganizationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Crear",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/organizations/invitations/accept": {
+      "post": {
+        "description": "Acepta una invitación.\n\n**Exige sesión**, y por eso no es pública: la invitación está atada a un mail, y sin cuenta\nno hay mail que comparar. **No se permite estando impersonado**: aceptar una invitación en\nnombre de la persona que estás impersonando la mete en una organización sin que se enterara.",
+        "operationId": "aceptar_organizations_invitations_accept_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Aceptar",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/organizations/{organization_id}": {
+      "delete": {
+        "description": "Borra la organización. **Sólo un `owner`.**",
+        "operationId": "borrar_organizations__organization_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Borrar Organizations  Organization Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Borrar",
+        "tags": [
+          "organizations"
+        ]
+      },
+      "get": {
+        "description": "La organización. Exige ser miembro.",
+        "operationId": "ver_organizations__organization_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Ver",
+        "tags": [
+          "organizations"
+        ]
+      },
+      "patch": {
+        "description": "Actualiza nombre y metadata. Requiere ser `admin` o más.",
+        "operationId": "actualizar_organizations__organization_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrganizationBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Actualizar",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/organizations/{organization_id}/invitations": {
+      "get": {
+        "description": "Las invitaciones pendientes. Requiere ser `admin` o más.",
+        "operationId": "pendientes_organizations__organization_id__invitations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InvitationOut"
+                  },
+                  "title": "Response Pendientes Organizations  Organization Id  Invitations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Pendientes",
+        "tags": [
+          "organizations"
+        ]
+      },
+      "post": {
+        "description": "Invita a alguien. Requiere ser `admin` o más, y no se puede invitar por encima del rol\npropio.\n\n**Devuelve el token en el cuerpo** por la misma razón que `/auth/sign-up` devuelve el\ncódigo de verificación: el framework no manda mails. ⚠️ En producción armá el link con este\nvalor, mandalo por mail, y respondé sólo `{\"sent\": true}`.",
+        "operationId": "invitar_organizations__organization_id__invitations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Invitar",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/organizations/{organization_id}/invitations/{invitation_id}": {
+      "delete": {
+        "description": "Revoca una invitación pendiente. Requiere ser `admin` o más.",
+        "operationId": "revocar_organizations__organization_id__invitations__invitation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Revocar Organizations  Organization Id  Invitations  Invitation Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Revocar",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/organizations/{organization_id}/members": {
+      "get": {
+        "description": "Los miembros. Exige ser miembro — ver el docstring del servicio.",
+        "operationId": "miembros_organizations__organization_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemberOut"
+                  },
+                  "title": "Response Miembros Organizations  Organization Id  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Miembros",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/organizations/{organization_id}/members/{user_id}": {
+      "delete": {
+        "description": "Saca a alguien.\n\n**Irse uno mismo siempre se permite** —salvo siendo el último `owner`— y no requiere\nningún rol: nadie tiene que pedir permiso para dejar de trabajar en un lugar.",
+        "operationId": "sacar_organizations__organization_id__members__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Sacar Organizations  Organization Id  Members  User Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Sacar",
+        "tags": [
+          "organizations"
+        ]
+      },
+      "patch": {
+        "description": "Cambia el rol de alguien. Requiere `admin` y estar por encima — ver el servicio.",
+        "operationId": "cambiar_rol_organizations__organization_id__members__user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Organization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRoleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Cambiar Rol",
+        "tags": [
+          "organizations"
+        ]
+      }
+    }
+  }
+}
