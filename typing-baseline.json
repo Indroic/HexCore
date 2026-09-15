@@ -16,5 +16,6 @@
     "hexcore/testing/fakes.py": 1,
     "hexcore/testing/helpers.py": 1
   },
+  "min_files_analyzed": 200,
   "verifytypes_min_completeness": 0.0
 }
