@@ -96,6 +96,31 @@ jobs:
       - name: Regenerar y comparar
         run: uv run python scripts/gen_stubs.py --check
 
+  # ── El contrato HTTP de Darwin, volcado y versionado en git ─────────────────
+  contrato-http:
+    name: "Contrato HTTP de Darwin (OpenAPI)"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/hexcore
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # `--extra all`: el script monta los seis plugins de Darwin para volcar el contrato
+      # completo, y no vale la pena distinguir cuál necesita cuál extra sólo para este job.
+      - name: Install dependencies
+        run: uv sync --extra all --group dev
+
+      - name: Volcar y comparar contra lo versionado
+        run: uv run python scripts/darwin_openapi.py --check
+
   typecheck:
     name: "Pyright strict sobre hexcore/"
     runs-on: ubuntu-latest
@@ -296,6 +321,7 @@ jobs:
     needs:
       - house-rules
       - stubs-drift
+      - contrato-http
       - typecheck
       - no-extras-import
       - extras-matrix

@@ -26,12 +26,13 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PAQUETE = REPO_ROOT / "hexcore"
 
-#: Los 12 archivos que anclan con `from rutas import ...` / `from _rutas import ...` (antes
+#: Los 14 archivos que anclan con `from rutas import ...` / `from _rutas import ...` (antes
 #: de centralizarlos, cada uno recalculaba `Path(__file__).resolve().parent.parent` a mano).
 #: Si uno de estos deja de anclar correctamente, el archivo pasa a apuntar a un directorio
 #: ajeno sin que ningún import falle.
 ARCHIVOS_CON_ANCLA = (
     "scripts/_rutas.py",
+    "scripts/darwin_openapi.py",
     "scripts/gen_stubs.py",
     "scripts/house_rules.py",
     "scripts/stub_quality.py",
@@ -40,6 +41,7 @@ ARCHIVOS_CON_ANCLA = (
     "tests/test_darwin_backend_neutrality.py",
     "tests/test_darwin_cli.py",
     "tests/test_darwin_models.py",
+    "tests/test_darwin_openapi.py",
     "tests/test_darwin_plugin_decoupling.py",
     "tests/test_deprecations.py",
     "tests/test_documentation_examples.py",

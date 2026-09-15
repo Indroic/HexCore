@@ -22,6 +22,8 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from hexcore.darwin.infrastructure.api.routers import SessionResponse
+
 __all__ = [
     "ConfirmBody",
     "DisableBody",
@@ -156,7 +158,7 @@ def build_two_factor_router(
         )
         return {"disabled": True}
 
-    @router.post("/challenge", dependencies=limite)
+    @router.post("/challenge", dependencies=limite, response_model=SessionResponse)
     async def challenge(
         payload: ChallengeBody,
         request: Request,

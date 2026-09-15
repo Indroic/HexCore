@@ -22,7 +22,15 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-__all__ = ["StartImpersonationBody", "ImpersonationStatus", "build_impersonate_router"]
+from hexcore.darwin.infrastructure.api.routers import SessionResponse
+
+__all__ = [
+    "StartImpersonationBody",
+    "ImpersonationStatus",
+    "ImpersonationStoppedResponse",
+    "ImpersonationStartedResponse",
+    "build_impersonate_router",
+]
 
 
 class StartImpersonationBody(BaseModel):
@@ -41,6 +49,30 @@ class ImpersonationStatus(BaseModel):
     actor_id: str | None = None
     subject_id: str | None = None
     reason: str | None = None
+    expires_at: str | None = None
+
+
+class ImpersonationStoppedResponse(BaseModel):
+    """La respuesta de `POST /auth/impersonate/stop`."""
+
+    stopped: bool
+
+
+class ImpersonationStartedResponse(SessionResponse):
+    """
+    La respuesta de `POST /auth/impersonate/{user_id}`.
+
+    `impersonating` queda **deprecado**: en esta ruta lleva el id del sujeto impersonado como
+    string, mientras que en `MeResponse.impersonating` es un `bool` — el mismo nombre significa
+    dos cosas distintas según la ruta, y un cliente TypeScript no puede tipar las dos con el
+    mismo campo sin mentir. Renombrarlo sería breaking y no lo amerita un major; en su lugar,
+    `subject_id` es el mismo valor con un nombre que no colisiona.
+    """
+
+    impersonating: str
+    subject_id: str
+    #: Cuándo vence la ventana de impersonación (no la del access token, que es
+    #: `expires_in`, heredado de `SessionResponse`).
     expires_at: str | None = None
 
 
@@ -95,7 +127,7 @@ def build_impersonate_router(
     # registro, así que con `/{user_id}` primero, un `POST /auth/impersonate/stop` matchea la
     # ruta paramétrica e intenta parsear `"stop"` como UUID — 422 en vez de terminar la
     # impersonación. Lo encontró un test, no la revisión.
-    @router.post("/stop")
+    @router.post("/stop", response_model=ImpersonationStoppedResponse)
     async def stop(
         auth: t.Any = Depends(provide_auth),
         transport: t.Any = Depends(_resolve_transport),
@@ -114,7 +146,9 @@ def build_impersonate_router(
         transport.clear(respuesta)
         return respuesta
 
-    @router.post("/{user_id}", dependencies=limite)
+    @router.post(
+        "/{user_id}", dependencies=limite, response_model=ImpersonationStartedResponse
+    )
     async def start(
         user_id: UUID,
         payload: StartImpersonationBody,
@@ -149,6 +183,10 @@ def build_impersonate_router(
             exclude_none=True
         )
         cuerpo["impersonating"] = str(resultado.subject.id)
+        # `subject_id` es el mismo valor que `impersonating`, con un nombre que no colisiona
+        # con el `bool` de `MeResponse.impersonating`. Ver el docstring de
+        # `ImpersonationStartedResponse`.
+        cuerpo["subject_id"] = str(resultado.subject.id)
         cuerpo["expires_at"] = (
             resultado.session.impersonation_expires_at.isoformat()
             if resultado.session.impersonation_expires_at

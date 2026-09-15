@@ -43,6 +43,9 @@ __all__ = [
     "SignInRequest",
     "SessionResponse",
     "MeResponse",
+    "SignedOutResponse",
+    "RevokedResponse",
+    "SessionInfo",
     "build_identity_router",
     "emit_tokens",
     "session_response_body",
@@ -98,6 +101,31 @@ class MeResponse(BaseModel):
     email: str | None = None
     roles: list[str] = Field(default_factory=list)
     scopes: list[str] = Field(default_factory=list)
+
+
+class SignedOutResponse(BaseModel):
+    """La respuesta de `POST /auth/sign-out`."""
+
+    signed_out: bool
+
+
+class RevokedResponse(BaseModel):
+    """La respuesta de `POST /auth/sign-out-everywhere`: cuántas sesiones se revocaron."""
+
+    revoked: int
+
+
+class SessionInfo(BaseModel):
+    """Una fila de `GET /auth/sessions`, para una pantalla de seguridad."""
+
+    session_id: str
+    transport: str
+    created_at: str
+    expires_at: str
+    ip_address: str | None
+    user_agent: str | None
+    impersonated: bool
+    current: bool
 
 
 # ── Helpers de transporte ─────────────────────────────────────────────────────
@@ -241,7 +269,7 @@ def build_identity_router(
         usuario = await servicio.verify_email(email=payload.email, code=payload.code)
         return {"email_verified": usuario.email_verified}
 
-    @router.post("/sign-in", dependencies=limite)
+    @router.post("/sign-in", dependencies=limite, response_model=SessionResponse)
     async def sign_in(
         payload: SignInRequest,
         request: Request,
@@ -270,7 +298,7 @@ def build_identity_router(
         emit_tokens(respuesta, tokens, transport, contenedor.config)
         return respuesta
 
-    @router.post("/refresh")
+    @router.post("/refresh", response_model=SessionResponse)
     async def refresh(
         request: Request,
         transport: "AbstractTransport" = Depends(resolve_transport),
@@ -304,7 +332,7 @@ def build_identity_router(
         emit_tokens(respuesta, tokens, transport, contenedor.config)
         return respuesta
 
-    @router.post("/sign-out")
+    @router.post("/sign-out", response_model=SignedOutResponse)
     async def sign_out(
         auth: "AuthContext[t.Any]" = Depends(provide_auth),
         transport: "AbstractTransport" = Depends(resolve_transport),
@@ -335,6 +363,7 @@ def build_identity_router(
     @router.post(
         "/sign-out-everywhere",
         dependencies=[Depends(require_not_impersonated("sign_out_everywhere"))],
+        response_model=RevokedResponse,
     )
     async def sign_out_everywhere(
         auth: "AuthContext[t.Any]" = Depends(provide_auth),
@@ -386,10 +415,10 @@ def build_identity_router(
             scopes=sorted(auth.actor.scopes),
         )
 
-    @router.get("/sessions")
+    @router.get("/sessions", response_model=list[SessionInfo])
     async def sessions(
         auth: "AuthContext[t.Any]" = Depends(provide_auth),
-    ) -> list[dict[str, t.Any]]:
+    ) -> list[SessionInfo]:
         """
         Las sesiones vivas del sujeto, para una pantalla de seguridad.
 
@@ -402,16 +431,16 @@ def build_identity_router(
         repo = get_identity_container().sessions_repository()
         vivas = await repo.list_active_for_user(t.cast(t.Any, auth.subject_id))
         return [
-            {
-                "session_id": str(s.id),
-                "transport": s.transport,
-                "created_at": s.created_at.isoformat(),
-                "expires_at": s.expires_at.isoformat(),
-                "ip_address": s.ip_address,
-                "user_agent": s.user_agent,
-                "impersonated": s.is_impersonated,
-                "current": s.id == getattr(auth.actor, "session_id", None),
-            }
+            SessionInfo(
+                session_id=str(s.id),
+                transport=s.transport,
+                created_at=s.created_at.isoformat(),
+                expires_at=s.expires_at.isoformat(),
+                ip_address=s.ip_address,
+                user_agent=s.user_agent,
+                impersonated=s.is_impersonated,
+                current=s.id == getattr(auth.actor, "session_id", None),
+            )
             for s in vivas
         ]
 

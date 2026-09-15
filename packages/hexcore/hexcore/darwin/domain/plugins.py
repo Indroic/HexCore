@@ -237,6 +237,22 @@ class DarwinPlugin(abc.ABC):
         """
         return {}
 
+    def exception_payload(self, exc: Exception) -> t.Mapping[str, t.Any]:
+        """
+        Claves extra para el **cuerpo** de la excepción, si el plugin las tiene.
+
+        Espejo de `exception_status_map()` pero para el body en vez del status: hay
+        excepciones que llevan datos que el cliente necesita para completar el flujo — el
+        `challenge` de `TwoFactorRequiredError`, que el segundo paso del login exige de
+        vuelta en `POST /auth/2fa/challenge` — y que no caben en `detail` sin obligar al
+        cliente a parsear texto.
+
+        Método **concreto** que devuelve vacío, igual que el resto de los puntos de
+        extensión de `DarwinPlugin`: agregar éste no rompe a ningún plugin existente, que
+        no tiene por qué aportar nada al body de sus errores.
+        """
+        return {}
+
     def register_handlers(self, registry: t.Any) -> None:
         """
         Registra los comandos y queries del plugin en el `HandlerRegistry`.

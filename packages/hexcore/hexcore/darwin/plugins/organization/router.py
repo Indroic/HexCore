@@ -30,6 +30,7 @@ __all__ = [
     "OrganizationOut",
     "MemberOut",
     "InvitationOut",
+    "InvitationIssued",
     "build_organization_router",
 ]
 
@@ -87,9 +88,17 @@ class InvitationOut(BaseModel):
     """
 
     id: str
+
     email: str
     role: OrgRole
     expires_at: str
+
+
+class InvitationIssued(BaseModel):
+    """La respuesta de `POST /organizations/{organization_id}/invitations`."""
+
+    invitation: InvitationOut
+    token: str
 
 
 def build_organization_router(
@@ -240,12 +249,16 @@ def build_organization_router(
         return {"removed": True}
 
     # ── Las invitaciones ──────────────────────────────────────────────────────
-    @router.post("/{organization_id}/invitations", status_code=201)
+    @router.post(
+        "/{organization_id}/invitations",
+        status_code=201,
+        response_model=InvitationIssued,
+    )
     async def invitar(
         organization_id: UUID,
         payload: InviteBody,
         auth: t.Any = Depends(provide_auth),
-    ) -> dict[str, t.Any]:
+    ) -> InvitationIssued:
         """
         Invita a alguien. Requiere ser `admin` o más, y no se puede invitar por encima del rol
         propio.
@@ -262,10 +275,9 @@ def build_organization_router(
             email=payload.email,
             role=payload.role,
         )
-        return {
-            "invitation": _invitation_out(emitida.invitation).model_dump(),
-            "token": emitida.token,
-        }
+        return InvitationIssued(
+            invitation=_invitation_out(emitida.invitation), token=emitida.token
+        )
 
     @router.get("/{organization_id}/invitations")
     async def pendientes(
