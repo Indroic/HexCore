@@ -1,3 +1,9 @@
+## hexcore-v9.2.1 (2026-09-15)
+
+### Fix
+
+- **ci**: pushear la rama y el tag por separado, no con --follow-tags
+
 ## hexcore-v9.2.0 (2026-09-15)
 
 ### Fix
