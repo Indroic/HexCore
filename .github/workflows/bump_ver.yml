@@ -116,9 +116,18 @@ jobs:
           fi
 
       - name: Pushear el commit y el tag
+        # Dos `git push` separados y **no** `git push --follow-tags`: empujar la rama y el
+        # tag en una sola invocación no dispara el `on: push: tags:` de
+        # publish-to-pypi.yml — probado a mano contra el repo real. GitHub sólo generó el
+        # evento de push por tag cuando el tag se empujó en su propio comando; con
+        # `--follow-tags` junto a la rama, el release quedaba taggeado pero jamás publicado,
+        # sin ningún error visible. Encontrado porque hexcore-v9.1.0 y hexcore-v9.2.0 quedaron
+        # en el repo sin que `publish-to-pypi.yml` corriera ni una vez.
         if: steps.cz.outputs.bumped == 'true'
         working-directory: ${{ github.workspace }}
-        run: git push origin HEAD:master --follow-tags
+        run: |
+          git push origin HEAD:master
+          git push origin "${{ steps.cz.outputs.tag }}"
 
       - name: Release
         if: steps.cz.outputs.bumped == 'true'
