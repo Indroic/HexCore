@@ -4,5 +4,8 @@
   "description": "Raíz de workspaces npm del monorepo. El paquete publicable es packages/darwin-client.",
   "workspaces": [
     "packages/darwin-client"
-  ]
+  ],
+  "allowScripts": {
+    "esbuild@0.27.7": true
+  }
 }

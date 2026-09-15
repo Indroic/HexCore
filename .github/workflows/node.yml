@@ -1,0 +1,118 @@
+name: Node tests
+
+# Espejo de pytest.yml para @hexcore/darwin-client. Matriz 20/22/24: las tres LTS vivas — el
+# `engines` del package.json es una promesa que nadie más verifica.
+#
+# Sin filtro de path todavía (`paths:` en el `on:`): un workflow que es required check no puede
+# llevarlo si el required check no está ya reapuntado a un agregador de nombre fijo en
+# Settings → Branches. `node-ok` corre siempre por ahora; el filtro por path es un paso
+# posterior, cuando además pytest.yml y typing.yml lo tengan — hacerlo sólo acá dejaría al
+# workflow de Python corriendo de más en cada cambio que sólo toque el cliente TS.
+on:
+  push:
+    branches:
+      - master
+      - "release/**"
+      - "feat/**"
+  pull_request:
+    branches:
+      - master
+      - "release/**"
+      - "feat/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: "Node ${{ matrix.node }}"
+    runs-on: ubuntu-latest
+    # A nivel de job y no del workflow: `node-ok` no hace checkout, así que
+    # `packages/darwin-client` no existe ahí — un default a nivel workflow rompía ese job
+    # con "No such file or directory" al querer *iniciar* el shell en un directorio inexistente.
+    defaults:
+      run:
+        working-directory: packages/darwin-client
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          # El lockfile vive en la raíz del workspace, no en packages/darwin-client.
+          cache-dependency-path: package-lock.json
+
+      # Desde la raíz del workspace: `npm ci` con working-directory apuntando al paquete
+      # instalaría sólo ese subárbol y no resolvería el workspace.
+      - name: Install dependencies
+        working-directory: .
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Los tipos generados no tienen drift
+        # openapi-typescript no tiene un modo --check propio: se regenera y se compara con
+        # git diff. error-codes.ts sí lo tiene (scripts/gen-error-codes.mjs --check).
+        run: |
+          npm run gen:schema
+          git diff --exit-code -- src/generated/schema.d.ts || {
+            echo "::error::src/generated/schema.d.ts quedó desactualizado respecto a openapi/darwin.openapi.json. Regenerá con \`npm run gen:schema\`."
+            exit 1
+          }
+          npm run gen:errors:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verificar el artefacto publicable
+        # Espejo del `-m packaging` de Python: verifica lo que el consumidor recibe, no el
+        # árbol de fuentes. Es donde aparecen los archivos que `files` en package.json se
+        # olvida de incluir.
+        run: |
+          npm pack --dry-run --json > /tmp/pack.json
+          node -e "
+            const pack = JSON.parse(require('fs').readFileSync('/tmp/pack.json', 'utf-8'))[0];
+            const archivos = pack.files.map((f) => f.path);
+            console.log('Archivos en el tarball:', archivos);
+            const necesarios = ['dist/index.js', 'dist/index.cjs', 'dist/index.d.ts', 'package.json'];
+            const faltan = necesarios.filter((n) => !archivos.includes(n));
+            if (faltan.length > 0) {
+              console.error('Faltan en el tarball:', faltan);
+              process.exit(1);
+            }
+          "
+
+  node-ok:
+    name: "Gate de Node"
+    if: always()
+    needs:
+      - test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Veredicto
+        env:
+          RESULTADOS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Resultados: $RESULTADOS"
+          for result in $RESULTADOS; do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "::error::El gate de Node falló."
+              exit 1
+            fi
+          done
+          echo "Gate de Node en verde."
