@@ -35,7 +35,7 @@ import difflib
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from _rutas import PAQUETE as REPO_ROOT
 
 #: Las fachadas que necesitan stub. Deliberadamente **sólo** éstas: un `.pyi` es una segunda
 #: copia que hay que mantener, así que se justifica sólo donde la superficie es una

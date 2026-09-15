@@ -27,9 +27,10 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.packaging
+from rutas import PAQUETE as REPO_ROOT
+from rutas import REPO
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+pytestmark = pytest.mark.packaging
 
 
 @pytest.fixture(scope="module")
@@ -172,15 +173,15 @@ def test_la_matriz_de_ci_cubre_todos_los_extras():
 
     import yaml
 
-    raiz = Path(__file__).resolve().parent.parent
-
     declarados = set(
-        tomllib.loads((raiz / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
             "optional-dependencies"
         ]
     )
+    # El único lugar de este archivo que necesita la raíz del monorepo y no la del paquete:
+    # el workflow vive en `.github/`, que no bajó a `packages/hexcore/` con el resto.
     workflow = yaml.safe_load(
-        (raiz / ".github/workflows/typing.yml").read_text(encoding="utf-8")
+        (REPO / ".github/workflows/typing.yml").read_text(encoding="utf-8")
     )
     patas = set(workflow["jobs"]["extras-matrix"]["strategy"]["matrix"]["extra"])
 
@@ -206,15 +207,14 @@ def test_extra_smoke_conoce_todos_los_extras_con_superficie():
     """
     import tomllib
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
     try:
         from extra_smoke import PROMESAS
     finally:
         sys.path.pop(0)
 
-    raiz = Path(__file__).resolve().parent.parent
     declarados = set(
-        tomllib.loads((raiz / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
             "optional-dependencies"
         ]
     ) - {"all"}

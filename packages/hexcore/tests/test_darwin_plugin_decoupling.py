@@ -26,11 +26,13 @@ from pathlib import Path
 
 import pytest
 
+from rutas import FUENTE
+from rutas import PAQUETE as RAIZ
+
 pytest.importorskip("joserfc")
 pytest.importorskip("argon2")
 
-RAIZ = Path(__file__).resolve().parent.parent
-PLUGINS_DIR = RAIZ / "hexcore" / "darwin" / "plugins"
+PLUGINS_DIR = FUENTE / "darwin" / "plugins"
 
 #: Los seis plugins, con el extra que les corresponde. El guión bajo del paquete es un guión
 #: medio en el extra porque un nombre de extra se normaliza así (PEP 503) y `pip` acepta las dos

@@ -80,7 +80,7 @@ being up to date · `BLOCKED` = missing review · `CLEAN` = ready.
 
 ## 5. Documentation
 
-The documentation lives in [`docs/`](./docs/), in two languages. **English is the reference
+The documentation lives in [`docs/`](./packages/hexcore/docs/), in two languages. **English is the reference
 version** — it is written there first — and `docs/es/` is its translation. If the two ever
 contradict each other, English wins.
 

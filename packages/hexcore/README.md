@@ -260,6 +260,6 @@ There is a set of skills for extending HexCore in VS Code and compatible environ
 
 - [docs/](./docs/) — the complete documentation, in English and Spanish.
 - [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md) — type system and stubs.
-- [CHANGELOG.md](./CHANGELOG.md) — change history.
-- [CONTRIBUTING.md](./CONTRIBUTING.md) — collaboration guidelines.
-- [SECURITY.md](./SECURITY.md) — security policy.
+- [CHANGELOG.md](../../CHANGELOG.md) — change history.
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) — collaboration guidelines.
+- [SECURITY.md](../../SECURITY.md) — security policy.

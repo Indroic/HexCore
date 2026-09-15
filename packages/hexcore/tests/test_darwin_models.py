@@ -16,9 +16,9 @@ Espeja `tests/test_cron_sql.py:66-90`, que fija las mismas reglas para la tabla 
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
+
+from rutas import PAQUETE as REPO_ROOT
 
 pytest.importorskip("sqlalchemy")
 
@@ -50,8 +50,6 @@ from hexcore.infrastructure.repositories.orms.sqlalchemy import (  # noqa: E402
     Base,
     BaseModel,
 )
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 TODOS_LOS_MODELOS = (
     UserModel,

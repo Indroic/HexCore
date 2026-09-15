@@ -25,14 +25,13 @@ from __future__ import annotations
 import subprocess
 import sys
 import textwrap
-from pathlib import Path
 
 import pytest
 
+from rutas import PAQUETE as RAIZ
+
 pytest.importorskip("joserfc")
 pytest.importorskip("argon2")
-
-RAIZ = Path(__file__).resolve().parent.parent
 
 #: Cómo se instancia cada plugin. `passkey` exige `rp_id` porque un WebAuthn sin Relying Party
 #: no se puede verificar, y el plugin prefiere fallar al cablear.

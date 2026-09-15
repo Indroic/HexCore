@@ -24,11 +24,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import pathlib
 import subprocess
 import sys
 
-RAIZ = pathlib.Path(__file__).resolve().parent.parent
+from _rutas import PAQUETE as RAIZ
+
 BASELINE = RAIZ / "typing-baseline.json"
 CLAVE = "stub_completeness"
 

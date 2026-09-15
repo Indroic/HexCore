@@ -15,11 +15,12 @@ consumidor, no acá.
 from __future__ import annotations
 
 import ast
-import pathlib
 import subprocess
 import sys
 
 import pytest
+
+from rutas import FUENTE
 
 pytest.importorskip("typer")
 
@@ -29,13 +30,7 @@ from hexcore.darwin.infrastructure.cli import identity_cli  # noqa: E402
 from hexcore.infrastructure.cli import app  # noqa: E402
 
 RUNNER = CliRunner()
-CLI_PATH = (
-    pathlib.Path(__file__).resolve().parents[1]
-    / "hexcore"
-    / "darwin"
-    / "infrastructure"
-    / "cli.py"
-)
+CLI_PATH = FUENTE / "darwin" / "infrastructure" / "cli.py"
 
 
 # ── El contrato de imports ────────────────────────────────────────────────────
