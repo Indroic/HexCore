@@ -18,3 +18,8 @@ verifytypes.json
 # configuración —un test, un `hexcore identity create-tables`, un script— deja el archivo en
 # la raíz del repo.
 *.sqlite3
+# Node (workspace npm de packages/darwin-client)
+node_modules/
+npm-debug.log*
+.npm/
+*.tsbuildinfo
