@@ -23,14 +23,16 @@ on:
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: packages/darwin-client
-
 jobs:
   test:
     name: "Node ${{ matrix.node }}"
     runs-on: ubuntu-latest
+    # A nivel de job y no del workflow: `node-ok` no hace checkout, así que
+    # `packages/darwin-client` no existe ahí — un default a nivel workflow rompía ese job
+    # con "No such file or directory" al querer *iniciar* el shell en un directorio inexistente.
+    defaults:
+      run:
+        working-directory: packages/darwin-client
     strategy:
       fail-fast: false
       matrix:
