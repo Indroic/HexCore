@@ -1,3 +1,9 @@
+## hexcore-v9.2.0 (2026-09-15)
+
+### Fix
+
+- **ci**: bump_ver.yml regenera el contrato de Darwin en cada release
+
 ## hexcore-v9.1.0 (2026-09-15)
 
 ### Feat
