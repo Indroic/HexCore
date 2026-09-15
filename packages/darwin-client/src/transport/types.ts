@@ -12,8 +12,8 @@ export interface DarwinTokens {
   sessionId: string;
   expiresIn: number;
   tokenType: string;
-  accessToken?: string;
-  refreshToken?: string;
+  accessToken?: string | undefined;
+  refreshToken?: string | undefined;
 }
 
 /**
