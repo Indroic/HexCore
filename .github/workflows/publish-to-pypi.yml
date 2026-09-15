@@ -2,32 +2,23 @@ name: Publish Python 🐍 distribution to PyPI
 
 # Publicar es irreversible: PyPI no permite reemplazar una versión ya subida, así que lo único
 # que se puede hacer con una release mala es yankearla y sacar otra. Por eso todo lo que
-# verifica va **antes** de `twine upload` y no después.
+# verifica va **antes** de publicar y no después.
 #
-# Que eso haga falta no es hipotético. 7.0.0 se publicó sin que la suite corriera una sola vez
-# sobre esa versión, y salió contradiciéndose: `REMOVED_IN = "7.0"` con el paquete ya en 7.0.0
-# y los alias que prometía eliminar todavía adentro. El test que existe para impedirlo
-# —`test_removed_in_is_ahead_of_the_published_version`— nunca se ejecutó.
+# Se dispara por el tag prefijado (`hexcore-v*`) y no por `workflow_run` sobre "Bump version".
+# Antes hacía falta el rodeo de `workflow_run` porque el push del bump se hacía con
+# `GITHUB_TOKEN`, y un push hecho con ese token no dispara otros workflows (protección de
+# GitHub contra recursión) — así que había que engancharse al workflow que sí corrió, y
+# checkoutear la punta de la rama porque el sha del evento apuntaba al commit ANTERIOR al
+# bump. Ahora que `bump_ver.yml` pushea con `PERSONAL_ACCESS_TOKEN`, el push del tag dispara
+# este workflow directamente, y el checkout por defecto trae exactamente el tag que se va a
+# publicar — no una aproximación.
 #
-# El agujero eran dos cosas a la vez, y hacían falta las dos para que pasara:
-#
-#   1. El commit del bump lo pushea `Bump version` con el `GITHUB_TOKEN`, y un push hecho con
-#      ese token **no dispara workflows** — es la protección de GitHub contra recursión. O sea
-#      que la suite corre sobre el merge y no sobre la versión que se publica, que es otro
-#      árbol: el bump toca `pyproject.toml` y `CHANGELOG.md`.
-#   2. `workflow_run` con `types: [completed]` dispara cuando el workflow **termina**, sin
-#      mirar cómo. Un `Bump version` fallado publicaba igual.
-#
-# Los dos se cierran acá abajo: la condición de `conclusion == 'success'` y los jobs `tests` y
-# `gate-tipado`, que corren sobre el árbol que se va a empaquetar.
+# El filtro `hexcore-v*` y no `*` es a propósito: con dos paquetes en el repo, un tag
+# `darwin-client-v0.1.0` no tiene que disparar una publicación a PyPI.
 on:
-  workflow_run:
-    workflows: ["Bump version"]
-    types:
-      - completed
   push:
     tags:
-      - '*'
+      - 'hexcore-v*'
 
 permissions:
   contents: read
@@ -36,20 +27,14 @@ jobs:
   # ── Verificación previa ─────────────────────────────────────────────────────
   tests:
     name: "Suite completa sobre lo que se va a publicar"
-    # Si el bump falló, no hay nada que publicar. `types: [completed]` incluye `failure` y
-    # `cancelled`, así que la condición es obligatoria y no una precaución.
-    #
-    # La segunda mitad deja pasar el disparo por tag, que no tiene `workflow_run` en el
-    # contexto: sin ella, publicar a mano por tag quedaría bloqueado para siempre.
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/hexcore
 
     steps:
       - name: Checkout code
-        # Sin `ref:`, o sea la punta de la rama por defecto. Es deliberado: en un disparo por
-        # `workflow_run`, `github.event.workflow_run.head_sha` apunta al commit que disparó
-        # `Bump version` —el merge— y **no** al commit del bump, que se creó después. Checkoutear
-        # ese sha empaquetaría la versión anterior.
+        # Sin `ref:`: en un disparo por tag, el checkout por defecto ya trae ese tag.
         uses: actions/checkout@v4
 
       - name: Install uv
@@ -81,19 +66,19 @@ jobs:
 
   gate-tipado:
     name: "Gate de tipado"
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     # Que el tipado le llegue al usuario es una propiedad **del artefacto**, no del repo: los
     # `.pyi` y el `py.typed` viajan adentro de la wheel. Por eso el gate se invoca acá y no se
-    # confía en que haya corrido en algún PR — entre aquel PR y esta release hay al menos el
-    # commit del bump, que nadie chequeó.
-    #
-    # `typing.yml` declara `workflow_call` justamente para esto.
+    # confía en que haya corrido en algún PR — entre aquel PR y esta release puede haber pasado
+    # cualquier cosa en `master`.
     uses: ./.github/workflows/typing.yml
 
   # ── Construcción y publicación ──────────────────────────────────────────────
   build:
     needs: [tests, gate-tipado]
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/hexcore
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -109,39 +94,33 @@ jobs:
           pip install build
 
       - name: Build package
-        run: |
-          python -m build
+        run: python -m build
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: packages/hexcore/dist/
 
   publish:
     runs-on: ubuntu-latest
     needs: build
+    # Trusted Publishing (OIDC) en vez de `secrets.PYPI_TOKEN`: un token de API en un secret es
+    # una credencial de larga duración con permiso de publicación que cualquier workflow del
+    # repo puede leer. El `environment: pypi` tiene que existir en Settings → Environments (ya
+    # creado) y el trusted publisher tiene que configurarse del lado de PyPI apuntando a este
+    # archivo de workflow exacto — ver el PR para el paso a paso pendiente.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/hexcore/
+    permissions:
+      id-token: write
     steps:
-
       - name: Download build artifacts
         uses: actions/download-artifact@v5
         with:
           name: dist
           path: dist
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install twine
-        run: |
-          python -m pip install --upgrade pip
-          pip install twine
-
       - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-        run: |
-          twine upload dist/*
+        uses: pypa/gh-action-pypi-publish@release/v1
