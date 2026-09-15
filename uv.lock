@@ -6,6 +6,11 @@ resolution-markers = [
     "python_full_version < '3.14'",
 ]
 
+[manifest]
+members = [
+    "hexcore",
+]
+
 [[package]]
 name = "aio-pika"
 version = "10.0.1"
@@ -666,7 +671,7 @@ wheels = [
 [[package]]
 name = "hexcore"
 version = "9.0.1"
-source = { editable = "." }
+source = { editable = "packages/hexcore" }
 dependencies = [
     { name = "croniter" },
     { name = "pydantic" },

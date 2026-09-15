@@ -1,0 +1,6 @@
+[tool.uv.workspace]
+# Enumerados a mano y no con un glob (`packages/*`): un glob obliga a que todo directorio que
+# matchee tenga su propio `pyproject.toml`, y `packages/darwin-client` es (o va a ser) un
+# paquete npm sin uno. Con el glob, agregarlo rompería `uv sync` con un error que no nombra la
+# causa.
+members = ["packages/hexcore"]
