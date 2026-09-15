@@ -1,3 +1,11 @@
+## hexcore-v9.1.0 (2026-09-15)
+
+### Feat
+
+- **darwin**: vuelca el contrato HTTP a packages/darwin-client/openapi/
+- **darwin**: response_model en las rutas que devolvían Response o dict
+- **darwin**: el challenge de 2FA viaja en el cuerpo del 401
+
 ## hexcore-v9.0.2 (2026-09-15)
 
 ### Fix
