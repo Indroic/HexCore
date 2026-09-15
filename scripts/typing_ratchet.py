@@ -43,6 +43,13 @@ BASELINE_PATH = REPO_ROOT / "typing-baseline.json"
 #: flotante y el drift entre parches de pyright generan avisos de "mejoraste" espurios.
 COMPLETENESS_DEAD_BAND = 0.5
 
+#: Piso anti-verde-falso, hermano del de `house_rules.py`. Si `[tool.pyright].include` deja de
+#: apuntar a un directorio con código (por ejemplo, tras mover `hexcore/` a otra ruta), pyright
+#: analiza cero archivos, `error_total` da 0, y `0 <= 39` pasa el ratchet en verde para
+#: siempre. La clave vive en el propio baseline: es donde ya vive el resto del presupuesto de
+#: deuda, así que bajarla exige el mismo PR humano con diff y revisor.
+PISO_DE_ARCHIVOS_ANALIZADOS_DEFECTO = 200
+
 
 # ── Utilidades ────────────────────────────────────────────────────────────────
 def _load_json(path: Path) -> dict:
@@ -85,6 +92,7 @@ def _relative(path_str: str) -> str:
 def check_errors(report_path: Path, *, update: bool) -> int:
     report = _load_json(report_path)
     diagnostics = report.get("generalDiagnostics", [])
+    archivos_analizados = int(report.get("summary", {}).get("filesAnalyzed", 0))
 
     actual: Counter[str] = Counter()
     for diagnostic in diagnostics:
@@ -100,6 +108,9 @@ def check_errors(report_path: Path, *, update: bool) -> int:
                 **_load_baseline(),
                 "error_total": total,
                 "per_file": dict(sorted(actual.items())),
+                "min_files_analyzed": min(
+                    archivos_analizados, PISO_DE_ARCHIVOS_ANALIZADOS_DEFECTO
+                ),
             }
         )
         print(f"baseline actualizado: {total} error(es) en {len(actual)} archivo(s).")
@@ -108,6 +119,35 @@ def check_errors(report_path: Path, *, update: bool) -> int:
     baseline = _load_baseline()
     budget: dict[str, int] = baseline.get("per_file", {})
     limite_total: int = baseline.get("error_total", 0)
+    piso_archivos: int = baseline.get(
+        "min_files_analyzed", PISO_DE_ARCHIVOS_ANALIZADOS_DEFECTO
+    )
+
+    if archivos_analizados < piso_archivos:
+        _fail(
+            f"pyright sólo analizó {archivos_analizados} archivo(s), menos que el piso de "
+            f"{piso_archivos} en el baseline. Antes de confiar en el resultado, revisá si "
+            f"`[tool.pyright].include` sigue apuntando a un directorio con código (por "
+            f"ejemplo, tras mover `hexcore/` de lugar) — con cero archivos analizados este "
+            f"ratchet pasaría en verde sin haber chequeado nada."
+        )
+
+    # Baseline huérfano: si NINGUNA clave del baseline coincide con una ruta del reporte
+    # actual, el baseline quedó describiendo un árbol que ya no existe (rutas viejas tras un
+    # `git mv` masivo) y todo el presupuesto por archivo es papel mojado — cada archivo del
+    # reporte cae en la rama de "archivo nuevo" y el ratchet rechazaría deuda que en realidad
+    # ya estaba congelada. Se detecta comparando contra los archivos que SÍ tienen deuda hoy,
+    # no contra `actual` entero: un archivo sin errores no está en ninguno de los dos mapas.
+    if budget and not (set(budget) & set(actual)):
+        _fail(
+            f"ninguna de las {len(budget)} clave(s) de `per_file` en el baseline coincide "
+            f"con una ruta del reporte de pyright actual. El baseline probablemente describe "
+            f"un árbol que ya no existe (por ejemplo, tras mover directorios) y no una mejora "
+            f"real. Regenerá el baseline a mano tras confirmar que la reorganización es "
+            f"intencional:\n\n"
+            "    uv run pyright --outputjson hexcore > pyright.json\n"
+            "    uv run python scripts/typing_ratchet.py errors --report pyright.json --update\n"
+        )
 
     regresiones: list[str] = []
     mejoras: list[str] = []

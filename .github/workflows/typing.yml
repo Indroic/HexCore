@@ -121,6 +121,8 @@ jobs:
           print("::group::Resumen de Pyright")
           print(resumen)
           print("::endgroup::")
+          if resumen["filesAnalyzed"] < 200:
+              print(f"::error::Pyright sólo analizó {resumen['filesAnalyzed']} archivo(s) — revisá `[tool.pyright].include`.")
           PY
 
       - name: Anotaciones en el PR

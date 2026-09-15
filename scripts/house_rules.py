@@ -43,6 +43,13 @@ import typing as t
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 PAQUETE = RAIZ / "hexcore"
 
+#: Piso anti-verde-falso: hoy `PAQUETE.rglob("*.py")` recorre 240 archivos. Si una
+#: reorganización de directorios (por ejemplo, un monorepo) deja `PAQUETE` apuntando a un
+#: directorio vacío o inexistente, `rglob` no lanza — devuelve cero resultados, el bucle no
+#: entra nunca a `_revisar()`, y el script imprime "en verde" habiendo revisado nada. El piso
+#: convierte ese silencio en un fallo ruidoso.
+PISO_DE_ARCHIVOS = 200
+
 
 class Falta(t.NamedTuple):
     ruta: str
@@ -120,14 +127,27 @@ def _revisar(archivo: pathlib.Path) -> list[Falta]:
 
 
 def main() -> int:
+    archivos = [
+        archivo
+        for archivo in sorted(PAQUETE.rglob("*.py"))
+        if "__pycache__" not in archivo.parts
+    ]
+
+    if len(archivos) < PISO_DE_ARCHIVOS:
+        print(
+            f"::error::Sólo se encontraron {len(archivos)} archivo(s) bajo {PAQUETE} — "
+            f"menos que el piso de {PISO_DE_ARCHIVOS}. Antes de asumir que la regla está en "
+            f"verde, revisá si {PAQUETE} sigue siendo la ruta correcta del paquete (por "
+            f"ejemplo, tras mover directorios)."
+        )
+        return 1
+
     faltas: list[Falta] = []
-    for archivo in sorted(PAQUETE.rglob("*.py")):
-        if "__pycache__" in archivo.parts:
-            continue
+    for archivo in archivos:
         faltas.extend(_revisar(archivo))
 
     if not faltas:
-        print("Regla de la casa: en verde.")
+        print(f"Regla de la casa: en verde ({len(archivos)} archivo(s) revisados).")
         return 0
 
     for f in faltas:
