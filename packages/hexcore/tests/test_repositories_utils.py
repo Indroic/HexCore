@@ -248,8 +248,17 @@ def test_discover_sql_repositories_warns_for_abstract_repositories() -> None:
     assert "concretewarning" in discovered
     assert discovered["concretewarning"] is _ConcreteWarningRepo
     assert caught
-    warning_message = str(caught[0].message)
-    assert "_AbstractWarningRepo" in warning_message
+    # El warning se busca, no se asume que sea `caught[0]`. `catch_warnings(record=True)`
+    # captura **todos** los del bloque, incluidos los que no son de este código: en Python 3.14
+    # el recolector cierra las conexiones sqlite pendientes dentro de la ventana y mete un
+    # `ResourceWarning: unclosed database` que llega primero. El test fallaba comparando contra
+    # ese, con un mensaje que no nombraba la causa real.
+    mensajes = [str(w.message) for w in caught]
+    coincidencias = [m for m in mensajes if "_AbstractWarningRepo" in m]
+    assert coincidencias, (
+        "ning\u00fan warning menciona _AbstractWarningRepo; se capturaron: " + repr(mensajes)
+    )
+    warning_message = coincidencias[0]
     assert "custom_required" in warning_message
 
 

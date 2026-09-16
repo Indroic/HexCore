@@ -6,6 +6,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, cast, func, or_, select, String
+from sqlalchemy import Result
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, RelationshipProperty
 
@@ -523,3 +524,22 @@ def ensure_framework_models_loaded() -> list[str]:
             continue
         importados.append(module_name)
     return importados
+
+
+def filas_afectadas(resultado: "Result[t.Any]") -> int:
+    """
+    Cuántas filas tocó un `DELETE` o un `UPDATE`, leído de forma que tipe.
+
+    `session.execute()` está tipado como que devuelve `Result[Any]`, pero con una sentencia DML
+    lo que devuelve en runtime es un `CursorResult`, que es la única de las dos clases que tiene
+    `rowcount`. Hasta SQLAlchemy 2.0.43 los stubs dejaban pasar `resultado.rowcount` igual;
+    2.0.54 afinó la jerarquía y pyright empezó a marcarlo — doce errores, todos este mismo
+    acceso repetido en cinco lugares.
+
+    El cast va acá y una sola vez, con el motivo escrito, en vez de cinco `# pyright: ignore`
+    sueltos que el próximo lector tendría que reconstruir de memoria. `rowcount` es `-1` cuando
+    el driver no lo sabe, y `or 0` lo aplana — que es lo que los repositorios ya hacían.
+    """
+    from sqlalchemy import CursorResult
+
+    return int(t.cast("CursorResult[t.Any]", resultado).rowcount or 0)

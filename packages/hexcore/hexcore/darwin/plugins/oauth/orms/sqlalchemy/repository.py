@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 
 from sqlalchemy import delete, update
 
+from hexcore.infrastructure.repositories.orms.sqlalchemy.utils import filas_afectadas
+
 from hexcore.darwin.plugins.oauth.domain import (
     AbstractOAuthStateRepository,
     OAuthState,
@@ -111,7 +113,7 @@ class SqlAlchemyOAuthStateRepository(AbstractOAuthStateRepository):
                 delete(self._model).where(self._model.expires_at < before)
             )
             await session.commit()
-            return int(resultado.rowcount or 0)
+            return filas_afectadas(resultado)
 
 
 def _a_entidad(fila: t.Any) -> OAuthState:

@@ -31,6 +31,31 @@ keywords = [
     "sqlalchemy", "background-tasks", "cron", "authentication", "identity",
 ]
 
+# El badge de "Python" del README sale de acá y **no** de `requires-python`: shields.io lee los
+# trove classifiers `Programming Language :: Python :: X.Y` de la metadata de PyPI. Sin esta
+# tabla el badge renderizaba literalmente "missing", que es peor que no tenerlo — parecía que
+# el paquete no declaraba ninguna versión soportada.
+#
+# Cada versión declarada acá tiene su pata en la matriz de `pytest.yml`. Es la mitad que
+# importa: un classifier es una afirmación sobre en qué corre el paquete, y una afirmación que
+# nadie verifica es exactamente lo que este repo evita en todos lados. Si se agrega una versión
+# acá, va también a la matriz — y al revés.
+#
+# No va `License :: OSI Approved :: MIT License`: la licencia ya se declara arriba como
+# expresión SPDX (PEP 639), y setuptools >=77 rechaza tener las dos formas a la vez.
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3 :: Only",
+    "Framework :: FastAPI",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
+]
+
 # La documentación **no** se empaqueta en la wheel (`MANIFEST.in` sólo incluye `*.pyi` y
 # `py.typed`), así que estas URLs son la única forma de llegar a ella desde PyPI. Apuntan a
 # `docs/` de la raíz del monorepo, que es donde vive desde la consolidación — un enlace
