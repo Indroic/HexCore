@@ -1,3 +1,9 @@
+## darwin-client-v0.1.2 (2026-09-16)
+
+### Fix
+
+- **darwin-client**: el default de `csrfCookieName` no coincidía con ningún nombre que el servidor emita
+
 ## darwin-client-v0.1.1 (2026-09-16)
 
 ### Fix
