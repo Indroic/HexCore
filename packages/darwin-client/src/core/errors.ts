@@ -137,7 +137,7 @@ export async function darwinErrorFromResponse(response: Response): Promise<Darwi
     return new DarwinError({
       code: "NetworkError",
       status: response.status,
-      detail: "No se pudo leer el cuerpo de la respuesta.",
+      detail: "The response body could not be read.",
       wwwAuthenticate,
       cause,
     });
@@ -150,7 +150,7 @@ export async function darwinErrorFromResponse(response: Response): Promise<Darwi
     return new DarwinError({
       code: "NonJsonResponse",
       status: response.status,
-      detail: `La respuesta no es JSON. Primeros 200 caracteres: ${texto.slice(0, 200)}`,
+      detail: `The response is not JSON. First 200 characters: ${texto.slice(0, 200)}`,
       wwwAuthenticate,
     });
   }
@@ -164,8 +164,8 @@ export async function darwinErrorFromResponse(response: Response): Promise<Darwi
       code: "NonJsonResponse",
       status: response.status,
       detail:
-        `La respuesta no trae el envelope de Darwin ({detail, error}). ` +
-        `Primeros 200 caracteres: ${texto.slice(0, 200)}`,
+        `The response does not carry Darwin's envelope ({detail, error}). ` +
+        `First 200 characters: ${texto.slice(0, 200)}`,
       wwwAuthenticate,
     });
   }

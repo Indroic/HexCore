@@ -17,11 +17,11 @@ describe("validatePlugins", () => {
   });
 
   it("lanza si dos plugins declaran el mismo id", () => {
-    expect(() => validatePlugins([plugin("a"), plugin("a")])).toThrow(/mismo id "a"/);
+    expect(() => validatePlugins([plugin("a"), plugin("a")])).toThrow(/same id "a"/);
   });
 
   it("lanza si un requires apunta a un plugin no registrado", () => {
-    expect(() => validatePlugins([plugin("a", ["b"])])).toThrow(/requiere "b"/);
+    expect(() => validatePlugins([plugin("a", ["b"])])).toThrow(/requires "b"/);
   });
 
   it("no lanza cuando el requires sí está registrado", () => {
@@ -30,14 +30,14 @@ describe("validatePlugins", () => {
 
   it("detecta un ciclo directo (a requiere b, b requiere a)", () => {
     expect(() => validatePlugins([plugin("a", ["b"]), plugin("b", ["a"])])).toThrow(
-      /Ciclo/,
+      /Dependency cycle/,
     );
   });
 
   it("detecta un ciclo indirecto (a -> b -> c -> a)", () => {
     expect(() =>
       validatePlugins([plugin("a", ["b"]), plugin("b", ["c"]), plugin("c", ["a"])]),
-    ).toThrow(/Ciclo/);
+    ).toThrow(/Dependency cycle/);
   });
 
   it("un diamante (a y b requieren c, d requiere a y b) no es un ciclo", () => {
@@ -107,7 +107,7 @@ describe("createDarwinClient con plugins — runtime", () => {
         // en runtime, que es justo lo que este test prueba.
         plugins: [plugin("a", ["no-existe"])],
       }),
-    ).toThrow(/requiere "no-existe"/);
+    ).toThrow(/requires "no-existe"/);
   });
 
   it("plugin.setup() recibe un ctx con $fetch, session y completeAuthentication", () => {

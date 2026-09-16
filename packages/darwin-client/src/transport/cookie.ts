@@ -45,9 +45,9 @@ export class CookieTransport implements Transport {
       this.jar = documentCookieJar();
     } else {
       throw new Error(
-        "CookieTransport se construyó sin `cookieJar` fuera de un navegador. Pasá uno " +
-          "explícito (memoryCookieJar() para SSR) o, si es posible, usá `transport: " +
-          '"bearer"` en este contexto — es la opción recomendada fuera del navegador.',
+        "CookieTransport was constructed without `cookieJar` outside a browser. Pass one " +
+          "explicitly (memoryCookieJar() for SSR) or, if you can, use `transport: " +
+          '"bearer"` in this context — it is the recommended option outside the browser.',
       );
     }
   }
