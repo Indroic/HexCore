@@ -36,6 +36,34 @@ export type {
   PluginsApi,
 } from "./plugins";
 export { definePlugin, validatePlugins } from "./plugins";
+export type { ImpersonateApi, ImpersonationStatus } from "./plugins/impersonate";
+export { impersonate } from "./plugins/impersonate";
+export type { MagicLinkApi, MagicLinkRequested } from "./plugins/magic-link";
+export { magicLink } from "./plugins/magic-link";
+export type {
+  LinkedProviders,
+  OAuthApi,
+  OAuthAuthorization,
+  OAuthCallbackParams,
+  OAuthCallbackResult,
+} from "./plugins/oauth";
+export { oauth } from "./plugins/oauth";
+export type {
+  Invitation,
+  InvitationIssued,
+  Member,
+  Organization,
+  OrganizationApi,
+  OrgRole,
+} from "./plugins/organization";
+export { organization } from "./plugins/organization";
+export type {
+  PasskeyApi,
+  PasskeySummary,
+  WebAuthnCredentialJSON,
+  WebAuthnJSON,
+} from "./plugins/passkey";
+export { passkey } from "./plugins/passkey";
 export type {
   TwoFactorApi,
   TwoFactorEnrollment,
