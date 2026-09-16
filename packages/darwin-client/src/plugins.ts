@@ -94,8 +94,8 @@ export function validatePlugins(plugins: readonly DarwinClientPlugin[]): void {
   for (const plugin of plugins) {
     if (nombres.has(plugin.id)) {
       throw new Error(
-        `Dos plugins registrados con el mismo id "${plugin.id}". Los ids tienen que ser ` +
-          "únicos: es la clave con la que cada uno cuelga de `client.<id>`.",
+        `Two plugins registered with the same id "${plugin.id}". Ids have to be unique: ` +
+          "the id is the key each plugin hangs off in `client.<id>`.",
       );
     }
     nombres.add(plugin.id);
@@ -105,9 +105,9 @@ export function validatePlugins(plugins: readonly DarwinClientPlugin[]): void {
     for (const requerido of plugin.requires ?? []) {
       if (!nombres.has(requerido)) {
         throw new Error(
-          `El plugin "${plugin.id}" requiere "${requerido}", que no está en la lista de ` +
-            `plugins pasada a createDarwinClient(). Plugins registrados: ` +
-            `${[...nombres].join(", ") || "(ninguno)"}.`,
+          `Plugin "${plugin.id}" requires "${requerido}", which is not in the plugin list ` +
+            `passed to createDarwinClient(). Registered plugins: ` +
+            `${[...nombres].join(", ") || "(none)"}.`,
         );
       }
     }
@@ -120,9 +120,7 @@ export function validatePlugins(plugins: readonly DarwinClientPlugin[]): void {
   function visitar(id: string, cadena: readonly string[]): void {
     if (yaVisitado.has(id)) return;
     if (enLaPilaActual.has(id)) {
-      throw new Error(
-        `Ciclo de dependencias entre plugins: ${[...cadena, id].join(" -> ")}.`,
-      );
+      throw new Error(`Dependency cycle between plugins: ${[...cadena, id].join(" -> ")}.`);
     }
 
     enLaPilaActual.add(id);

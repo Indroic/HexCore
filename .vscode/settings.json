@@ -1,4 +1,34 @@
 {
+    // ── Finales de línea ────────────────────────────────────────────────────────
+    // Duplica lo que ya dicen `.editorconfig` y `.gitattributes`, a propósito: esto vale
+    // aunque no se haya instalado la extensión de EditorConfig, que es justo el caso en el
+    // que el problema aparece. El repo se versiona entero en LF.
+    "files.eol": "\n",
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+    // En Markdown, dos espacios al final de línea son un salto de línea: recortarlos
+    // reescribe el texto en silencio.
+    "[markdown]": {
+        "files.trimTrailingWhitespace": false
+    },
+
+    // ── TypeScript: biome, nunca prettier ───────────────────────────────────────
+    // Es el mismo `packages/darwin-client/biome.json` que corre `npm run lint`, así que el
+    // editor y la CI no pueden discrepar.
+    "[typescript]": {
+        "editor.defaultFormatter": "biomejs.biome"
+    },
+    "[javascript]": {
+        "editor.defaultFormatter": "biomejs.biome"
+    },
+    "[json]": {
+        "editor.defaultFormatter": "biomejs.biome"
+    },
+
+    // ── Python ──────────────────────────────────────────────────────────────────
+    "python.analysis.autoFormatStrings": true,
+    "python.analysis.typeCheckingMode": "strict",
+
     "material-icon-theme.folders.associations": {
         "domain": "core",
         "shared_kernel": "shared",
@@ -12,7 +42,5 @@
         "billing": "invoice",
         "inventory": "packages",
         "products": "components"
-    },
-    "python.analysis.autoFormatStrings": true,
-    "python.analysis.typeCheckingMode": "strict"
+    }
 }

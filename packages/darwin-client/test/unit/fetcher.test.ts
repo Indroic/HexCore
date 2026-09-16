@@ -169,7 +169,7 @@ describe("createFetcher", () => {
     const stream = new ReadableStream();
     await expect(
       fetcher.$fetch("/protegido", { method: "POST", body: stream }),
-    ).rejects.toThrow(/no se puede reenviar/);
+    ).rejects.toThrow(/cannot be replayed/);
     expect(refresh).not.toHaveBeenCalled();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });

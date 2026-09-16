@@ -1,0 +1,36 @@
+# Finales de línea: LF en el repositorio **y en el working tree**.
+#
+# `.editorconfig` solo no alcanza. Quien escribe CRLF en Windows no es el editor, es el
+# `git checkout`: con `core.autocrlf=true` —el default que instala Git for Windows— git
+# convierte a CRLF al materializar los archivos, antes de que ningún editor los abra. El
+# síntoma es que `biome check` falla en archivos que nadie tocó, reportando un diff de
+# formato entero por el `␍` de cada línea, y `git diff` no muestra nada porque los blobs sí
+# están en LF.
+#
+# `eol=lf` fuerza el working tree a LF y gana sobre `core.autocrlf`, así que arregla el caso
+# sin pedirle a cada quien que cambie su config global.
+#
+# Todos los blobs ya estaban en LF cuando esto se agregó, así que no hubo renormalización:
+# si tu working tree quedó con CRLF de antes, `git add --renormalize .` no produce diff y
+# `git checkout -- .` tras borrar el índice lo deja en LF.
+* text=auto eol=lf
+
+# Binarios: sin conversión de ningún tipo.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.zip binary
+*.gz binary
+
+# Generados: se versionan, pero no ensucian el diff de un PR ni cuentan como código propio
+# en las estadísticas de lenguaje de GitHub.
+packages/darwin-client/src/generated/** linguist-generated=true
+packages/darwin-client/openapi/*.json linguist-generated=true
+packages/hexcore/hexcore/**/*.pyi linguist-generated=true
+uv.lock linguist-generated=true
+package-lock.json linguist-generated=true
