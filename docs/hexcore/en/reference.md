@@ -214,7 +214,7 @@ Too many for a useful table. The surface is grouped like this:
 | SQL storage | `UserMixin`, `SessionMixin`, `IDENTITY_MODELS`, `ensure_identity_schema_loaded`, `create_identity_tables`, `validate_user_model` |
 
 The exact, typed listing is in the generated stub
-[`hexcore/darwin/__init__.pyi`](../../hexcore/darwin/__init__.pyi), which is the source type
+[`hexcore/darwin/__init__.pyi`](../../../packages/hexcore/hexcore/darwin/__init__.pyi), which is the source type
 checkers read. See **[Darwin](./darwin/)** for the guides.
 
 ---
@@ -240,7 +240,7 @@ facade.
 | Container and providers | `EventStoreContainer`, `configure_event_store`, `get_event_store_container`, `reset_event_store`, `provide_event_store`, `provide_snapshot_store`, `provide_checkpoint_store`, `provide_projector` | — |
 
 The exact, typed listing is in the generated stub
-[`hexcore/eventsourcing.pyi`](../../hexcore/eventsourcing.pyi). See
+[`hexcore/eventsourcing.pyi`](../../../packages/hexcore/hexcore/eventsourcing.pyi). See
 **[Event Sourcing](./event-sourcing.md)** for the guide.
 
 ---

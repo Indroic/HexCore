@@ -23,7 +23,7 @@ automático: **no son releases pensadas para usarse**, son cortes intermedios de
 migración. 5.0.0 es la primera versión completa. 6.0.0 es el mismo caso —la disparó un PR de
 documentación con un commit `feat!:`— y no hay **ninguna** ruptura de API entre 5.x y 6.x.
 
-La tabla no puede desincronizarse de la realidad: `tests/test_documentation_examples.py` verifica
+La tabla no puede desincronizarse de la realidad: `packages/hexcore/tests/test_documentation_examples.py` verifica
 que la serie marcada como activa sea la de `pyproject.toml`. Ese test es el que detectó que 6.0.0
 salió con 5.x todavía marcada como activa.
 

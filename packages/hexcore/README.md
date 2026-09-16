@@ -1,4 +1,13 @@
-# HexCore [![PyPI Downloads](https://static.pepy.tech/personalized-badge/hexcore?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/hexcore)
+# HexCore
+
+[![PyPI](https://img.shields.io/pypi/v/hexcore?color=blue)](https://pypi.org/project/hexcore/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/hexcore?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/hexcore)
+[![Python](https://img.shields.io/pypi/pyversions/hexcore)](https://pypi.org/project/hexcore/)
+[![License](https://img.shields.io/pypi/l/hexcore)](https://github.com/Indroic/HexCore/blob/master/LICENSE)
+
+📖 **[Full documentation](https://github.com/Indroic/HexCore/tree/master/docs/hexcore/)** ·
+🐙 **[Repository](https://github.com/Indroic/HexCore)** ·
+🟦 **[TypeScript client for Darwin](https://github.com/Indroic/HexCore/tree/master/docs/darwin-client/)**
 
 A reusable core for Python applications built on **hexagonal architecture**, **DDD**, **CQRS**
 and **background tasks**. HexCore ships the abstractions (entities, repositories, unit of work,
@@ -10,7 +19,7 @@ arguments gives you a usable app, `init_engine()` with no arguments gives you a
 production-correct engine.
 
 > 🇪🇸 **¿Preferís español?** La documentación está completa en los dos idiomas:
-> **[docs/es/](./docs/es/)**.
+> **[docs/es/](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/)**.
 
 ```python
 # main.py — a complete HexCore app
@@ -38,26 +47,26 @@ await cqrs.run_procrastinate_worker(
 
 ## 📚 Documentation
 
-**→ [`docs/`](./docs/) — 🇬🇧 [English](./docs/en/) · 🇪🇸 [español](./docs/es/)**
+**→ [`docs/`](https://github.com/Indroic/HexCore/tree/master/docs/hexcore/) — 🇬🇧 [English](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/) · 🇪🇸 [español](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/)**
 
 | | English | Español |
 | :-- | :-- | :-- |
-| Installation and extras | [installation](./docs/en/installation.md) | [instalacion](./docs/es/instalacion.md) |
-| Quickstart | [quickstart](./docs/en/quickstart.md) | [inicio-rapido](./docs/es/inicio-rapido.md) |
-| Configuration | [configuration](./docs/en/configuration.md) | [configuracion](./docs/es/configuracion.md) |
-| SQL layer | [sql](./docs/en/sql.md) | [sql](./docs/es/sql.md) |
-| Repositories and entities | [repositories](./docs/en/repositories.md) | [repositorios](./docs/es/repositorios.md) |
-| FastAPI utilities | [fastapi](./docs/en/fastapi.md) | [fastapi](./docs/es/fastapi.md) |
-| CQRS architecture | [cqrs](./docs/en/cqrs.md) | [cqrs](./docs/es/cqrs.md) |
-| Queues and workers | [queues-and-workers](./docs/en/queues-and-workers.md) | [colas-y-workers](./docs/es/colas-y-workers.md) |
-| Scheduled tasks | [cron](./docs/en/cron.md) | [cron](./docs/es/cron.md) |
-| **Event Sourcing** | [event-sourcing](./docs/en/event-sourcing.md) | [event-sourcing](./docs/es/event-sourcing.md) |
-| Testing | [testing](./docs/en/testing.md) | [testing](./docs/es/testing.md) |
-| CLI | [cli](./docs/en/cli.md) | [cli](./docs/es/cli.md) |
-| **Darwin** (identity) | [darwin/](./docs/en/darwin/) | [darwin/](./docs/es/darwin/) |
-| API reference | [reference](./docs/en/reference.md) | [referencia](./docs/es/referencia.md) |
-| Versions and migration | [versions-and-migration](./docs/en/versions-and-migration.md) | [versiones-y-migracion](./docs/es/versiones-y-migracion.md) |
-| Typing | [typing](./docs/en/typing.md) | [tipado](./docs/es/tipado.md) |
+| Installation and extras | [installation](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/installation.md) | [instalacion](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/instalacion.md) |
+| Quickstart | [quickstart](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/quickstart.md) | [inicio-rapido](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/inicio-rapido.md) |
+| Configuration | [configuration](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/configuration.md) | [configuracion](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/configuracion.md) |
+| SQL layer | [sql](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/sql.md) | [sql](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/sql.md) |
+| Repositories and entities | [repositories](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/repositories.md) | [repositorios](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/repositorios.md) |
+| FastAPI utilities | [fastapi](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/fastapi.md) | [fastapi](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/fastapi.md) |
+| CQRS architecture | [cqrs](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/cqrs.md) | [cqrs](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/cqrs.md) |
+| Queues and workers | [queues-and-workers](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/queues-and-workers.md) | [colas-y-workers](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/colas-y-workers.md) |
+| Scheduled tasks | [cron](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/cron.md) | [cron](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/cron.md) |
+| **Event Sourcing** | [event-sourcing](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/event-sourcing.md) | [event-sourcing](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/event-sourcing.md) |
+| Testing | [testing](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/testing.md) | [testing](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/testing.md) |
+| CLI | [cli](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/cli.md) | [cli](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/cli.md) |
+| **Darwin** (identity) | [darwin/](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/darwin/) | [darwin/](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/darwin/) |
+| API reference | [reference](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/reference.md) | [referencia](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/referencia.md) |
+| Versions and migration | [versions-and-migration](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/versions-and-migration.md) | [versiones-y-migracion](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/versiones-y-migracion.md) |
+| Typing | [typing](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/typing.md) | [tipado](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/tipado.md) |
 
 ---
 
@@ -83,7 +92,7 @@ pip install "hexcore[all]"
 | Everything | `all` |
 
 The full table, with what each one enables, is in
-[installation](./docs/en/installation.md) · [instalación](./docs/es/instalacion.md).
+[installation](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/installation.md) · [instalación](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/instalacion.md).
 
 > `import hexcore.cqrs` works with no extras at all: name resolution is lazy, so
 > `hexcore.cqrs.SqlAlchemyCronJobRepository` only requires `[sql]` at the moment you ask for it.
@@ -153,7 +162,7 @@ app = create_app(
 ```
 
 ⚠️ If you use SQL, the most important thing to read before deploying is the Alembic section:
-[storage](./docs/en/darwin/storage.md) · [almacenamiento](./docs/es/darwin/almacenamiento.md).
+[storage](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/darwin/storage.md) · [almacenamiento](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/darwin/almacenamiento.md).
 A plugin missing from your `env.py` makes `alembic revision --autogenerate` emit
 `op.drop_table` for its tables.
 
@@ -170,7 +179,7 @@ hexcore init my_project --template vertical-slice
 - `vertical-slice` → `src/features`, `src/shared/{domain,application,infrastructure}`.
 
 Both generate a root `config.py` and leave Alembic configured. See
-[CLI](./docs/en/cli.md) · [CLI](./docs/es/cli.md).
+[CLI](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/cli.md) · [CLI](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/cli.md).
 
 ---
 
@@ -190,8 +199,8 @@ Both generate a root `config.py` and leave Alembic configured. See
 
 **Everything before 9.0 is deprecated. Migrate to 9.x.** The detail of each series, the silent
 2.x bugs and the step-by-step guides are in
-[versions and migration](./docs/en/versions-and-migration.md) ·
-[versiones y migración](./docs/es/versiones-y-migracion.md).
+[versions and migration](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/versions-and-migration.md) ·
+[versiones y migración](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/versiones-y-migracion.md).
 
 ### Removed API and its replacement
 
@@ -228,7 +237,7 @@ python -m pytest -W "default::DeprecationWarning"
 
 ## Contributing
 
-1. **Code of conduct** — read the [Code of Conduct](CODE_OF_CONDUCT.md) before interacting.
+1. **Code of conduct** — read the [Code of Conduct](https://github.com/Indroic/HexCore/blob/master/CODE_OF_CONDUCT.md) before interacting.
 2. **Branches** — fork and create a branch (`feat/name`, `fix/name`, `docs/name`).
 3. **Tests** — every fix lands with at least one test that fails before and passes after:
 
@@ -240,14 +249,14 @@ python -m pytest -W "default::DeprecationWarning"
    CI fails if any test is **skipped**: a skip means an extra is missing, and we would be
    reporting green without having run half the suite.
 4. **Typecheck** — `uv run pyright hexcore`. The verdict comes from the ratchet, not the exit
-   code: see [typing](./docs/en/typing.md) · [tipado](./docs/es/tipado.md).
+   code: see [typing](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/en/typing.md) · [tipado](https://github.com/Indroic/HexCore/blob/master/docs/hexcore/es/tipado.md).
 5. **Style** — [PEP8](https://pep8.org/). Comment the *why*, not the *what*.
 6. **Commits** — [Commitizen](https://commitizen-tools.github.io/commitizen/): `feat:`, `fix:`,
    `docs:`, `refactor:`, and `!` for breaking changes. The version bump and the CHANGELOG are
    automatic on merge to `master`.
 7. **PRs** — describe the problem, the reproduction, the solution and **why that option**.
 
-Full detail in [CONTRIBUTING.md](CONTRIBUTING.md).
+Full detail in [CONTRIBUTING.md](https://github.com/Indroic/HexCore/blob/master/CONTRIBUTING.md).
 
 ### Project skills
 
@@ -258,8 +267,8 @@ There is a set of skills for extending HexCore in VS Code and compatible environ
 
 ## References
 
-- [docs/](./docs/) — the complete documentation, in English and Spanish.
-- [docs/ARCHITECTURE_TYPING.md](./docs/ARCHITECTURE_TYPING.md) — type system and stubs.
-- [CHANGELOG.md](../../CHANGELOG.md) — change history.
-- [CONTRIBUTING.md](../../CONTRIBUTING.md) — collaboration guidelines.
-- [SECURITY.md](../../SECURITY.md) — security policy.
+- [docs/](https://github.com/Indroic/HexCore/tree/master/docs/hexcore/) — the complete documentation, in English and Spanish.
+- [docs/ARCHITECTURE_TYPING.md](https://github.com/Indroic/HexCore/blob/master/docs/ARCHITECTURE_TYPING.md) — type system and stubs.
+- [CHANGELOG.md](https://github.com/Indroic/HexCore/blob/master/CHANGELOG.md) — change history.
+- [CONTRIBUTING.md](https://github.com/Indroic/HexCore/blob/master/CONTRIBUTING.md) — collaboration guidelines.
+- [SECURITY.md](https://github.com/Indroic/HexCore/blob/master/SECURITY.md) — security policy.

@@ -26,8 +26,79 @@ permissions:
   contents: write
 
 jobs:
-  bump-version:
+  # ── Qué paquete tocó este push ──────────────────────────────────────────────
+  # Los dos bumps son independientes, así que el filtro no puede ir en un `paths:` del `on:`:
+  # ése filtra el workflow entero y no distingue un job del otro. Va acá, y cada bump se
+  # condiciona con su salida.
+  #
+  # ⚠️ Esto acota **cuándo se dispara** el bump, no **cómo cuenta la versión**. `cz bump` sigue
+  # mirando todos los commits desde el último tag del paquete, sin filtrar por ruta: si un push
+  # que sólo toca `packages/hexcore/` lleva un `feat:`, el bump del cliente no corre en ese
+  # push, pero ese mismo `feat:` sigue contando la próxima vez que el cliente sí bumpee. O sea
+  # que difiere el bump espurio, no lo elimina — eliminarlo requeriría forkear la generación de
+  # changelog de commitizen. Ver `CONTRIBUTING.md` §4.
+  changes:
+    name: "Qué paquete tocó este push"
     if: ${{ !startsWith(github.event.head_commit.message, 'bump:') }}
+    runs-on: ubuntu-latest
+    outputs:
+      hexcore: ${{ steps.filtro.outputs.hexcore }}
+      darwin_client: ${{ steps.filtro.outputs.darwin_client }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          # El diff necesita la base del push, que con el checkout superficial por defecto no
+          # está en el clon.
+          fetch-depth: 0
+
+      - name: Ver qué rutas tocó el push
+        id: filtro
+        env:
+          BASE: ${{ github.event.before }}
+          # `docs/hexcore/` cuenta como hexcore y `docs/darwin-client/` como el cliente: una
+          # corrección de documentación con un `fix:` en el subject merece salir publicada en
+          # el changelog del paquete que documenta.
+          PATRON_HEXCORE: '^(packages/hexcore/|docs/hexcore/|uv\.lock$|pyproject\.toml$)'
+          PATRON_CLIENTE: '^(packages/darwin-client/|docs/darwin-client/|package\.json$|package-lock\.json$)'
+        run: |
+          set -euo pipefail
+
+          # Sin una base utilizable —el primer push de la rama, un force-push, o un historial
+          # que no la contiene— no hay diff que calcular. Se bumpean los dos: equivocarse hacia
+          # "publiqué una versión de más" es recuperable con un yank; hacia "no publiqué" deja
+          # un fix escrito y sin llegar a nadie, y nadie se entera hasta que lo reportan otra
+          # vez.
+          if [ -z "${BASE:-}" ] \
+            || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "::notice::Sin una base comparable. Se evalúan los dos paquetes."
+            echo "hexcore=true" >> "$GITHUB_OUTPUT"
+            echo "darwin_client=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ARCHIVOS="$(git diff --name-only "$BASE" HEAD)"
+          echo "Archivos tocados:"
+          echo "$ARCHIVOS"
+
+          if echo "$ARCHIVOS" | grep -qE "$PATRON_HEXCORE"; then
+            echo "hexcore=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Este push no toca el paquete Python. No se bumpea hexcore."
+            echo "hexcore=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if echo "$ARCHIVOS" | grep -qE "$PATRON_CLIENTE"; then
+            echo "darwin_client=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Este push no toca el cliente TypeScript. No se bumpea darwin-client."
+            echo "darwin_client=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  bump-version:
+    needs: changes
+    if: ${{ needs.changes.outputs.hexcore == 'true' }}
     runs-on: ubuntu-latest
     name: "Bump version and create changelog with commitizen"
     defaults:
@@ -155,11 +226,18 @@ jobs:
   # antes de confiar en esto para una release real — el mismo tipo de bug silencioso que ya
   # costó dos releases de PyPI sin publicar (ver el comentario de "Pushear el commit y el
   # tag" en el job de arriba).
+  #
+  # `always()` es lo que deja que este job corra cuando `bump-version` quedó **skipped** porque
+  # el push no tocó nada de Python: sin él, un job cuyo `needs` se salteó se saltea también, y
+  # un push que sólo toca el cliente nunca lo publicaría. `skipped` se acepta; `failure` y
+  # `cancelled` no.
   bump-version-darwin-client:
-    needs: bump-version
+    needs:
+      - changes
+      - bump-version
     if: |
       always() &&
-      !startsWith(github.event.head_commit.message, 'bump:') &&
+      needs.changes.outputs.darwin_client == 'true' &&
       needs.bump-version.result != 'failure' &&
       needs.bump-version.result != 'cancelled'
     runs-on: ubuntu-latest

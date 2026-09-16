@@ -69,12 +69,34 @@ only as an anchor for `cz bump` to start counting from — it did not trigger a 
 the workflow checks the version against the registry first and no-ops if it's already there.
 From `v0.2.0` onward, everything (tag, changelog, and publish) comes out of the automation.
 
-Neither `cz` config filters commits by the path they touched — a `feat:`/`fix:` commit that
-only touched one package still counts toward *both* versions and *both* changelogs. This is
-a known, accepted limitation (not a bug to "fix" by adding path-scoping): filtering by scope
-would need a fork of commitizen's changelog generation, and the alternative (two literal
-copies of every meaningful commit anyway, since most `feat:`/`fix:` work already carries a
-scope like `(darwin)`/`(darwin-client)` in its subject) is not worth that cost.
+**Each bump only fires when its own package changed.** `bump_ver.yml` opens with a `changes`
+job that diffs the push and decides, per package, whether its bump job runs at all:
+
+| Bump | Fires when the push touches |
+| :-- | :-- |
+| `bump-version` (Python) | `packages/hexcore/`, `docs/hexcore/`, `uv.lock`, root `pyproject.toml` |
+| `bump-version-darwin-client` | `packages/darwin-client/`, `docs/darwin-client/`, root `package.json`, `package-lock.json` |
+
+If the diff base is unusable (a force-push, a truncated history), both run: publishing one
+version too many is recoverable with a yank, and publishing none leaves a written fix that
+never reaches anybody.
+
+⚠️ **This scopes when a bump *fires*, not how `cz` *counts*.** Neither `cz` config filters
+commits by the path they touched, so a `feat:` that only touched one package still counts
+toward the other package's version the next time that one does bump. Path-filtering the trigger
+defers the spurious bump; it does not eliminate it. Eliminating it would need a fork of
+commitizen's changelog generation, which is not worth the cost — most `feat:`/`fix:` work
+already carries a scope like `(darwin)`/`(darwin-client)` in its subject, so the changelog reads
+correctly even when the version number moved for a neighbour's commit.
+
+The test workflows are scoped the same way, and for the same reason — `pytest.yml` and
+`typing.yml` skip when nothing Python changed, `node.yml` skips when nothing in the client
+changed. In all four cases the filter is a `changes` **job**, never a `paths:` on the `on:`
+block: a workflow that `paths:` filters out never starts, so it never publishes a check, and a
+required check that never reports leaves the pull request blocked on
+*"Expected — Waiting for status"* forever. A job skipped by an `if:` does report, as `skipped`,
+which branch protection counts as success. **The required checks are the fixed-name aggregators**
+— `python-ok`, `typing-ok`, `node-ok` — and never the jobs they gate.
 
 What is asked in return: **write the commit so it reads well in the changelog**. The subject is
 the line that will be published; the body explains the *why*, which is what a `git log` cannot
@@ -105,15 +127,31 @@ being up to date · `BLOCKED` = missing review · `CLEAN` = ready.
 
 ## 5. Documentation
 
-The documentation lives in [`docs/`](./packages/hexcore/docs/), in two languages. **English is the reference
-version** — it is written there first — and `docs/es/` is its translation. If the two ever
-contradict each other, English wins.
+All documentation for the monorepo lives in [`docs/`](./docs/) — both packages, in two
+languages:
+
+```
+docs/
+├── README.md                  ← index: both packages, both languages
+├── ARCHITECTURE_TYPING.md     ← the Python package's strict-typing contract
+├── hexcore/{en,es}/           ← the Python meta-framework, Darwin included
+└── darwin-client/{en,es}/     ← the agnostic TypeScript client
+```
+
+**English is the reference version** — it is written there first — and `es/` is its
+translation. If the two ever contradict each other, English wins.
+
+The package `README.md` files stay complete and self-sufficient, because they are what PyPI and
+npm render. They link into `docs/` with **absolute GitHub URLs**: a relative link does not
+resolve on a package registry page, so a relative one there is a broken link for everybody who
+did not clone the repo.
 
 **If a document shows code, there is a test that runs it.**
-`tests/test_documentation_examples.py` walks `docs/**/*.md` and verifies that every
-`from hexcore… import …` resolves against the real API and that every facade attribute is in
-its `__all__`. The walk is automatic, so a new guide enters the gate without being added to any
-list.
+`packages/hexcore/tests/test_documentation_examples.py` walks `docs/hexcore/**/*.md` and
+verifies that every `from hexcore… import …` resolves against the real API and that every facade
+attribute is in its `__all__`. The walk is automatic, so a new guide enters the gate without
+being added to any list. `docs/darwin-client/` is outside that walk: its code blocks are
+TypeScript and have no `from hexcore…` to resolve.
 
 A documentation change that only touches one language leaves the other one lying. If you change
 a guide, change both — or say so in the PR so somebody else can.

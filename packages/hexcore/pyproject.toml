@@ -26,6 +26,22 @@ dependencies = [
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 
+keywords = [
+    "hexagonal-architecture", "ddd", "cqrs", "event-sourcing", "fastapi",
+    "sqlalchemy", "background-tasks", "cron", "authentication", "identity",
+]
+
+# La documentación **no** se empaqueta en la wheel (`MANIFEST.in` sólo incluye `*.pyi` y
+# `py.typed`), así que estas URLs son la única forma de llegar a ella desde PyPI. Apuntan a
+# `docs/` de la raíz del monorepo, que es donde vive desde la consolidación — un enlace
+# relativo del README no resolvería en la página de PyPI aunque el archivo existiera.
+[project.urls]
+Homepage = "https://github.com/Indroic/HexCore"
+Documentation = "https://github.com/Indroic/HexCore/tree/master/docs/hexcore"
+Repository = "https://github.com/Indroic/HexCore"
+Changelog = "https://github.com/Indroic/HexCore/blob/master/CHANGELOG.md"
+Issues = "https://github.com/Indroic/HexCore/issues"
+
 [project.optional-dependencies]
 api = ["fastapi>=0.116.1"]
 redis = ["redis>=6.4.0"]

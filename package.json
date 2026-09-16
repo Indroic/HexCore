@@ -2,6 +2,15 @@
   "name": "hexcore-monorepo",
   "private": true,
   "description": "Raíz de workspaces npm del monorepo. El paquete publicable es packages/darwin-client.",
+  "homepage": "https://github.com/Indroic/HexCore/tree/master/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Indroic/HexCore.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Indroic/HexCore/issues"
+  },
+  "license": "MIT",
   "workspaces": [
     "packages/darwin-client"
   ],

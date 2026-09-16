@@ -8,7 +8,7 @@ A plugin can contribute HTTP routes, CQRS commands and queries, middleware, star
 and — the most used of all — **hooks** that attach to the flows Darwin already has.
 
 > All the code in this guide lives executed in
-> [`tests/test_darwin_custom_plugin.py`](../../../tests/test_darwin_custom_plugin.py). If this
+> [`packages/hexcore/tests/test_darwin_custom_plugin.py`](../../../../packages/hexcore/tests/test_darwin_custom_plugin.py). If this
 > guide lies, those tests go red. If you edit one, edit the other.
 
 ---
@@ -392,5 +392,5 @@ and the import breaks.
 
 - [The six bundled plugins](./bundled-plugins.md)
 - [Storage, schema and Alembic](./storage.md)
-- [`tests/test_darwin_custom_plugin.py`](../../../tests/test_darwin_custom_plugin.py) — all of
+- [`packages/hexcore/tests/test_darwin_custom_plugin.py`](../../../../packages/hexcore/tests/test_darwin_custom_plugin.py) — all of
   this, executed

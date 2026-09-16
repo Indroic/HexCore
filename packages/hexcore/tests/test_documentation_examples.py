@@ -22,6 +22,7 @@ import typing as t
 import pytest
 
 from rutas import PAQUETE as REPO_ROOT
+from rutas import REPO
 
 
 @pytest.fixture
@@ -30,7 +31,15 @@ def anyio_backend():
 
 
 def _read(name: str) -> str:
-    return (REPO_ROOT / name).read_text(encoding="utf-8")
+    """El contenido de un documento, nombrado relativo a la raíz del **monorepo**.
+
+    El ancla es `REPO` y no `PAQUETE` desde que la documentación se consolidó en `docs/` de la
+    raíz: con `PAQUETE` no habría una sola ruta que nombre a la vez `packages/hexcore/README.md`
+    —que sigue siendo el `readme =` del `pyproject.toml`— y a `docs/hexcore/en/sql.md`, que vive
+    dos niveles más arriba. Nombrarlos desde la raíz deja los IDs de pytest legibles y sin
+    ambigüedad: hay un `README.md` en la raíz *y* otro en el paquete.
+    """
+    return (REPO / name).read_text(encoding="utf-8")
 
 
 # Los mensajes y tareas de los ejemplos van a nivel de módulo, que es exactamente lo que
@@ -296,8 +305,8 @@ def test_readme_command_only_consumer_example_runs():
 
 # ── La documentación no debe mencionar API que no existe ───────────────────────
 
-#: Las dos páginas de entrada. Los guardas de "no enseñes API que no existe" corren sólo acá:
-#: son las que quedaron de la documentación vieja, y las únicas que todavía nombran en prosa la
+#: La página de entrada. Los guardas de "no enseñes API que no existe" corren sólo acá:
+#: es la que quedó de la documentación vieja, y la única que todavía nombra en prosa la
 #: superficie removida —la tabla de deprecación vive en el README—.
 #: Los títulos del README que estos tests parten para leer una sección. Van acá y no inline
 #: porque el README pasó a inglés y estaban escritos en español en cinco lugares: una constante
@@ -306,17 +315,31 @@ POLICY_HEADING = "## Versions and support"
 REMOVED_API_HEADING = "### Removed API and its replacement"
 ACTIVE_MARKER = "**Active**"
 
-DOC_FILES = ["README.md", "DOCS.md"]
+#: Las guías del paquete Python, ya no bajo `packages/hexcore/docs/` sino en la carpeta `docs/`
+#: de la raíz del monorepo, que documenta los **dos** paquetes. Sólo se recorre `docs/hexcore/`:
+#: `docs/darwin-client/` es TypeScript, y sus bloques de código no tienen ningún `from hexcore…`
+#: que resolver —pasarlos por estos guardas sería ruido, no cobertura—.
+DOCS = REPO / "docs" / "hexcore"
 
-#: Toda la documentación, incluida la de `docs/`. Los chequeos de "los símbolos que nombra
-#: existen" corren sobre esto: son los que convierten un rename en un CI rojo, y no tendría
-#: sentido que cubrieran la portada y no las guías, que son las que la gente copia y pega.
+#: El README del **paquete** —no el del monorepo—. Es el que empaqueta la wheel y el que
+#: renderiza PyPI, y el que lleva la tabla de "Versions and support" que estos tests contrastan
+#: contra `pyproject.toml`. La constante existe porque desde la raíz hay dos `README.md` y el
+#: literal `"README.md"` resolvía al equivocado.
+README = "packages/hexcore/README.md"
+
+DOC_FILES = [README]
+
+#: Toda la documentación, incluida la de `docs/hexcore/`. Los chequeos de "los símbolos que
+#: nombra existen" corren sobre esto: son los que convierten un rename en un CI rojo, y no
+#: tendría sentido que cubrieran la portada y no las guías, que son las que la gente copia y
+#: pega.
 #:
-#: Se descubre recorriendo `docs/` en vez de enumerarlo: una guía nueva que nadie agregue a
-#: una lista es exactamente el archivo que se desalinea sin que nadie se entere.
+#: Se descubre recorriendo el directorio en vez de enumerarlo: una guía nueva que nadie agregue
+#: a una lista es exactamente el archivo que se desalinea sin que nadie se entere.
+#:
+#: Todas las rutas van relativas a la raíz del monorepo, como las espera `_read()`.
 ALL_DOC_FILES = DOC_FILES + sorted(
-    str(path.relative_to(REPO_ROOT)).replace("\\", "/")
-    for path in (REPO_ROOT / "docs").rglob("*.md")
+    str(path.relative_to(REPO)).replace("\\", "/") for path in DOCS.rglob("*.md")
 )
 
 
@@ -414,8 +437,9 @@ def test_docs_facade_attributes_exist():
     # `hexcore.application.cqrs.commands`, que no es un uso de la fachada.
     #
     # La `/` del lookbehind saca los **nombres de archivo**: desde que la documentación vive en
-    # `docs/es/` y `docs/en/`, un enlace a `./docs/es/sql.md` o una mención a `hexcore/cqrs.py`
-    # matcheaban como si fueran `sql.md` y `cqrs.py` de la fachada. Son rutas, no usos.
+    # `docs/hexcore/es/` y `docs/hexcore/en/`, un enlace a `./sql.md` o una mención a
+    # `hexcore/cqrs.py` matcheaban como si fueran `sql.md` y `cqrs.py` de la fachada. Son rutas,
+    # no usos.
     pattern = re.compile(r"(?<![\w./])(hx|cqrs|sql)\.([A-Za-z_][A-Za-z0-9_]*)\b")
     # Los módulos del framework se llaman igual que sus alias, así que la prosa que habla de
     # los **archivos** —"ante `sql.py` y `sql.pyi`, Pyright usa el stub"— matchea igual que un
@@ -451,7 +475,7 @@ def test_support_policy_covers_every_released_major():
     )["project"]["version"]
     current_major = int(version.split(".")[0])
 
-    readme = _read("README.md")
+    readme = _read(README)
     policy = readme.split(POLICY_HEADING, 1)[1].split("## ", 1)[0]
 
     for major in range(1, current_major + 1):
@@ -469,7 +493,7 @@ def test_support_policy_marks_only_the_current_major_as_active():
     )["project"]["version"]
     current_major = version.split(".")[0]
 
-    policy = _read("README.md").split(POLICY_HEADING, 1)[1].split("## ", 1)[0]
+    policy = _read(README).split(POLICY_HEADING, 1)[1].split("## ", 1)[0]
     active_rows = [line for line in policy.splitlines() if ACTIVE_MARKER in line]
 
     assert len(active_rows) == 1, "debe haber exactamente una serie activa"
@@ -534,7 +558,7 @@ def test_the_removed_api_table_matches_reality():
         "el README propone estos reemplazos y no existen: " + ", ".join(faltantes)
     )
 
-    readme = _read("README.md")
+    readme = _read(README)
     for _module_path, name in removidos + canonicos:
         assert name in readme, f"{name} no aparece en el README"
 
