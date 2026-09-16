@@ -43,8 +43,8 @@ export function createRefreshController(
     if (muerta) {
       return Promise.reject(
         new Error(
-          "El refresh ya falló antes y la sesión quedó marcada muerta. No se reintenta " +
-            "contra el servidor sin un signIn/markAlive() de por medio.",
+          "The refresh already failed once and the session was marked dead. It is not " +
+            "retried against the server without a signIn/markAlive() in between.",
         ),
       );
     }

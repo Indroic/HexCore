@@ -35,7 +35,7 @@ export function isWebAuthnSupported(): boolean {
 function asegurarSoporte(): void {
   if (typeof window === "undefined" || typeof navigator === "undefined") {
     throw new WebAuthnUnavailableError(
-      "no hay `window`/`navigator` (¿estás en Node o SSR?)",
+      "there is no `window`/`navigator` (are you on Node or in SSR?)",
     );
   }
   if (
@@ -44,7 +44,7 @@ function asegurarSoporte(): void {
     typeof PublicKeyCredential.parseRequestOptionsFromJSON !== "function"
   ) {
     throw new WebAuthnUnavailableError(
-      "este navegador no implementa las conversiones JSON de WebAuthn L3 " +
+      "this browser does not implement the WebAuthn L3 JSON conversions " +
         "(`PublicKeyCredential.parseCreationOptionsFromJSON`/`parseRequestOptionsFromJSON`)",
     );
   }
@@ -56,8 +56,8 @@ function comoCredencialDePublicKey(
 ): PublicKeyCredential {
   if (!(credential instanceof PublicKeyCredential)) {
     throw new WebAuthnUnavailableError(
-      `\`navigator.credentials.${verbo}()\` no devolvió una PublicKeyCredential (¿el usuario ` +
-        "canceló el diálogo del navegador?)",
+      `\`navigator.credentials.${verbo}()\` did not return a PublicKeyCredential (did the ` +
+        "user cancel the browser dialog?)",
     );
   }
   return credential;
