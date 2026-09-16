@@ -62,6 +62,13 @@ every push to `master` (`bump_ver.yml`, jobs `bump-version` and
 | Changelog | `CHANGELOG.md` (repo root) | `packages/darwin-client/CHANGELOG.md` |
 | Publishes to | PyPI, via `publish-to-pypi.yml` | npm, via `publish-darwin-client-to-npm.yml` |
 
+**`@hexcore-js/darwin-client@0.1.0` was published by hand**, before
+`publish-darwin-client-to-npm.yml` existed (npm's trusted publishing requires the package to
+already exist before you can configure it). The `darwin-client-v0.1.0` tag came afterwards,
+only as an anchor for `cz bump` to start counting from — it did not trigger a real publish:
+the workflow checks the version against the registry first and no-ops if it's already there.
+From `v0.2.0` onward, everything (tag, changelog, and publish) comes out of the automation.
+
 Neither `cz` config filters commits by the path they touched — a `feat:`/`fix:` commit that
 only touched one package still counts toward *both* versions and *both* changelogs. This is
 a known, accepted limitation (not a bug to "fix" by adding path-scoping): filtering by scope

@@ -53,7 +53,27 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Chequear si esta versión ya está publicada
+        # El bootstrap de v0.1.0 se publicó a mano antes de que este workflow existiera
+        # (ver CONTRIBUTING.md): el primer tag `darwin-client-v0.1.0` real dispara este
+        # workflow igual, y sin este chequeo `npm publish` fallaría en rojo contra una
+        # versión que ya está en el registro — ruido permanente en el historial de Actions
+        # por un caso que no es un error. De acá en más, un tag repetido por accidente
+        # tampoco debería fallar la CI: sólo publicar de más sí sería un error real, y
+        # `npm publish` sigue rechazando eso aunque este chequeo pase (dos publishes en
+        # paralelo de la misma versión sólo uno gana).
+        id: version-check
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if npm view "@hexcore-js/darwin-client@$version" version --silent 2>/dev/null; then
+            echo "::notice::@hexcore-js/darwin-client@$version ya está publicado. Nada que hacer."
+            echo "ya_publicado=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ya_publicado=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # `--provenance`: firma la procedencia del paquete contra este workflow y este commit,
       # visible en la página de npm — más allá de lo que exige Trusted Publishing en sí.
       - name: Publish
+        if: steps.version-check.outputs.ya_publicado == 'false'
         run: npm publish --access public --provenance
