@@ -47,7 +47,7 @@ jobs:
           # haría si un cambio sólo de documentación no disparara la suite.
           # `uv.lock` y el `pyproject.toml` de la raíz también: el primero fija las versiones
           # con las que corre todo, el segundo declara el workspace de uv.
-          PATRON: '^(packages/hexcore/|docs/hexcore/|uv\.lock$|pyproject\.toml$|\.github/workflows/pytest\.yml$)'
+          PATRON: '^(packages/hexcore/|docs/hexcore/|skills/|uv\.lock$|pyproject\.toml$|\.github/workflows/pytest\.yml$)'
         run: |
           set -euo pipefail
 

@@ -1,0 +1,11 @@
+{
+  "name": "hexcore",
+  "owner": { "name": "David Latosefki (Indroic)", "email": "indroic@outlook.com" },
+  "plugins": [
+    {
+      "name": "hexcore",
+      "source": ".",
+      "description": "La skill de arquitecto senior de HexCore, versionada junto a los paquetes que documenta."
+    }
+  ]
+}

@@ -23,3 +23,8 @@ node_modules/
 npm-debug.log*
 .npm/
 *.tsbuildinfo
+
+# Claude Code: se versiona `.claude/settings.json` —es lo que habilita el plugin local que
+# expone `skills/`— y nada más. Lo de abajo es estado de cada máquina.
+.claude/settings.local.json
+.claude/*.lock

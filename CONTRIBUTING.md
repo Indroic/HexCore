@@ -148,13 +148,41 @@ did not clone the repo.
 
 **If a document shows code, there is a test that runs it.**
 `packages/hexcore/tests/test_documentation_examples.py` walks `docs/hexcore/**/*.md` and
-verifies that every `from hexcore… import …` resolves against the real API and that every facade
-attribute is in its `__all__`. The walk is automatic, so a new guide enters the gate without
-being added to any list. `docs/darwin-client/` is outside that walk: its code blocks are
-TypeScript and have no `from hexcore…` to resolve.
+`skills/**/*.md` and verifies that every `from hexcore… import …` resolves against the real API
+and that every facade attribute is in its `__all__`. The walk is automatic, so a new guide
+enters the gate without being added to any list. `docs/darwin-client/` is outside that walk:
+its code blocks are TypeScript and have no `from hexcore…` to resolve.
+
+The TypeScript client has its own half of that gate, but only over `skills/`: every
+`import { … } from "@hexcore-js/darwin-client"` there is resolved against
+`packages/darwin-client/src/`. The parser is Python, so it runs in the normal pytest suite
+without Node.
 
 A documentation change that only touches one language leaves the other one lying. If you change
 a guide, change both — or say so in the PR so somebody else can.
+
+### `skills/` — the agent skill
+
+[`skills/hexcore/`](./skills/hexcore) is the Claude Code skill for this framework, versioned
+here rather than in a repository of its own so that the gate above covers it. It documents
+**both** packages.
+
+The repository root doubles as a Claude Code plugin (`.claude-plugin/`), which is what loads the
+skill. Register it once per machine with `/plugin marketplace add .` from the repository root;
+after that it loads on its own as `/hexcore:hexcore`.
+
+Two conventions that differ from the rest of the repo, both on purpose:
+
+- **It is written in English**, following `docs/*/en/` rather than the Spanish-only rule of
+  `CLAUDE.md`. That rule covers code, docstrings, tests and commit messages; the skill is
+  reference prose, and English is its reference version. Do not "correct" it to Spanish.
+- **Never commit it with `feat(skill):`.** `bump_ver.yml` decides what to bump by path, and
+  `skills/` is deliberately not in the Python package's pattern — but a `feat:` subject on a
+  push that also touches `packages/hexcore/` would publish a release whose changelog entry
+  describes a skill change. Use `docs(skill):` or `chore(skill):`.
+
+See [`skills/README.md`](./skills/README.md) for the tools and for how to keep the skill
+current across a major.
 
 ## 6. Pull request review
 

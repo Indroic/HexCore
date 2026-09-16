@@ -17,6 +17,7 @@ Este módulo hace dos cosas:
 from __future__ import annotations
 
 import re
+import sys
 import typing as t
 
 import pytest
@@ -338,8 +339,24 @@ DOC_FILES = [README]
 #: a una lista es exactamente el archivo que se desalinea sin que nadie se entere.
 #:
 #: Todas las rutas van relativas a la raíz del monorepo, como las espera `_read()`.
-ALL_DOC_FILES = DOC_FILES + sorted(
-    str(path.relative_to(REPO)).replace("\\", "/") for path in DOCS.rglob("*.md")
+#: La skill de agente, que vive en `skills/` y documenta los dos paquetes. Entra en el mismo
+#: gate que `docs/` por la misma razón: es prosa que enseña imports, y una prosa que enseña un
+#: import inexistente es peor que no tener prosa. Su propia versión anterior enseñaba
+#: `SQLAlchemyCommonImplementationsRepo`, borrado en 7.0, porque nada la contrastaba con el
+#: paquete.
+#:
+#: `scripts/` queda afuera: son la herramienta, no la enseñanza, y sus docstrings muestran
+#: ejemplos rotos a propósito para explicar qué detectan.
+SKILLS = REPO / "skills"
+
+ALL_DOC_FILES = (
+    DOC_FILES
+    + sorted(str(path.relative_to(REPO)).replace("\\", "/") for path in DOCS.rglob("*.md"))
+    + sorted(
+        str(path.relative_to(REPO)).replace("\\", "/")
+        for path in SKILLS.rglob("*.md")
+        if "scripts" not in path.parts
+    )
 )
 
 
@@ -457,6 +474,97 @@ def test_docs_facade_attributes_exist():
 
     assert not missing, "la documentación usa atributos que la fachada no exporta: " + ", ".join(
         sorted(set(missing))
+    )
+
+
+# ── La skill de agente ─────────────────────────────────────────────────────────
+#
+# `skills/hexcore/` ya entra en los guardas de arriba por `ALL_DOC_FILES`: sus `from hexcore…
+# import …` y sus `hx.`/`cqrs.`/`sql.` se resuelven contra el paquete real. Lo que esos guardas
+# no cubren es la otra mitad de lo que la skill enseña —el cliente TypeScript— ni el frontmatter
+# del que depende que la skill exista.
+
+
+SKILL_DIR = REPO / "skills" / "hexcore"
+
+
+def _surface():
+    """
+    El `hexcore_surface.py` de la skill, cargado por ruta.
+
+    Se importa el módulo de la skill en vez de reimplementar el parser acá: si el gate usara
+    una segunda implementación, un bug en la de la skill —la que corre el agente— pasaría el
+    CI en verde. El test tiene que fallar exactamente cuando falla la herramienta real.
+    """
+    import importlib.util
+
+    ruta = SKILL_DIR / "scripts" / "hexcore_surface.py"
+    if not ruta.exists():
+        pytest.skip("la skill no está en este árbol")
+    nombre = "_hexcore_surface_skill"
+    spec = importlib.util.spec_from_file_location(nombre, ruta)
+    assert spec and spec.loader
+    modulo = importlib.util.module_from_spec(spec)
+    # Registrarlo **antes** de ejecutarlo: `@dataclass` resuelve las anotaciones mirando
+    # `sys.modules[cls.__module__]`, y con el módulo sin registrar eso es `None` y revienta
+    # con un `AttributeError` que no nombra la causa.
+    sys.modules[nombre] = modulo
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def test_la_skill_tiene_frontmatter_utilizable():
+    """
+    Sin `name` y `description` en el frontmatter, Claude Code no carga la skill y nadie se
+    entera: no hay error, simplemente el agente no la usa nunca. Un typo en el YAML la apaga
+    en silencio, que es el mismo modo de falla que la skill entera existe para documentar.
+    """
+    contenido = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+
+    assert contenido.startswith("---\n"), "SKILL.md tiene que abrir con el frontmatter YAML"
+    cierre = contenido.index("\n---\n", 3)
+    frontmatter = contenido[4:cierre]
+
+    for clave in ("name:", "description:"):
+        assert clave in frontmatter, f"al frontmatter de SKILL.md le falta `{clave}`"
+
+    assert "darwin-client" in frontmatter, (
+        "la `description` es lo único que el modelo lee para decidir si activa la skill: si no "
+        "nombra el cliente TypeScript, un prompt de frontend no la dispara"
+    )
+
+
+def test_los_imports_del_cliente_typescript_de_la_skill_existen():
+    """
+    Espejo de `test_every_hexcore_symbol_referenced_in_the_docs_exists`, del lado de
+    `@hexcore-js/darwin-client`.
+
+    El parser es Python y lee `packages/darwin-client/src/*.ts`, así que este gate no necesita
+    Node y corre en la suite normal. Es lo que convierte un rename en el cliente en un CI rojo
+    en vez de en un ejemplo que el agente copia y no compila.
+    """
+    surface = _surface()
+
+    raiz_cliente = surface.darwin_client_root(surface.package_root())
+    if raiz_cliente is None:  # pragma: no cover - sólo si alguien mueve el paquete
+        pytest.fail("no se encontró packages/darwin-client")
+
+    exports = surface.darwin_client_exports(raiz_cliente)
+    assert exports, "no se leyó ningún export del cliente: el parser quedó desalineado"
+
+    checker = surface.Checker(surface.package_root(), client=exports)
+
+    hallazgos: list[str] = []
+    for documento in SKILL_DIR.rglob("*.md"):
+        for hallazgo in checker._check_client_imports(
+            documento.read_text(encoding="utf-8"),
+            str(documento.relative_to(REPO)).replace("\\", "/"),
+            fenced=True,
+        ):
+            hallazgos.append(f"{hallazgo.path}:{hallazgo.line} {hallazgo.symbol} ({hallazgo.detail})")
+
+    assert not hallazgos, "la skill enseña imports que el cliente no exporta: " + ", ".join(
+        hallazgos
     )
 
 
