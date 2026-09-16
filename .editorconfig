@@ -1,0 +1,47 @@
+# https://editorconfig.org
+#
+# Acompaña a `.gitattributes`, no lo reemplaza: `.gitattributes` decide con qué finales de
+# línea git **materializa** los archivos, y esto decide con cuáles los **guarda** tu editor.
+# Hacen falta los dos — sin el primero, un checkout en Windows vuelve a meter CRLF; sin el
+# segundo, un editor configurado en CRLF lo vuelve a meter al guardar.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.py]
+indent_size = 4
+# Guía, no un gate: quien corta las líneas del paquete es quien las escribe. El gate real
+# de este repo es `scripts/house_rules.py` y pyright, no un formateador.
+max_line_length = 100
+
+[*.{ts,mts,cts,tsx,js,mjs,cjs,jsx}]
+indent_size = 2
+# El mismo `lineWidth` que `packages/darwin-client/biome.json`. Si cambia allá, cambia acá:
+# con dos números distintos gana biome, y el editor te muestra una regla que miente.
+max_line_length = 92
+
+[*.{json,jsonc}]
+indent_size = 2
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.toml]
+indent_size = 4
+
+[*.md]
+# En Markdown dos espacios al final de una línea **son** un salto de línea. Recortarlos
+# reescribe el texto en silencio.
+trim_trailing_whitespace = false
+
+[*.{sh,bash}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab

@@ -1,0 +1,27 @@
+{
+  // VS Code las ofrece al abrir el repositorio por primera vez. Ninguna es obligatoria: los
+  // gates de CI corren igual sin ellas. Lo que evitan es descubrir en el PR algo que el
+  // editor podía haber dicho al guardar.
+  "recommendations": [
+    // Aplica `.editorconfig`. Sin ella, `end_of_line = lf` no lo respeta nadie y volvés a
+    // guardar CRLF en un repo que lo versiona en LF.
+    "editorconfig.editorconfig",
+
+    // El linter y formateador de `packages/darwin-client/` — el mismo `biome.json` que corre
+    // `npm run lint`, así que el editor y la CI no pueden discrepar.
+    "biomejs.biome",
+
+    // Python: Pylance es quien provee el pyright que `.vscode/settings.json` ya pone en
+    // `strict`, y Ruff el linter que está en las dependencias de dev.
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+
+    // `pyproject.toml`, `.cz.toml`: esquema y validación.
+    "tamasfe.even-better-toml"
+  ],
+
+  // Prettier formatearía TypeScript con reglas distintas a las de `biome.json` y dejaría el
+  // `lint` de la CI en rojo sobre archivos que en tu editor se ven bien.
+  "unwantedRecommendations": ["esbenp.prettier-vscode"]
+}
