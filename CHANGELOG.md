@@ -1,3 +1,10 @@
+## hexcore-v9.6.0 (2026-09-16)
+
+### Feat
+
+- **darwin-client**: subpaths de navegador — /webauthn y /store
+- **darwin-client**: plugins de magicLink, oauth, passkey, impersonate y organization
+
 ## hexcore-v9.5.0 (2026-09-16)
 
 ### Feat
