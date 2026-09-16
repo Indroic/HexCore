@@ -1,3 +1,9 @@
+## hexcore-v9.5.0 (2026-09-16)
+
+### Feat
+
+- **darwin-client**: sistema de plugins — definePlugin, registro explícito, twoFactor
+
 ## hexcore-v9.4.0 (2026-09-16)
 
 ### Feat
