@@ -1,3 +1,9 @@
+## hexcore-v9.7.0 (2026-09-16)
+
+### Feat
+
+- **darwin-client**: automatiza el versionado y la publicación a npm
+
 ## hexcore-v9.6.0 (2026-09-16)
 
 ### Feat
