@@ -28,6 +28,12 @@ export interface Session {
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   me: () => Promise<MeResponse>;
+  /**
+   * Persiste tokens, trackea el vencimiento, marca la sesión viva e hidrata — el camino feliz
+   * de `signIn()`, extraído para que un plugin que abre sesión por otra vía (el canje de 2FA,
+   * un callback de OAuth, `passkey.authenticate()`) no lo reimplemente cada uno por su cuenta.
+   */
+  completeAuthentication: (session: SessionResponse) => Promise<SignInResult>;
 }
 
 export function createSession(options: DarwinClientOptions): Session {
@@ -95,17 +101,21 @@ export function createSession(options: DarwinClientOptions): Session {
     },
   });
 
+  async function completeAuthentication(session: SessionResponse): Promise<SignInResult> {
+    trackExpiry(session);
+    await options.transport.persist(tokensDe(session));
+    refreshController.markAlive();
+    await hidratar();
+    return { status: "signed-in", session };
+  }
+
   async function signIn(email: string, password: string): Promise<SignInResult> {
     try {
       const session = await fetcher.$fetch<SessionResponse>("/auth/sign-in", {
         method: "POST",
         body: { email, password },
       });
-      trackExpiry(session);
-      await options.transport.persist(tokensDe(session));
-      refreshController.markAlive();
-      await hidratar();
-      return { status: "signed-in", session };
+      return await completeAuthentication(session);
     } catch (error) {
       if (isTwoFactorRequired(error)) {
         return { status: "two-factor-required", challenge: error.payload.challenge };
@@ -166,5 +176,6 @@ export function createSession(options: DarwinClientOptions): Session {
     signOut,
     refresh: () => refreshController.refresh(),
     me,
+    completeAuthentication,
   };
 }
