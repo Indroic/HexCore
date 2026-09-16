@@ -1,90 +1,100 @@
 # @hexcore-js/darwin-client
 
-Cliente TypeScript agnóstico de framework de UI, de runtime y de backend para **Darwin**, el
-módulo de identidad de [HexCore](../hexcore/). Cero dependencias de runtime.
+[![npm](https://img.shields.io/npm/v/@hexcore-js/darwin-client?color=blue)](https://www.npmjs.com/package/@hexcore-js/darwin-client)
+[![Bundle size](https://img.shields.io/bundlephobia/minzip/@hexcore-js/darwin-client)](https://bundlephobia.com/package/@hexcore-js/darwin-client)
+[![Node](https://img.shields.io/node/v/@hexcore-js/darwin-client)](https://www.npmjs.com/package/@hexcore-js/darwin-client)
+[![License](https://img.shields.io/npm/l/@hexcore-js/darwin-client)](https://github.com/Indroic/HexCore/blob/master/LICENSE)
 
-## Por qué existe
+📖 **[Full documentation](https://github.com/Indroic/HexCore/tree/master/docs/darwin-client/en/)** ·
+🇪🇸 **[Documentación en español](https://github.com/Indroic/HexCore/tree/master/docs/darwin-client/es/)** ·
+🐙 **[Repository](https://github.com/Indroic/HexCore)**
 
-Darwin expone su contrato HTTP sólo desde el código Python: doble transporte cookie/Bearer,
-CSRF double-submit derivado por HMAC, y un `access_ttl` de dos minutos que exige refresh
-rotativo con detección de reuso. Sin un cliente versionado junto al servidor, cualquier
-frontend reimplementa esas cuatro cosas a mano — y equivocarse en cualquiera de ellas es un
-bug de seguridad, no de comodidad.
+A UI-framework-, runtime- and backend-agnostic TypeScript client for **Darwin**, the identity
+module of [HexCore](https://github.com/Indroic/HexCore/tree/master/packages/hexcore). Zero
+runtime dependencies.
 
-## Instalación
+## Why it exists
+
+Darwin only publishes its HTTP contract from the Python code: dual cookie/Bearer transport,
+HMAC-derived double-submit CSRF, and a two-minute `access_ttl` that requires rotating refresh
+with reuse detection. Without a client versioned next to the server, every frontend
+reimplements those four things by hand — and getting any of them wrong is a security bug, not
+an inconvenience.
+
+## Installation
 
 ```bash
 npm install @hexcore-js/darwin-client
 ```
 
-## Inicio rápido
+## Quickstart
 
 ```ts
 import { createDarwinClient, BearerTransport, memoryStorage } from "@hexcore-js/darwin-client";
 
 const client = createDarwinClient({
-  baseUrl: "https://api.miapp.com",
+  baseUrl: "https://api.example.com",
   transport: new BearerTransport({ storage: memoryStorage() }),
 });
 
-const resultado = await client.signIn("ana@ejemplo.com", "supersecreta");
+const result = await client.signIn("ana@example.com", "correct-horse-battery");
 
-if (resultado.status === "two-factor-required") {
-  // Ver la sección de plugins: `client.twoFactor.complete(resultado.challenge, codigo)`
+if (result.status === "two-factor-required") {
+  // See the plugins section: `client.twoFactor.complete(result.challenge, code)`
 } else {
-  console.log(resultado.session); // { session_id, access_token, expires_in, ... }
+  console.log(result.session); // { session_id, access_token, expires_in, ... }
 }
 
 client.session.getSnapshot();
 // { status: "authenticated", me: { actor_id, subject_id, impersonating } }
 ```
 
-`createDarwinClient()` ya trae, sin necesidad de nada más:
+`createDarwinClient()` already ships, with nothing else required:
 
-- **Refresh proactivo y reactivo, single-flight.** Antes de que el access venza, o al primer
-  401 refrescable, un solo refresh se dispara aunque haya N requests en paralelo — el
-  servidor rota el token una vez, no N veces.
-- **Store de sesión** (`client.session`) con el mismo contrato que
-  [`useSyncExternalStore`](https://react.dev/reference/react/useSyncExternalStore) de React.
-- **Errores tipados** (`DarwinError`, con `code` generado desde el contrato Python — ver
-  [Errores](#errores)).
+- **Proactive and reactive refresh, single-flight.** Before the access token expires, or on the
+  first refreshable 401, a single refresh fires even with N requests in parallel — the server
+  rotates the token once, not N times.
+- **A session store** (`client.session`) with the same contract as React's
+  [`useSyncExternalStore`](https://react.dev/reference/react/useSyncExternalStore).
+- **Typed errors** (`DarwinError`, with a `code` generated from the Python contract — see
+  [Errors](#errors)).
 
-## Transportes
+## Transports
 
 | | `BearerTransport` | `CookieTransport` |
 |---|---|---|
-| Dónde vive el token | El `TokenStorage` que le pases (memoria por defecto) | `HttpOnly`, en el navegador |
-| Quién puede leerlo | Tu JS | Nadie del lado del cliente — ni este paquete |
-| Uso típico | Apps nativas, SSR, cualquier cosa que no sea un navegador con el backend en el mismo sitio | SPA servida por (o con CORS+credentials hacia) el mismo backend Darwin |
+| Where the token lives | The `TokenStorage` you pass in (memory by default) | `HttpOnly`, in the browser |
+| Who can read it | Your JS | Nobody on the client side — not even this package |
+| Typical use | Native apps, SSR, anything that is not a browser sharing a site with the backend | A SPA served by (or with CORS + credentials towards) the same Darwin backend |
 
 ```ts
 import { BearerTransport, memoryStorage, localStorageAdapter } from "@hexcore-js/darwin-client";
 
-// Por defecto: sólo en memoria del proceso — se pierde al recargar la página.
+// The default: process memory only — lost on reload.
 new BearerTransport({ storage: memoryStorage() });
 
-// Persistido entre recargas. Léase la advertencia de `memoryStorage()`: un XSS que
-// exfiltra `localStorage` se lleva un refresh que vale semanas, no un access de dos minutos.
+// Persisted across reloads. Read the warning on `memoryStorage()`: an XSS that exfiltrates
+// `localStorage` walks away with a refresh token good for weeks, not a two-minute access token.
 new BearerTransport({ storage: localStorageAdapter() });
 ```
 
 ```ts
 import { CookieTransport } from "@hexcore-js/darwin-client";
 
-// En un navegador de verdad: lee la cookie CSRF de `document.cookie` sola.
+// In a real browser: it reads the CSRF cookie from `document.cookie` by itself.
 const client = createDarwinClient({
-  baseUrl: "https://api.miapp.com",
+  baseUrl: "https://api.example.com",
   transport: new CookieTransport(),
 });
 ```
 
-`CookieTransport` exige `credentials: "include"` en cada request — el cliente ya se lo agrega
-por su cuenta, no hay que configurarlo.
+`CookieTransport` requires `credentials: "include"` on every request — the client adds that on
+its own, there is nothing to configure.
 
-## Sesión y store
+## Session and store
 
-`client.session` expone `subscribe`, `getSnapshot` y `getServerSnapshot` — el contrato exacto
-de `useSyncExternalStore`, así que React no necesita ningún adaptador:
+`client.session` exposes `subscribe`, `getSnapshot` and `getServerSnapshot` — the exact
+contract of `useSyncExternalStore`, so React needs no adapter:
 
 ```tsx
 import { useSyncExternalStore } from "react";
@@ -98,14 +108,14 @@ function useSession() {
 }
 ```
 
-Svelte espera algo distinto: `subscribe(run)` tiene que invocar `run` **inmediatamente** con
-el valor actual, no sólo tras el próximo cambio. Para eso está el subpath `/store`:
+Svelte expects something different: `subscribe(run)` has to invoke `run` **immediately** with
+the current value, not only on the next change. That is what the `/store` subpath is for:
 
 ```ts
 import { toSvelteStore } from "@hexcore-js/darwin-client/store";
 
 export const session = toSvelteStore(client.session);
-// en un componente: `$session.status`
+// in a component: `$session.status`
 ```
 
 ### SSR
@@ -114,18 +124,18 @@ export const session = toSvelteStore(client.session);
 const client = createDarwinClient({
   baseUrl,
   transport,
-  hydrateOnCreate: false, // el estado inicial es "unauthenticated", no un "loading" eterno
+  hydrateOnCreate: false, // the initial state is "unauthenticated", not an eternal "loading"
 });
 ```
 
-Sin esto, el servidor nunca resuelve la hidratación (`GET /auth/me`) y el spinner de
-`"loading"` queda renderizado en el HTML.
+Without this, the server never resolves the hydration (`GET /auth/me`) and the `"loading"`
+spinner ends up rendered into the HTML.
 
 ## Plugins
 
-Registro **explícito** — nunca por descubrimiento. La lista que le pasás a
-`createDarwinClient` es la lista completa; un `requires` mal apuntado o un ciclo entre
-plugins falla en el arranque de la app, no en producción la primera vez que alguien lo usa.
+Registration is **explicit** — never by discovery. The list you hand to `createDarwinClient` is
+the complete list; a misdirected `requires` or a cycle between plugins fails at app startup, not
+in production the first time somebody uses it.
 
 ```ts
 import {
@@ -145,99 +155,98 @@ const client = createDarwinClient({
 });
 ```
 
-Cada plugin cuelga de su propia clave (`client.twoFactor`, `client.oauth`, ...), con
-inferencia de tipos completa — agregar o sacar un plugin de la lista cambia el tipo de
-`client` en el editor, no sólo en runtime.
+Each plugin hangs off its own key (`client.twoFactor`, `client.oauth`, ...) with full type
+inference — adding or removing a plugin from the list changes the type of `client` in the
+editor, not just at runtime.
 
 ### `twoFactor()`
 
-TOTP. `complete()` canjea el `challenge` que trae un `signIn()` con `status:
-"two-factor-required"` y termina el login.
+TOTP. `complete()` exchanges the `challenge` carried by a `signIn()` that came back with
+`status: "two-factor-required"` and finishes the login.
 
 ```ts
-const inscripcion = await client.twoFactor.enroll(); // { secret, uri, confirmed: false }
-// ...el usuario escanea `uri` y confirma con un código...
-await client.twoFactor.confirm(codigo);
+const enrollment = await client.twoFactor.enroll(); // { secret, uri, confirmed: false }
+// ...the user scans `uri` and confirms with a code...
+await client.twoFactor.confirm(code);
 
-const resultado = await client.signIn(email, password);
-if (resultado.status === "two-factor-required") {
-  await client.twoFactor.complete(resultado.challenge, codigo);
+const result = await client.signIn(email, password);
+if (result.status === "two-factor-required") {
+  await client.twoFactor.complete(result.challenge, code);
 }
 ```
 
 ### `magicLink()`
 
-Login sin contraseña. `request()` responde igual exista o no la cuenta — no lo uses para
-inferir si un mail tiene cuenta.
+Passwordless login. `request()` answers the same way whether or not the account exists — do not
+use it to infer whether an email has an account.
 
 ```ts
 await client.magicLink.request(email);
-// ...el usuario hace click en el link del mail (trae `email` y `token`)...
+// ...the user clicks the link in the email (it carries `email` and `token`)...
 await client.magicLink.consume(email, token);
 ```
 
 ### `oauth()`
 
-Login/vinculación con un proveedor externo. El callback devuelve JSON, no un redirect — el
-handler de la ruta de retorno de tu app lo canjea con `handleCallback()`.
+Login or linking with an external provider. The callback returns JSON, not a redirect — your
+app's return route handler exchanges it with `handleCallback()`.
 
 ```ts
 const { url } = await client.oauth.start("google", redirectUri);
 window.location.assign(url);
-// ...el proveedor vuelve a `redirectUri` con `?code=...&state=...`...
+// ...the provider comes back to `redirectUri` with `?code=...&state=...`...
 const { result, created } = await client.oauth.handleCallback("google", {
   code, state, redirectUri,
 });
 if (created) {
-  // cuenta nueva: mandar a onboarding en vez de al home
+  // new account: send to onboarding rather than to the home screen
 }
 ```
 
-### `passkey()` y `@hexcore-js/darwin-client/webauthn`
+### `passkey()` and `@hexcore-js/darwin-client/webauthn`
 
-`passkey` es transporte HTTP puro: las opciones de WebAuthn viajan como JSON crudo, sin tocar
-`navigator.credentials`. Para el flujo completo en el navegador, el subpath `/webauthn`:
+`passkey` is pure HTTP transport: the WebAuthn options travel as raw JSON without touching
+`navigator.credentials`. For the complete browser flow, use the `/webauthn` subpath:
 
 ```ts
 import { registerPasskey, authenticateWithPasskey } from "@hexcore-js/darwin-client/webauthn";
 
-const resumen = await registerPasskey(client.passkey, "mi laptop");
-const resultado = await authenticateWithPasskey(client.passkey, email);
+const summary = await registerPasskey(client.passkey, "my laptop");
+const result = await authenticateWithPasskey(client.passkey, email);
 ```
 
-`isWebAuthnSupported()` deja chequear soporte antes de mostrar el botón. Fuera de un
-navegador (Node, React Native), `registerPasskey`/`authenticateWithPasskey` tiran
-`WebAuthnUnavailableError` al invocarlos — importar el subpath nunca rompe un bundle que no
-lo usa.
+`isWebAuthnSupported()` lets you check support before showing the button. Outside a browser
+(Node, React Native), `registerPasskey`/`authenticateWithPasskey` throw
+`WebAuthnUnavailableError` when invoked — importing the subpath never breaks a bundle that does
+not use it.
 
 ### `impersonate()`
 
-Un operador actúa temporalmente como otro usuario, con motivo y vencimiento auditados del
-lado del servidor.
+An operator temporarily acts as another user, with a reason and an expiry audited server-side.
 
 ```ts
-await client.impersonate.start(userId, "verificar un bug reportado");
-// ...el store de sesión pasa a reflejar al sujeto impersonado...
+await client.impersonate.start(userId, "investigating a reported bug");
+// ...the session store now reflects the impersonated subject...
 await client.impersonate.stop();
-// no toca el store por su cuenta: con cookie hace falta un signIn() nuevo para volver a
-// ser el operador; con bearer basta con los tokens que ya tenías guardados de antes.
+// it does not touch the store on its own: with cookies you need a fresh signIn() to be the
+// operator again; with bearer the tokens you already had stored are enough.
 ```
 
 ### `organization()`
 
-Multi-tenancy con roles (`owner` > `admin` > `member`) e invitaciones.
+Multi-tenancy with roles (`owner` > `admin` > `member`) and invitations.
 
 ```ts
 const org = await client.organization.create("Acme");
-const emitida = await client.organization.invite(org.id, "nueva@acme.com", "admin");
-// `emitida.token` es de un solo uso: en producción armá el link vos y no lo muestres.
+const issued = await client.organization.invite(org.id, "new@acme.com", "admin");
+// `issued.token` is single-use: in production build the link yourself and do not display it.
 await client.organization.acceptInvitation(token);
 ```
 
-## Errores
+## Errors
 
-Un único `DarwinError`, discriminado por `code` — no dieciocho subclases que sincronizar a
-mano con el backend.
+A single `DarwinError`, discriminated by `code` — not eighteen subclasses to keep in sync with
+the backend by hand.
 
 ```ts
 import { DarwinError, isRefreshable, isSessionDead, isTwoFactorRequired } from "@hexcore-js/darwin-client";
@@ -251,26 +260,34 @@ try {
 }
 ```
 
-- `err.code` es un `DarwinCode`: los valores conocidos del contrato Python autocompletan en
-  el editor, pero un código que el backend agregue y este cliente todavía no conozca se
-  preserva igual — no rechaza en tiempo de compilación.
-- `isRefreshable`/`isSessionDead`/`isTwoFactorRequired` son los predicados que ya usa el
-  núcleo por dentro; están exportados porque una app también los necesita (por ejemplo, para
-  no mostrar el mismo mensaje de error genérico ante un 2FA pendiente).
-- `NonJsonResponse` y `NetworkError` son los dos códigos que sólo existen del lado del
-  cliente: un proxy/balanceador que no habla el envelope de Darwin, y un `fetch` que rechazó
-  (sin conexión, CORS).
+- `err.code` is a `DarwinCode`: the known values of the Python contract autocomplete in the
+  editor, but a code the backend adds and this client does not know about yet is preserved
+  anyway — it is not rejected at compile time.
+- `isRefreshable`/`isSessionDead`/`isTwoFactorRequired` are the same predicates the core uses
+  internally; they are exported because an app needs them too (for instance, so that a pending
+  2FA does not get the same generic error message as a wrong password).
+- `NonJsonResponse` and `NetworkError` are the only two codes that exist purely on the client
+  side: a proxy or load balancer that does not speak Darwin's envelope, and a `fetch` that
+  rejected (no connection, CORS).
 
-## Desarrollo
+## Development
 
 ```bash
 npm install
-npm -w @hexcore-js/darwin-client run gen        # regenera src/generated/ desde openapi/
+npm -w @hexcore-js/darwin-client run gen        # regenerates src/generated/ from openapi/
 npm -w @hexcore-js/darwin-client run typecheck
 npm -w @hexcore-js/darwin-client run test
 npm -w @hexcore-js/darwin-client run build
 ```
 
-`openapi/` se vuelca desde el paquete Python con
-`uv run python scripts/darwin_openapi.py --write` (ver `packages/hexcore/scripts/`) y se versiona
-en git: el drift entre el contrato y el cliente aparece en el diff del PR.
+`openapi/` is dumped from the Python package with
+`uv run python scripts/darwin_openapi.py --write` (see `packages/hexcore/scripts/`) and is
+committed to git: the drift between the contract and the client shows up in the diff of the
+pull request.
+
+See [`CONTRIBUTING.md`](https://github.com/Indroic/HexCore/blob/master/CONTRIBUTING.md) for the
+full contribution flow.
+
+## License
+
+MIT © David Latosefki. See [`LICENSE`](https://github.com/Indroic/HexCore/blob/master/LICENSE).

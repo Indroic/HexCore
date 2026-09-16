@@ -11,7 +11,7 @@ Only the current major series receives security fixes.
 
 Series 7.x and earlier are deprecated. 6.x and earlier additionally carry the CORS and
 rate-limiting defects fixed in 7.0 — see
-[versions and migration](./packages/hexcore/docs/en/versions-and-migration.md) for the detail.
+[versions and migration](./docs/hexcore/en/versions-and-migration.md) for the detail.
 
 ---
 

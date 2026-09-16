@@ -45,9 +45,65 @@ permissions:
   contents: read
 
 jobs:
+  # ── ¿Hace falta correr algo? ────────────────────────────────────────────────
+  # El filtro por path va acá y **no** en un `paths:` del `on:`. La diferencia no es de estilo:
+  # un workflow que el `paths:` filtra no arranca, así que no publica ningún check, y un
+  # required check que nunca reporta deja el PR bloqueado en "Expected — Waiting for status"
+  # para siempre. Un job que se salta por un `if:` sí reporta, y reporta `skipped`, que la
+  # protección de rama cuenta como éxito — que es justo lo que el veredicto de `typing-ok` ya
+  # aceptaba.
+  changes:
+    name: "¿Cambió algo que este gate mire?"
+    runs-on: ubuntu-latest
+    outputs:
+      relevante: ${{ steps.filtro.outputs.relevante }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          # El diff necesita la base del push/PR, que con el checkout superficial por defecto
+          # no está en el clon.
+          fetch-depth: 0
+
+      - name: Ver qué rutas tocó el cambio
+        id: filtro
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          # `packages/darwin-client/openapi/` está en el patrón aunque este gate sea del lado
+          # Python: el job `contrato-http` vuelca el contrato de Darwin y lo compara contra lo
+          # versionado **ahí**. Sin esa ruta, editar el contrato a mano dejaría de romper el
+          # gate que existe exactamente para detectarlo.
+          PATRON: '^(packages/hexcore/|packages/darwin-client/openapi/|uv\.lock$|pyproject\.toml$|\.github/workflows/typing\.yml$)'
+        run: |
+          set -euo pipefail
+
+          # Sin una base utilizable —rama nueva (SHA de ceros), force-push, o un historial que
+          # no la contiene— no hay diff que calcular. Se corre todo: equivocarse hacia "corrí
+          # de más" cuesta minutos de runner; hacia "no corrí" cuesta un bug publicado.
+          if [ -z "${BASE:-}" ] \
+            || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "::notice::Sin una base comparable. Se corre el gate completo."
+            echo "relevante=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ARCHIVOS="$(git diff --name-only "$BASE" HEAD)"
+          echo "Archivos tocados:"
+          echo "$ARCHIVOS"
+
+          if echo "$ARCHIVOS" | grep -qE "$PATRON"; then
+            echo "relevante=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Este cambio no toca nada que el gate de tipado mire. Se saltea."
+            echo "relevante=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── La regla de tipado de la casa ───────────────────────────────────────────
   house-rules:
     name: "Regla de tipado de la casa"
+    needs: changes
+    if: needs.changes.outputs.relevante == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -74,6 +130,8 @@ jobs:
   # ── Stubs sincronizados con su _EXPORTS ─────────────────────────────────────
   stubs-drift:
     name: "Stubs sincronizados con _EXPORTS"
+    needs: changes
+    if: needs.changes.outputs.relevante == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -99,6 +157,8 @@ jobs:
   # ── El contrato HTTP de Darwin, volcado y versionado en git ─────────────────
   contrato-http:
     name: "Contrato HTTP de Darwin (OpenAPI)"
+    needs: changes
+    if: needs.changes.outputs.relevante == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -123,6 +183,8 @@ jobs:
 
   typecheck:
     name: "Pyright strict sobre hexcore/"
+    needs: changes
+    if: needs.changes.outputs.relevante == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -208,6 +270,8 @@ jobs:
   # ── El núcleo importa sin un solo extra ─────────────────────────────────────
   no-extras-import:
     name: "Imports sin ningún extra"
+    needs: changes
+    if: needs.changes.outputs.relevante == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -246,6 +310,8 @@ jobs:
   # ── Cada extra, solo, alcanza para lo que promete ───────────────────────────
   extras-matrix:
     name: "Extra ${{ matrix.extra }}"
+    needs: changes
+    if: needs.changes.outputs.relevante == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -319,6 +385,7 @@ jobs:
     # decidir nada. Entra acá el día que deje de medir y pase a gatear.
     if: always()
     needs:
+      - changes
       - house-rules
       - stubs-drift
       - contrato-http

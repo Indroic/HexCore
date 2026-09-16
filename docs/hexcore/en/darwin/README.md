@@ -206,5 +206,5 @@ by blocking the packages in `sys.meta_path`.
 
 ## See also
 
-- [`docs/ARCHITECTURE_TYPING.md`](../../ARCHITECTURE_TYPING.md) — the framework's type system
-- [Project README](../../../README.md) — the rest of HexCore
+- [`docs/ARCHITECTURE_TYPING.md`](../../../ARCHITECTURE_TYPING.md) — the framework's type system
+- [Project README](../../../../packages/hexcore/README.md) — the rest of HexCore

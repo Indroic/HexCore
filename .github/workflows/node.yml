@@ -3,11 +3,12 @@ name: Node tests
 # Espejo de pytest.yml para @hexcore-js/darwin-client. Matriz 20/22/24: las tres LTS vivas — el
 # `engines` del package.json es una promesa que nadie más verifica.
 #
-# Sin filtro de path todavía (`paths:` en el `on:`): un workflow que es required check no puede
-# llevarlo si el required check no está ya reapuntado a un agregador de nombre fijo en
-# Settings → Branches. `node-ok` corre siempre por ahora; el filtro por path es un paso
-# posterior, cuando además pytest.yml y typing.yml lo tengan — hacerlo sólo acá dejaría al
-# workflow de Python corriendo de más en cada cambio que sólo toque el cliente TS.
+# El filtro por path va en un job `changes` y **no** en un `paths:` del `on:`. La diferencia no
+# es de estilo: un workflow que el `paths:` filtra no arranca, así que no publica ningún check,
+# y un required check que nunca reporta deja el PR bloqueado en "Expected — Waiting for status"
+# para siempre. Un job que se salta por un `if:` sí reporta, y reporta `skipped`, que la
+# protección de rama cuenta como éxito. Por eso `node-ok` corre siempre (`if: always()`) y
+# acepta `skipped`: es él, y no `test`, el nombre que hay que marcar como obligatorio.
 on:
   push:
     branches:
@@ -24,8 +25,56 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: "¿Cambió algo de darwin-client?"
+    runs-on: ubuntu-latest
+    outputs:
+      relevante: ${{ steps.filtro.outputs.relevante }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          # El diff necesita la base del push/PR, que con el checkout superficial por defecto
+          # no está en el clon.
+          fetch-depth: 0
+
+      - name: Ver qué rutas tocó el cambio
+        id: filtro
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          # `package.json` y `package-lock.json` de la raíz están en el patrón porque son los
+          # del workspace npm: cambiarlos cambia con qué se instala y con qué se buildea el
+          # cliente, aunque `packages/darwin-client/` no se toque.
+          PATRON: '^(packages/darwin-client/|package\.json$|package-lock\.json$|\.github/workflows/node\.yml$)'
+        run: |
+          set -euo pipefail
+
+          # Sin una base utilizable —rama nueva (SHA de ceros), force-push, o un historial que
+          # no la contiene— no hay diff que calcular. Se corre todo: equivocarse hacia "corrí
+          # de más" cuesta minutos de runner; hacia "no corrí" cuesta un bug publicado.
+          if [ -z "${BASE:-}" ] \
+            || [ "$BASE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "::notice::Sin una base comparable. Se corre la suite completa."
+            echo "relevante=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ARCHIVOS="$(git diff --name-only "$BASE" HEAD)"
+          echo "Archivos tocados:"
+          echo "$ARCHIVOS"
+
+          if echo "$ARCHIVOS" | grep -qE "$PATRON"; then
+            echo "relevante=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Este cambio no toca el cliente TypeScript. La suite se saltea."
+            echo "relevante=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     name: "Node ${{ matrix.node }}"
+    needs: changes
+    if: needs.changes.outputs.relevante == 'true'
     runs-on: ubuntu-latest
     # A nivel de job y no del workflow: `node-ok` no hace checkout, así que
     # `packages/darwin-client` no existe ahí — un default a nivel workflow rompía ese job
@@ -104,8 +153,13 @@ jobs:
 
   node-ok:
     name: "Gate de Node"
+    # Agregador de nombre fijo: es el que hay que marcar como required en la protección de
+    # rama, y no `test`. `test` ahora se saltea cuando el cambio no toca el cliente, y un
+    # required check salteado a nivel *job* reporta `skipped` —que cuenta como éxito— sólo si
+    # el agregador sigue corriendo. De ahí el `always()` y el `!= "skipped"` del veredicto.
     if: always()
     needs:
+      - changes
       - test
     runs-on: ubuntu-latest
     steps:

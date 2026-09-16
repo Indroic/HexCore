@@ -214,7 +214,7 @@ Demasiados para una tabla útil. La superficie está agrupada así:
 | Almacenamiento SQL | `UserMixin`, `SessionMixin`, `IDENTITY_MODELS`, `ensure_identity_schema_loaded`, `create_identity_tables`, `validate_user_model` |
 
 El listado exacto y tipado está en el stub generado
-[`hexcore/darwin/__init__.pyi`](../../hexcore/darwin/__init__.pyi), que es la fuente que ven los
+[`hexcore/darwin/__init__.pyi`](../../../packages/hexcore/hexcore/darwin/__init__.pyi), que es la fuente que ven los
 type checkers. Ver **[Darwin](./darwin/)** para las guías.
 
 ---
@@ -240,7 +240,7 @@ convivan en la misma fachada.
 | Contenedor y providers | `EventStoreContainer`, `configure_event_store`, `get_event_store_container`, `reset_event_store`, `provide_event_store`, `provide_snapshot_store`, `provide_checkpoint_store`, `provide_projector` | — |
 
 El listado exacto y tipado está en el stub generado
-[`hexcore/eventsourcing.pyi`](../../hexcore/eventsourcing.pyi). Ver
+[`hexcore/eventsourcing.pyi`](../../../packages/hexcore/hexcore/eventsourcing.pyi). Ver
 **[Event Sourcing](./event-sourcing.md)** para la guía.
 
 ---

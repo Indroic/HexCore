@@ -23,7 +23,7 @@ automatic bump: **they are not releases meant to be used**, they are intermediat
 migration. 5.0.0 is the first complete version. 6.0.0 is the same story — it was triggered by a
 documentation PR with a `feat!:` commit — and there is **no** API break between 5.x and 6.x.
 
-The table cannot drift from reality: `tests/test_documentation_examples.py` verifies that the
+The table cannot drift from reality: `packages/hexcore/tests/test_documentation_examples.py` verifies that the
 series marked active is the one in `pyproject.toml`. That test is what caught 6.0.0 shipping with
 5.x still marked active.
 

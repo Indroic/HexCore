@@ -1,7 +1,38 @@
 {
   "name": "@hexcore-js/darwin-client",
   "version": "0.1.0",
-  "description": "Cliente TypeScript agnóstico de framework, runtime y backend para Darwin, el módulo de identidad de HexCore.",
+  "description": "Framework-, runtime- and backend-agnostic TypeScript client for Darwin, the identity module of HexCore. Zero runtime dependencies.",
+  "keywords": [
+    "darwin",
+    "hexcore",
+    "auth",
+    "authentication",
+    "identity",
+    "session",
+    "jwt",
+    "csrf",
+    "webauthn",
+    "passkey",
+    "totp",
+    "2fa",
+    "oauth",
+    "magic-link",
+    "multi-tenancy",
+    "typescript"
+  ],
+  "homepage": "https://github.com/Indroic/HexCore/tree/master/docs/darwin-client/en",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Indroic/HexCore.git",
+    "directory": "packages/darwin-client"
+  },
+  "bugs": {
+    "url": "https://github.com/Indroic/HexCore/issues"
+  },
+  "author": {
+    "name": "David Latosefki (Indroic)",
+    "email": "indroic@outlook.com"
+  },
   "license": "MIT",
   "publishConfig": {
     "access": "public"
