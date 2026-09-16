@@ -477,6 +477,43 @@ def test_docs_facade_attributes_exist():
     )
 
 
+# ── Los classifiers de Python dicen la verdad ──────────────────────────────
+
+
+def test_cada_version_de_python_declarada_tiene_su_pata_en_la_matriz():
+    """
+    Los `Programming Language :: Python :: X.Y` de `pyproject.toml` y la matriz de
+    `pytest.yml` tienen que coincidir exactamente.
+
+    Un classifier no es decoración: es la respuesta a "¿corre en mi Python?", y es de donde
+    shields.io saca el badge del README. Prometer una versión que la CI no ejecuta es un verde
+    falso con la peor latencia posible — se descubre cuando alguien la instala.
+
+    Al revés también falla: una pata en la matriz que no esté declarada significa que se está
+    pagando el runner por una versión que el paquete no dice soportar.
+    """
+    tomllib = pytest.importorskip("tomllib")
+    yaml = pytest.importorskip("yaml")
+
+    with (REPO / "packages" / "hexcore" / "pyproject.toml").open("rb") as archivo:
+        classifiers = tomllib.load(archivo)["project"]["classifiers"]
+
+    prefijo = "Programming Language :: Python :: "
+    declaradas = {
+        c[len(prefijo) :]
+        for c in classifiers
+        if c.startswith(prefijo) and c[len(prefijo) :][:1].isdigit() and "." in c
+    }
+
+    flujo = yaml.safe_load((REPO / ".github" / "workflows" / "pytest.yml").read_text(encoding="utf-8"))
+    en_matriz = {str(v) for v in flujo["jobs"]["test"]["strategy"]["matrix"]["python"]}
+
+    assert declaradas == en_matriz, (
+        f"pyproject declara {sorted(declaradas)} y pytest.yml corre {sorted(en_matriz)}. "
+        "Agreg\u00e1 la versi\u00f3n que falta al otro lado, o sac\u00e1 la que sobra."
+    )
+
+
 # ── La skill de agente ─────────────────────────────────────────────────────────
 #
 # `skills/hexcore/` ya entra en los guardas de arriba por `ALL_DOC_FILES`: sus `from hexcore…
