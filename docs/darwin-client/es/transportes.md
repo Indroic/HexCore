@@ -92,11 +92,20 @@ entrante) y para tests, **no como modo de producción**. Fuera del navegador la 
 new CookieTransport({ csrfCookieName: "mi_csrf" });
 ```
 
-Por defecto `"darwin_csrf"`, y tiene que coincidir con lo que el despliegue configuró del lado
-del servidor en `CookieConfig.name_for("csrf")`. ⚠️ Si los dos no coinciden, todo request que
-muta estado vuelve como un 403 `CsrfValidationError` mientras los `GET` siguen andando — el
+Por defecto `"csrf"`, que es el default de `CookieConfig.csrf_name` del lado del servidor. Es el
+nombre **base**, sin el prefijo `__Host-`: el transporte busca `__Host-<nombre>` y cae a
+`<nombre>`, que son exactamente los dos valores que `CookieConfig.name_for("csrf")` puede
+devolver según `secure`.
+
+Ese fallback es el punto. El servidor emite `__Host-csrf` sobre HTTPS y `csrf` pelado sobre
+HTTP, así que un único nombre hardcodeado acierta en producción y falla en desarrollo, o al
+revés — y falla **en silencio**: sin la cookie el cliente no manda el header, y todo request que
+muta estado vuelve como un 403 `CsrfValidationError` mientras los `GET` siguen andando. El
 chequeo double-submit sólo cubre los métodos que mutan, así que el síntoma es "las lecturas van,
 todas las escrituras fallan", que se lee como un bug de permisos y no lo es.
+
+Pasar un nombre ya prefijado también funciona, y entonces se usa exactamente ese y nada más.
+⚠️ Igual hay que cambiarlo si el despliegue configuró un `CookieConfig.csrf_name` propio.
 
 ⚠️ **Un transporte de cookie en un despliegue cross-site también necesita el servidor
 configurado en consecuencia.** `SameSite`, `Secure` y el header CORS

@@ -91,11 +91,20 @@ recommendation is `BearerTransport`.
 new CookieTransport({ csrfCookieName: "my_csrf" });
 ```
 
-Defaults to `"darwin_csrf"`, and it has to match what the deployment configured server-side in
-`CookieConfig.name_for("csrf")`. ⚠️ If the two disagree, every state-changing request comes back
-as a 403 `CsrfValidationError` while `GET`s keep working — the double-submit check only covers
-the methods that mutate, so the symptom is "reads fine, writes all fail", which reads like a
-permissions bug and is not one.
+Defaults to `"csrf"`, which is the default of `CookieConfig.csrf_name` server-side. It is the
+**base** name, without the `__Host-` prefix: the transport looks for `__Host-<name>` first and
+falls back to `<name>`, which are exactly the two values `CookieConfig.name_for("csrf")` can
+return depending on `secure`.
+
+That fallback is the point. The server emits `__Host-csrf` over HTTPS and plain `csrf` over
+HTTP, so a single hardcoded name is right in production and wrong in development, or the other
+way round — and it is wrong **silently**: with no cookie the client sends no header, and every
+state-changing request comes back as a 403 `CsrfValidationError` while `GET`s keep working. The
+double-submit check only covers the methods that mutate, so the symptom is "reads fine, writes
+all fail", which looks like a permissions bug and is not one.
+
+Passing an already-prefixed name works too, and then that exact name is the only one tried.
+⚠️ You still have to change this if the deployment set a custom `CookieConfig.csrf_name`.
 
 ⚠️ **A cookie transport in a cross-site deployment also needs the server configured to match.**
 `SameSite`, `Secure` and the CORS `Access-Control-Allow-Credentials` header are set on the
