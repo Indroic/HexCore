@@ -144,7 +144,12 @@ jobs:
           uv run cz bump --yes --changelog --no-verify
           exit_code=$?
           set -e
-          if [ "$exit_code" -eq 21 ]; then
+          # El 3 (NO_COMMITS_FOUND, ni un commit desde el tag) acompaña al 21 (NO_INCREMENT,
+          # hay commits pero ninguno amerita bump): los dos son "nada que publicar". Acá el 3
+          # es más raro que en el job del cliente —el tag de hexcore lo crea este mismo job, y
+          # el push siguiente siempre trae al menos el commit del bump— pero aparece al
+          # re-lanzar a mano un run cuyo bump ya se había completado.
+          if [ "$exit_code" -eq 3 ] || [ "$exit_code" -eq 21 ]; then
             echo "::notice::Sin commits que ameriten un bump desde el último tag. Nada que publicar."
             echo "bumped=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -283,10 +288,24 @@ jobs:
           uvx --from commitizen cz bump --yes --changelog --no-verify
           exit_code=$?
           set -e
-          if [ "$exit_code" -eq 21 ]; then
+          # Los dos "no hay nada que publicar", y ninguno es un error: 3 (NO_COMMITS_FOUND) es
+          # "ni un commit desde el tag" —el estado normal del cliente, cuyo ancla apunta al tip
+          # de master, así que todo push que no toque el paquete cae acá— y 21 (NO_INCREMENT)
+          # es "hay commits, pero ninguno amerita bump" (sólo chore:/test:/docs:).
+          if [ "$exit_code" -eq 3 ] || [ "$exit_code" -eq 21 ]; then
             echo "::notice::darwin-client: sin commits que ameriten un bump desde el último tag."
             echo "bumped=false" >> "$GITHUB_OUTPUT"
             exit 0
+          elif [ "$exit_code" -eq 16 ]; then
+            # NO_REVISION: no hay ningún tag `darwin-client-v*` en el remoto desde el cual
+            # arrancar el changelog incremental. Es el estado de bootstrap, y sin este mensaje
+            # el job muere con un "No tag found to do an incremental changelog" pelado,
+            # precedido de cincuenta líneas de "Invalid version tag: hexcore-vX" que hacen
+            # parecer que el problema son los tags de hexcore. Peor: antes de morir, `cz`
+            # informa un MAJOR falso (0.1.0 → 1.0.0), porque sin ancla recorre la historia
+            # entera del repo y encuentra los BREAKING CHANGE viejos de hexcore.
+            echo "::error::darwin-client: falta el tag ancla en el remoto. Creá uno que apunte al commit de master que corresponde a la versión de package.json y pusheálo: git tag -a darwin-client-v\$(node -p \"require('./packages/darwin-client/package.json').version\") -m 'ancla' && git push origin <tag>. Ver CONTRIBUTING.md §4."
+            exit "$exit_code"
           elif [ "$exit_code" -ne 0 ]; then
             exit "$exit_code"
           fi
