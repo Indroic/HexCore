@@ -21,6 +21,16 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
+    "./webauthn": {
+      "types": "./dist/webauthn.d.ts",
+      "import": "./dist/webauthn.js",
+      "require": "./dist/webauthn.cjs"
+    },
+    "./store": {
+      "types": "./dist/store.d.ts",
+      "import": "./dist/store.js",
+      "require": "./dist/store.cjs"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
