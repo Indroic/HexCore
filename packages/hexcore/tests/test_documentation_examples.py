@@ -515,20 +515,37 @@ def _surface():
 
 def test_la_skill_tiene_frontmatter_utilizable():
     """
-    Sin `name` y `description` en el frontmatter, Claude Code no carga la skill y nadie se
-    entera: no hay error, simplemente el agente no la usa nunca. Un typo en el YAML la apaga
-    en silencio, que es el mismo modo de falla que la skill entera existe para documentar.
+    El frontmatter de `SKILL.md` tiene que **parsear como YAML**, no sólo contener las claves.
+
+    Chequear que el texto `description:` esté presente no alcanza, y no es una hipótesis: la
+    primera versión de este test hacía exactamente eso y dejó pasar una `description` con un
+    `: ` en el medio (`"...del monorepo: el framework Python..."`), que YAML lee como un mapping
+    anidado dentro de un mapping compacto. El parser de Claude Code es lo bastante tolerante
+    como para cargarla igual, así que acá todo se veía bien; el de `npx skills` no lo es y
+    rechazó la skill entera con "No valid skills found".
+
+    Ese es justo el modo de falla que esta skill documenta en otros lados: no levanta una
+    excepción donde está el error, simplemente el agente no la usa nunca.
     """
+    yaml = pytest.importorskip("yaml")
+
     contenido = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
 
     assert contenido.startswith("---\n"), "SKILL.md tiene que abrir con el frontmatter YAML"
     cierre = contenido.index("\n---\n", 3)
     frontmatter = contenido[4:cierre]
 
-    for clave in ("name:", "description:"):
-        assert clave in frontmatter, f"al frontmatter de SKILL.md le falta `{clave}`"
+    try:
+        metadatos = yaml.safe_load(frontmatter)
+    except yaml.YAMLError as error:  # pragma: no cover - el mensaje es el valor del test
+        pytest.fail(f"el frontmatter de SKILL.md no parsea como YAML: {error}")
 
-    assert "darwin-client" in frontmatter, (
+    assert isinstance(metadatos, dict), "el frontmatter tiene que ser un mapping YAML"
+
+    for clave in ("name", "description"):
+        assert metadatos.get(clave), f"al frontmatter de SKILL.md le falta `{clave}`"
+
+    assert "darwin-client" in metadatos["description"], (
         "la `description` es lo único que el modelo lee para decidir si activa la skill: si no "
         "nombra el cliente TypeScript, un prompt de frontend no la dispara"
     )
