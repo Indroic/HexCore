@@ -258,10 +258,17 @@ python -m pytest -W "default::DeprecationWarning"
 
 Full detail in [CONTRIBUTING.md](https://github.com/Indroic/HexCore/blob/master/CONTRIBUTING.md).
 
-### Project skills
+### The agent skill
 
-There is a set of skills for extending HexCore in VS Code and compatible environments:
-[HexCore Skills repository](https://github.com/Indroic/hexcore-skill).
+[`skills/hexcore/`](https://github.com/Indroic/HexCore/tree/master/skills/hexcore) is a
+[Claude Code](https://claude.com/claude-code) skill covering both packages — this one and the
+TypeScript client. It reads the installed package instead of remembering it, and audits a
+project for the framework's silent failure modes rather than just describing them. Its prose is
+under the same CI gate as the documentation, so a rename here turns it red.
+
+To use it in a project that consumes HexCore, copy that directory into the project's
+`.claude/skills/`. Details in
+[skills/README.md](https://github.com/Indroic/HexCore/blob/master/skills/README.md).
 
 ---
 

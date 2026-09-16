@@ -406,8 +406,8 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the full contribution flow, inclu
 `packages/` layout, the two independent release pipelines, and why. Security policy in
 [`SECURITY.md`](./SECURITY.md); change history in [`CHANGELOG.md`](./CHANGELOG.md).
 
-There is also a set of skills for extending HexCore in VS Code and compatible environments:
-[HexCore Skills](https://github.com/Indroic/hexcore-skill).
+The agent skill lives in this repository too, under [`skills/`](./skills/) — see
+[Working on HexCore with an agent](#working-on-hexcore-with-an-agent).
 
 ## License
 
