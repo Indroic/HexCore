@@ -28,6 +28,8 @@ from uuid import UUID
 
 from sqlalchemy import delete, select, update
 
+from hexcore.infrastructure.repositories.orms.sqlalchemy.utils import filas_afectadas
+
 from hexcore.darwin.domain.entities import (
     CREDENTIAL_PROVIDER,
     Account,
@@ -228,7 +230,7 @@ class SqlAlchemySessionRepository(_BaseIdentityRepository, AbstractSessionReposi
                 .values(revoked_at=at)
             )
             await session.commit()
-            return int(resultado.rowcount or 0)
+            return filas_afectadas(resultado)
 
     async def consume_for_rotation(
         self, session_id: UUID, *, at: datetime
@@ -272,7 +274,7 @@ class SqlAlchemySessionRepository(_BaseIdentityRepository, AbstractSessionReposi
                 delete(self._model).where(self._model.expires_at < before)
             )
             await session.commit()
-            return int(resultado.rowcount or 0)
+            return filas_afectadas(resultado)
 
 
 class SqlAlchemyAccountRepository(_BaseIdentityRepository, AbstractAccountRepository):
@@ -427,7 +429,7 @@ class SqlAlchemyVerificationRepository(
                 .values(consumed_at=at)
             )
             await session.commit()
-            return int(resultado.rowcount or 0)
+            return filas_afectadas(resultado)
 
     async def delete_expired(self, *, before: datetime) -> int:
         async with self._session_scope() as session:
@@ -435,7 +437,7 @@ class SqlAlchemyVerificationRepository(
                 delete(self._model).where(self._model.expires_at < before)
             )
             await session.commit()
-            return int(resultado.rowcount or 0)
+            return filas_afectadas(resultado)
 
 
 class SqlAlchemyAuditSink(AbstractAuditSink):
