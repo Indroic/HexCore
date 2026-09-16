@@ -1,5 +1,5 @@
 /**
- * `@hexcore/darwin-client/webauthn` — el pegamento con `navigator.credentials` que el plugin
+ * `@hexcore-js/darwin-client/webauthn` — el pegamento con `navigator.credentials` que el plugin
  * `passkey` deja afuera a propósito (ver el docstring de `src/plugins/passkey.ts`). Sólo corre
  * en un navegador: importarlo en Node o React Native tira `WebAuthnUnavailableError` al primer
  * uso, no al importar — un subpath opcional no puede romper un bundle que nunca lo invoca.
@@ -69,7 +69,7 @@ function comoCredencialDePublicKey(
  *
  * Uso::
  *
- *     import { registerPasskey } from "@hexcore/darwin-client/webauthn";
+ *     import { registerPasskey } from "@hexcore-js/darwin-client/webauthn";
  *
  *     const resumen = await registerPasskey(client.passkey, "mi laptop");
  */
@@ -97,7 +97,7 @@ export async function registerPasskey(
  *
  * Uso::
  *
- *     import { authenticateWithPasskey } from "@hexcore/darwin-client/webauthn";
+ *     import { authenticateWithPasskey } from "@hexcore-js/darwin-client/webauthn";
  *
  *     const resultado = await authenticateWithPasskey(client.passkey, email);
  */

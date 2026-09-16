@@ -1,0 +1,21 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+# Tag propio: sin prefijo, `cz bump` no distingue una versión de darwin-client de una de
+# hexcore, y un tag ambiguo confundiría a `publish-to-pypi.yml` (que dispara por cualquier
+# tag) igual que ya pasaba antes de que hexcore tuviera `hexcore-v$version`.
+tag_format = "darwin-client-v$version"
+version_scheme = "semver"
+# `npm`: lee y escribe el campo `version` de `package.json` directamente — no hace falta
+# `npm version` ni ningún paso de Node en el bump en sí.
+version_provider = "npm"
+version_files = ["package.json:version"]
+# Changelog propio del paquete, no el `CHANGELOG.md` de la raíz: un consumidor de
+# `@hexcore-js/darwin-client` que abre la página de npm quiere el historial de *este*
+# paquete, no el del monorepo entero (que ya lo tiene hexcore en su propio changelog).
+#
+# Limitación conocida y aceptada: `cz bump`/`cz changelog` no filtran por path, así que un
+# commit que sólo tocó `packages/hexcore/` pero está tipado `feat:`/`fix:` igual cuenta para
+# esta versión y aparece en este changelog. Es la misma limitación que ya tiene el bump de
+# hexcore (tampoco filtra por path) — ver el comentario de `on:` en node.yml.
+changelog_file = "CHANGELOG.md"
+update_changelog_on_bump = true

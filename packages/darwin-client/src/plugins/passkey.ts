@@ -6,7 +6,7 @@ import { definePlugin } from "../plugins";
  * con la forma de `PublicKeyCredentialCreationOptions`/`RequestOptions` del spec WebAuthn
  * (https://www.w3.org/TR/webauthn-3/). No se remodelan acá a propósito: son un estándar ajeno,
  * y el paso de codificar/decodificar base64url y llamar a `navigator.credentials` vive en el
- * subpath `@hexcore/darwin-client/webauthn`, que sí conoce el navegador. Este plugin es el
+ * subpath `@hexcore-js/darwin-client/webauthn`, que sí conoce el navegador. Este plugin es el
  * transporte HTTP puro — corre igual en Node que en un browser.
  */
 export type WebAuthnJSON = Record<string, unknown>;
@@ -66,7 +66,7 @@ export interface PasskeyApi {
  * El plugin de passkeys (WebAuthn): transporte HTTP puro, sin tocar `navigator.credentials`.
  *
  * Para el flujo completo en el navegador (codificar/decodificar las opciones, invocar
- * `navigator.credentials`), usá el subpath `@hexcore/darwin-client/webauthn`, que envuelve este
+ * `navigator.credentials`), usá el subpath `@hexcore-js/darwin-client/webauthn`, que envuelve este
  * plugin — este plugin también sirve solo para una app que ya arma esas llamadas a mano.
  */
 export function passkey() {

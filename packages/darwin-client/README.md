@@ -1,4 +1,4 @@
-# @hexcore/darwin-client
+# @hexcore-js/darwin-client
 
 Cliente TypeScript agnóstico de framework de UI, de runtime y de backend para **Darwin**, el
 módulo de identidad de [HexCore](../hexcore/). Cero dependencias de runtime.
@@ -14,13 +14,13 @@ bug de seguridad, no de comodidad.
 ## Instalación
 
 ```bash
-npm install @hexcore/darwin-client
+npm install @hexcore-js/darwin-client
 ```
 
 ## Inicio rápido
 
 ```ts
-import { createDarwinClient, BearerTransport, memoryStorage } from "@hexcore/darwin-client";
+import { createDarwinClient, BearerTransport, memoryStorage } from "@hexcore-js/darwin-client";
 
 const client = createDarwinClient({
   baseUrl: "https://api.miapp.com",
@@ -58,7 +58,7 @@ client.session.getSnapshot();
 | Uso típico | Apps nativas, SSR, cualquier cosa que no sea un navegador con el backend en el mismo sitio | SPA servida por (o con CORS+credentials hacia) el mismo backend Darwin |
 
 ```ts
-import { BearerTransport, memoryStorage, localStorageAdapter } from "@hexcore/darwin-client";
+import { BearerTransport, memoryStorage, localStorageAdapter } from "@hexcore-js/darwin-client";
 
 // Por defecto: sólo en memoria del proceso — se pierde al recargar la página.
 new BearerTransport({ storage: memoryStorage() });
@@ -69,7 +69,7 @@ new BearerTransport({ storage: localStorageAdapter() });
 ```
 
 ```ts
-import { CookieTransport } from "@hexcore/darwin-client";
+import { CookieTransport } from "@hexcore-js/darwin-client";
 
 // En un navegador de verdad: lee la cookie CSRF de `document.cookie` sola.
 const client = createDarwinClient({
@@ -102,7 +102,7 @@ Svelte espera algo distinto: `subscribe(run)` tiene que invocar `run` **inmediat
 el valor actual, no sólo tras el próximo cambio. Para eso está el subpath `/store`:
 
 ```ts
-import { toSvelteStore } from "@hexcore/darwin-client/store";
+import { toSvelteStore } from "@hexcore-js/darwin-client/store";
 
 export const session = toSvelteStore(client.session);
 // en un componente: `$session.status`
@@ -136,7 +136,7 @@ import {
   passkey,
   impersonate,
   organization,
-} from "@hexcore/darwin-client";
+} from "@hexcore-js/darwin-client";
 
 const client = createDarwinClient({
   baseUrl,
@@ -193,13 +193,13 @@ if (created) {
 }
 ```
 
-### `passkey()` y `@hexcore/darwin-client/webauthn`
+### `passkey()` y `@hexcore-js/darwin-client/webauthn`
 
 `passkey` es transporte HTTP puro: las opciones de WebAuthn viajan como JSON crudo, sin tocar
 `navigator.credentials`. Para el flujo completo en el navegador, el subpath `/webauthn`:
 
 ```ts
-import { registerPasskey, authenticateWithPasskey } from "@hexcore/darwin-client/webauthn";
+import { registerPasskey, authenticateWithPasskey } from "@hexcore-js/darwin-client/webauthn";
 
 const resumen = await registerPasskey(client.passkey, "mi laptop");
 const resultado = await authenticateWithPasskey(client.passkey, email);
@@ -240,7 +240,7 @@ Un único `DarwinError`, discriminado por `code` — no dieciocho subclases que 
 mano con el backend.
 
 ```ts
-import { DarwinError, isRefreshable, isSessionDead, isTwoFactorRequired } from "@hexcore/darwin-client";
+import { DarwinError, isRefreshable, isSessionDead, isTwoFactorRequired } from "@hexcore-js/darwin-client";
 
 try {
   await client.signIn(email, password);
@@ -265,10 +265,10 @@ try {
 
 ```bash
 npm install
-npm -w @hexcore/darwin-client run gen        # regenera src/generated/ desde openapi/
-npm -w @hexcore/darwin-client run typecheck
-npm -w @hexcore/darwin-client run test
-npm -w @hexcore/darwin-client run build
+npm -w @hexcore-js/darwin-client run gen        # regenera src/generated/ desde openapi/
+npm -w @hexcore-js/darwin-client run typecheck
+npm -w @hexcore-js/darwin-client run test
+npm -w @hexcore-js/darwin-client run build
 ```
 
 `openapi/` se vuelca desde el paquete Python con

@@ -1,8 +1,11 @@
 {
-  "name": "@hexcore/darwin-client",
+  "name": "@hexcore-js/darwin-client",
   "version": "0.1.0",
   "description": "Cliente TypeScript agnóstico de framework, runtime y backend para Darwin, el módulo de identidad de HexCore.",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "sideEffects": false,
   "engines": {

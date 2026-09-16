@@ -51,6 +51,24 @@ Since the commits are already conventional and `commitizen` is already configure
 cz bump            # computes the version, tags, and regenerates the CHANGELOG
 ```
 
+**This repo has two independent release pipelines, one per package** — CI runs both on
+every push to `master` (`bump_ver.yml`, jobs `bump-version` and
+`bump-version-darwin-client`), and neither is triggered by hand:
+
+| | `packages/hexcore/` | `packages/darwin-client/` |
+|---|---|---|
+| Tag format | `hexcore-v$version` | `darwin-client-v$version` |
+| Config | `packages/hexcore/pyproject.toml` `[tool.commitizen]` | `packages/darwin-client/.cz.toml` |
+| Changelog | `CHANGELOG.md` (repo root) | `packages/darwin-client/CHANGELOG.md` |
+| Publishes to | PyPI, via `publish-to-pypi.yml` | npm, via `publish-darwin-client-to-npm.yml` |
+
+Neither `cz` config filters commits by the path they touched — a `feat:`/`fix:` commit that
+only touched one package still counts toward *both* versions and *both* changelogs. This is
+a known, accepted limitation (not a bug to "fix" by adding path-scoping): filtering by scope
+would need a fork of commitizen's changelog generation, and the alternative (two literal
+copies of every meaningful commit anyway, since most `feat:`/`fix:` work already carries a
+scope like `(darwin)`/`(darwin-client)` in its subject) is not worth that cost.
+
 What is asked in return: **write the commit so it reads well in the changelog**. The subject is
 the line that will be published; the body explains the *why*, which is what a `git log` cannot
 reconstruct afterwards.
