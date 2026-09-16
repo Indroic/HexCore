@@ -89,7 +89,12 @@ jobs:
             const pack = JSON.parse(require('fs').readFileSync('/tmp/pack.json', 'utf-8'))[0];
             const archivos = pack.files.map((f) => f.path);
             console.log('Archivos en el tarball:', archivos);
-            const necesarios = ['dist/index.js', 'dist/index.cjs', 'dist/index.d.ts', 'package.json'];
+            const necesarios = [
+              'dist/index.js', 'dist/index.cjs', 'dist/index.d.ts',
+              'dist/webauthn.js', 'dist/webauthn.cjs', 'dist/webauthn.d.ts',
+              'dist/store.js', 'dist/store.cjs', 'dist/store.d.ts',
+              'package.json',
+            ];
             const faltan = necesarios.filter((n) => !archivos.includes(n));
             if (faltan.length > 0) {
               console.error('Faltan en el tarball:', faltan);

@@ -8,6 +8,8 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
+    webauthn: "src/webauthn.ts",
+    store: "src/store.ts",
   },
   format: ["esm", "cjs"],
   dts: true,
