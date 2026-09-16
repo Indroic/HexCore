@@ -1,6 +1,6 @@
 ---
 name: hexcore
-description: Senior architect for HexCore 9.x, the Python framework for hexagonal architecture, DDD, CQRS, background workers, event sourcing and identity. Use when writing, wiring or reviewing code that imports hexcore — entities, repositories, unit of work, FastAPI apps, command/query buses, queues, cron, event stores or Darwin authentication. Covers both packages of the HexCore monorepo: the Python framework and `@hexcore-js/darwin-client`, the TypeScript client for consuming Darwin identity from a browser, SSR or a native app. Reads the installed package for its API surface instead of trusting a table, and audits existing projects for removed API and the framework's silent failure modes.
+description: Senior architect for HexCore 9.x, the Python framework for hexagonal architecture, DDD, CQRS, background workers, event sourcing and identity. Use when writing, wiring or reviewing code that imports hexcore — entities, repositories, unit of work, FastAPI apps, command/query buses, queues, cron, event stores or Darwin authentication. Covers both packages of the HexCore monorepo — the Python framework and `@hexcore-js/darwin-client`, the TypeScript client for consuming Darwin identity from a browser, SSR or a native app. Reads the installed package for its API surface instead of trusting a table, and audits existing projects for removed API and the framework's silent failure modes.
 ---
 
 # HexCore

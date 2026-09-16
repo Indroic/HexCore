@@ -335,8 +335,12 @@ const result = await client.signIn("ana@example.com", "correct-horse-battery");
 
 [`skills/hexcore/`](./skills/hexcore) is a [Claude Code](https://claude.com/claude-code) skill
 that covers **both** packages. The repository root is itself a plugin, so
-`/plugin marketplace add .` once is all it takes to have it load here. To use it in a project
-that consumes HexCore, copy the directory into that project's `.claude/skills/`.
+`/plugin marketplace add .` once is all it takes to have it load here. In a project that
+consumes HexCore:
+
+```bash
+npx skills add Indroic/HexCore -s hexcore
+```
 
 It does two things a documentation dump cannot. It **reads the installed package** instead of
 remembering it — `scripts/hexcore_surface.py` parses the facades' `_EXPORTS` with `ast` and the

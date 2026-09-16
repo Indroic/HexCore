@@ -29,11 +29,32 @@ at the cost of a second copy to keep in sync.
 
 ## Using the skill outside this repository
 
-Copy the directory into the project that consumes HexCore:
+With the [`skills` CLI](https://skills.sh), from the project that consumes HexCore:
+
+```bash
+npx skills add Indroic/HexCore -s hexcore          # -> .claude/skills/hexcore
+npx skills add Indroic/HexCore -s hexcore -g       # -> ~/.claude/skills/hexcore
+```
+
+`-s hexcore` matters here: the CLI walks `skills/` looking for every `SKILL.md`, and this is a
+monorepo. The agent id is `claude-code` if you pass `-a` (plain `claude` is not one).
+
+⚠️ The `/tree/<branch>/<path>` URL form **cannot address a branch whose name contains a
+slash** — the CLI splits at the first `/` and looks for a branch that does not exist. For a
+branch like `feat/something`, point it at a local checkout instead:
+
+```bash
+npx skills add ../HexCore/skills/hexcore
+```
+
+Or copy it by hand, which needs no tooling at all:
 
 ```bash
 cp -r skills/hexcore /path/to/your-project/.claude/skills/hexcore
 ```
+
+Installed any of these ways the skill is `/hexcore`, not `/hexcore:hexcore` — the namespace
+prefix only appears when it loads through this repository's plugin.
 
 The scripts need only the standard library and do **not** import `hexcore`, so they work on a
 bare install with zero extras. Run them with the interpreter of the environment HexCore is
