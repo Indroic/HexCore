@@ -1,3 +1,11 @@
+## hexcore-v9.7.2 (2026-09-16)
+
+### Fix
+
+- **darwin-client**: los mensajes de error de runtime pasan a inglés
+- **darwin-client**: el default de `csrfCookieName` no coincidía con ningún nombre que el servidor emita
+- **ci**: el bump no falla cuando no hay nada que publicar
+
 ## hexcore-v9.7.1 (2026-09-16)
 
 ### Fix
