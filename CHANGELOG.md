@@ -1,3 +1,9 @@
+## hexcore-v9.7.1 (2026-09-16)
+
+### Fix
+
+- **ci**: publish-darwin-client-to-npm no falla si la versión ya está publicada
+
 ## hexcore-v9.7.0 (2026-09-16)
 
 ### Feat
