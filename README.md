@@ -331,6 +331,26 @@ const result = await client.signIn("ana@example.com", "correct-horse-battery");
 
 ---
 
+## Working on HexCore with an agent
+
+[`skills/hexcore/`](./skills/hexcore) is a [Claude Code](https://claude.com/claude-code) skill
+that covers **both** packages. The repository root is itself a plugin, so
+`/plugin marketplace add .` once is all it takes to have it load here. To use it in a project
+that consumes HexCore, copy the directory into that project's `.claude/skills/`.
+
+It does two things a documentation dump cannot. It **reads the installed package** instead of
+remembering it — `scripts/hexcore_surface.py` parses the facades' `_EXPORTS` with `ast` and the
+TypeScript client's entry points, so it answers from whatever versions are actually in front of
+it. And it **audits code rather than describing it**: `scripts/hexcore_audit.py` finds the
+framework's silent failure modes statically, starting with the Alembic `env.py` that generates
+a clean migration and drops a table with data in it.
+
+Its prose is under the same CI gate as `docs/`, so a rename in either package turns it red.
+
+→ [skills/README.md](./skills/README.md)
+
+---
+
 ## Versions and support
 
 | Series | Status | |

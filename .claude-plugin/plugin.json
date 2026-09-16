@@ -1,0 +1,10 @@
+{
+  "name": "hexcore",
+  "description": "La skill de arquitecto senior de HexCore: el framework Python y su cliente TypeScript.",
+  "version": "1.0.0",
+  "author": { "name": "David Latosefki (Indroic)", "email": "indroic@outlook.com" },
+  "homepage": "https://github.com/Indroic/HexCore/tree/master/skills",
+  "repository": "https://github.com/Indroic/HexCore",
+  "license": "MIT",
+  "keywords": ["hexcore", "hexagonal-architecture", "ddd", "cqrs", "darwin", "fastapi"]
+}
