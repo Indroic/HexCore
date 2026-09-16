@@ -1,6 +1,6 @@
 {
   "name": "@hexcore-js/darwin-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Framework-, runtime- and backend-agnostic TypeScript client for Darwin, the identity module of HexCore. Zero runtime dependencies.",
   "keywords": [
     "darwin",

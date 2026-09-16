@@ -62,7 +62,7 @@ describe("createRefreshController — single-flight", () => {
     expect(onFailure).toHaveBeenCalledTimes(1);
 
     // Sin la marca, esto dispararía un segundo doRefresh contra un refresh que ya se sabe caído.
-    await expect(controller.refresh()).rejects.toThrow(/marcada muerta/);
+    await expect(controller.refresh()).rejects.toThrow(/marked dead/);
     expect(doRefresh).toHaveBeenCalledTimes(1);
   });
 

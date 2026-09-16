@@ -83,7 +83,7 @@ export function createFetcher(options: FetcherOptions): Fetcher {
         code: "NetworkError",
         status: null,
         detail:
-          "La petición no llegó a completarse (sin conexión, CORS, o el servidor no respondió).",
+          "The request never completed (no connection, CORS, or the server did not answer).",
         cause,
       });
     }
@@ -112,9 +112,9 @@ export function createFetcher(options: FetcherOptions): Fetcher {
           payload: error.payload,
           wwwAuthenticate: error.wwwAuthenticate,
           detail:
-            `${error.detail} (el cuerpo del request era un stream ya consumido y no se ` +
-            "puede reenviar tras el refresh; pasalo como objeto plano, string, FormData o " +
-            "Blob si necesitás que este caso se reintente solo)",
+            `${error.detail} (the request body was an already-consumed stream and cannot ` +
+            "be replayed after the refresh; pass it as a plain object, string, FormData or " +
+            "Blob if you need this case to retry on its own)",
         });
       }
 
@@ -138,7 +138,7 @@ async function leerCuerpoExitoso<T>(response: Response): Promise<T> {
     throw new DarwinError({
       code: "NonJsonResponse",
       status: response.status,
-      detail: `La respuesta no es JSON. Primeros 200 caracteres: ${texto.slice(0, 200)}`,
+      detail: `The response is not JSON. First 200 characters: ${texto.slice(0, 200)}`,
     });
   }
 }

@@ -63,8 +63,8 @@ export function cookieStoreJar(): CookieJar {
       ).cookieStore;
       if (!store) {
         throw new Error(
-          "cookieStoreJar() necesita `window.cookieStore` (CookieStore API), que este " +
-            "entorno no expone. Usá documentCookieJar() o memoryCookieJar() en su lugar.",
+          "cookieStoreJar() needs `window.cookieStore` (the CookieStore API), which this " +
+            "environment does not expose. Use documentCookieJar() or memoryCookieJar() instead.",
         );
       }
       const cookie = await store.get(name);
