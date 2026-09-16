@@ -1,0 +1,59 @@
+name: Publish darwin-client to npm
+
+# Espejo de publish-to-pypi.yml, pero con npm Trusted Publishing (OIDC) en vez de PyPI: sin
+# ningún token de larga vida en el repo. El "trusted publisher" se configura una vez del lado
+# de npmjs.com, apuntando a este repo + este archivo de workflow — npm verifica el token OIDC
+# que emite GitHub Actions contra esa configuración en cada publish.
+#
+# Igual que con PyPI: el tag lo empuja bump_ver.yml (job `bump-version-darwin-client`), nunca
+# a mano. `darwin-client-v*` es un tag_format propio y no colisiona con `hexcore-v*` — ver el
+# comentario en `packages/darwin-client/.cz.toml`.
+on:
+  push:
+    tags:
+      - "darwin-client-v*"
+
+permissions:
+  contents: read
+  # Lo que hace falta para que `npm publish` negocie el token de corta vida por OIDC en vez
+  # de leer un secret. Sin esto, npm Trusted Publishing falla con "unable to authenticate".
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/darwin-client
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      # npm Trusted Publishing exige npm >=11.5.1. `setup-node` trae la versión que venga
+      # con esa versión de Node, casi siempre más vieja — sin este paso, el publish falla con
+      # un error de negociación OIDC en vez de uno claro de "actualizá npm".
+      - name: Actualizar npm (Trusted Publishing exige >=11.5.1)
+        run: npm install -g npm@latest
+
+      # Desde la raíz del workspace: mismo motivo que en node.yml — `npm ci` con
+      # working-directory apuntando al paquete no resuelve el workspace entero.
+      - name: Install dependencies
+        working-directory: .
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # `--provenance`: firma la procedencia del paquete contra este workflow y este commit,
+      # visible en la página de npm — más allá de lo que exige Trusted Publishing en sí.
+      - name: Publish
+        run: npm publish --access public --provenance

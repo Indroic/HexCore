@@ -1,5 +1,5 @@
 /**
- * `@hexcore/darwin-client` — cliente TypeScript para Darwin, el módulo de identidad de
+ * `@hexcore-js/darwin-client` — cliente TypeScript para Darwin, el módulo de identidad de
  * HexCore. Agnóstico de framework de UI, de runtime y de backend.
  *
  * `createDarwinClient()` expone el núcleo (`$fetch` tipado, refresh single-flight, store de

@@ -27,7 +27,7 @@ export interface DarwinClientPluginContext {
   completeAuthentication: (session: SessionResponse) => Promise<SignInResult>;
 }
 
-/** Un plugin de `@hexcore/darwin-client`. `id` es la clave con la que cuelga de `client.<id>`. */
+/** Un plugin de `@hexcore-js/darwin-client`. `id` es la clave con la que cuelga de `client.<id>`. */
 export interface DarwinClientPlugin<Id extends string = string, Api = unknown> {
   readonly id: Id;
   /**

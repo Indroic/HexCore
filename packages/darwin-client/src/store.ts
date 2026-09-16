@@ -1,5 +1,5 @@
 /**
- * `@hexcore/darwin-client/store` — adaptadores del store de sesión a otros contratos de store
+ * `@hexcore-js/darwin-client/store` — adaptadores del store de sesión a otros contratos de store
  * que no son el de React.
  *
  * `client.session` (`subscribe`/`getSnapshot`/`getServerSnapshot`) ya es exactamente lo que
@@ -29,7 +29,7 @@ export interface SvelteReadable<T> {
  *
  * Uso::
  *
- *     import { toSvelteStore } from "@hexcore/darwin-client/store";
+ *     import { toSvelteStore } from "@hexcore-js/darwin-client/store";
  *
  *     export const session = toSvelteStore(client.session);
  *     // en un componente: `$session.status`

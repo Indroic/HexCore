@@ -1,6 +1,6 @@
 name: Node tests
 
-# Espejo de pytest.yml para @hexcore/darwin-client. Matriz 20/22/24: las tres LTS vivas — el
+# Espejo de pytest.yml para @hexcore-js/darwin-client. Matriz 20/22/24: las tres LTS vivas — el
 # `engines` del package.json es una promesa que nadie más verifica.
 #
 # Sin filtro de path todavía (`paths:` en el `on:`): un workflow que es required check no puede

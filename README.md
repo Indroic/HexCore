@@ -8,7 +8,7 @@ Este repositorio es un monorepo con dos paquetes:
   y en [`packages/hexcore/docs/`](./packages/hexcore/docs/).
 - **`packages/darwin-client/`** — cliente TypeScript agnóstico de framework, runtime y backend
   para Darwin (el módulo de identidad de HexCore), publicado en npm como
-  `@hexcore/darwin-client`.
+  `@hexcore-js/darwin-client`.
 
 ## Por qué un monorepo
 

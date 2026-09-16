@@ -137,3 +137,114 @@ jobs:
           tag_name: ${{ steps.cz.outputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Segunda configuración de commitizen, independiente de la de arriba — ver el comentario
+  # sobre "dos paquetes, dos configuraciones" al principio de este archivo. `needs:
+  # bump-version` no es porque dependa de su resultado (por eso el `if` no exige `success`,
+  # sólo que no haya fallado): es sólo para serializar los dos jobs, que si no correrían en
+  # paralelo y pushearían a `master` desde el mismo commit base — el segundo en llegar
+  # rebotaría por "non-fast-forward". Al encadenarlos, este job hace `checkout` de `master`
+  # *después* de que el primero ya empujó el suyo.
+  #
+  # Bootstrap: `darwin-client-v0.1.0` se taggeó a mano (sin pasar por `cz bump`) el día que
+  # se armó este workflow, con un `CHANGELOG.md` semilla escrito a mano — no generado. Sin
+  # ese ancla, la primera corrida de `cz bump`/`cz changelog` no tiene ningún tag anterior
+  # que reconozca (el `tag_format` es nuevo) y trata la *historia entera del repo* como si
+  # fuera la v0.1.0, volcando cada commit de `hexcore` desde el principio de los tiempos en
+  # el changelog de un paquete que ni los tocó. Verificado a mano en un worktree descartable
+  # antes de confiar en esto para una release real — el mismo tipo de bug silencioso que ya
+  # costó dos releases de PyPI sin publicar (ver el comentario de "Pushear el commit y el
+  # tag" en el job de arriba).
+  bump-version-darwin-client:
+    needs: bump-version
+    if: |
+      always() &&
+      !startsWith(github.event.head_commit.message, 'bump:') &&
+      needs.bump-version.result != 'failure' &&
+      needs.bump-version.result != 'cancelled'
+    runs-on: ubuntu-latest
+    name: "Bump version and changelog de darwin-client con commitizen"
+    defaults:
+      run:
+        working-directory: packages/darwin-client
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          # Explícito y no el SHA que disparó el workflow: si `bump-version` (el job de
+          # arriba) acaba de pushear un commit, ese commit tiene que estar en el checkout
+          # de este job para no pushear después sobre una base vieja.
+          ref: master
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Node
+        # Para `npm install --package-lock-only` más abajo — `cz bump` en sí no lo necesita.
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configurar identidad de git
+        working-directory: ${{ github.workspace }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version y changelog
+        id: cz
+        # `commitizen` no es una dependencia del paquete TS — se corre standalone vía
+        # `uvx`, sin depender del venv de `packages/hexcore` (que además instala cosas que
+        # este bump no necesita, como sqlalchemy/beanie).
+        run: |
+          set +e
+          uvx --from commitizen cz bump --yes --changelog --no-verify
+          exit_code=$?
+          set -e
+          if [ "$exit_code" -eq 21 ]; then
+            echo "::notice::darwin-client: sin commits que ameriten un bump desde el último tag."
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$exit_code" -ne 0 ]; then
+            exit "$exit_code"
+          fi
+          echo "bumped=true" >> "$GITHUB_OUTPUT"
+          echo "tag=darwin-client-v$(uvx --from commitizen cz version --project)" >> "$GITHUB_OUTPUT"
+
+      - name: Sincronizar package-lock.json con la nueva versión
+        # `version_provider = "npm"` sólo toca `packages/darwin-client/package.json` — el
+        # `package-lock.json` de la raíz del workspace también guarda esa versión por
+        # paquete y hay que resincronizarlo, mismo tratamiento que `uv.lock` en el job de
+        # hexcore.
+        if: steps.cz.outputs.bumped == 'true'
+        working-directory: ${{ github.workspace }}
+        run: |
+          npm install --package-lock-only
+          if ! git diff --quiet -- package-lock.json; then
+            git add package-lock.json
+            git commit --amend --no-edit
+            git tag -f "${{ steps.cz.outputs.tag }}"
+          fi
+
+      - name: Pushear el commit y el tag
+        # Dos `git push` separados: el mismo motivo que en el job de hexcore, verificado
+        # empíricamente contra este repo — `--follow-tags` junto con la rama no dispara el
+        # `on: push: tags:` del workflow de publish.
+        if: steps.cz.outputs.bumped == 'true'
+        working-directory: ${{ github.workspace }}
+        run: |
+          git push origin HEAD:master
+          git push origin "${{ steps.cz.outputs.tag }}"
+
+      - name: Release
+        if: steps.cz.outputs.bumped == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          tag_name: ${{ steps.cz.outputs.tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
