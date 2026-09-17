@@ -69,7 +69,7 @@ never touches passkeys never ships it.
 | You need | API |
 | :-- | :-- |
 | A client | `createDarwinClient({ baseUrl, transport })` |
-| Email + password sign-in | `client.signIn(email, password)` |
+| Email or username sign-in | `client.signIn(identifier, password)` |
 | Sign out | `client.signOut()` |
 | Who am I | `client.me()`, `client.session.getSnapshot()` |
 | A raw authenticated call | `client.$fetch<T>(path, init)` |

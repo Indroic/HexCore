@@ -11,6 +11,8 @@ const client = createDarwinClient({
 });
 
 const resultado = await client.signIn("ana@ejemplo.com", "supersecreta");
+// …o el nombre de usuario, si el backend lo habilitó:
+// const resultado = await client.signIn("indroic", "supersecreta");
 
 if (resultado.status === "two-factor-required") {
   // Ver la guía de plugins: `client.twoFactor.complete(resultado.challenge, codigo)`

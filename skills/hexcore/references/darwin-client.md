@@ -47,10 +47,21 @@ const client = createDarwinClient({
 });
 
 const result = await client.signIn("ana@example.com", "correct-horse-battery");
+// …or the username, when the backend enables it:
+const byName = await client.signIn("indroic", "correct-horse-battery");
 ```
 
 `baseUrl` is the root of the deployment **without** `/auth` — the client appends that itself.
 `transport` has **no default**; see below, it is the one security decision here.
+
+`signIn()` takes an **identifier**, not specifically an email: what it accepts is the backend's
+decision (`IdentityConfig.sign_in_identifiers`). The client sends it as `identifier`; the server
+also accepts `email` and `username` for the benefit of a 9.x front end, but new code should not
+rely on those. The body type is `SignInRequest`.
+
+**The client validates nothing.** No password length, no email shape — the policy lives on the
+server and duplicating it here would create two sources of truth that drift. A rejected
+credential comes back as a `DarwinError`.
 
 The rest of the core surface: `client.signOut()`, `client.refresh()`, `client.me()`, the session
 store `client.session`, and `client.$fetch<T>(path, init)` — the same primitive the plugins are

@@ -70,7 +70,7 @@ una app de React Native que nunca toca passkeys nunca lo empaqueta.
 | Necesitás | API |
 | :-- | :-- |
 | Un cliente | `createDarwinClient({ baseUrl, transport })` |
-| Login con email y contraseña | `client.signIn(email, password)` |
+| Login con mail o nombre de usuario | `client.signIn(identifier, password)` |
 | Cerrar sesión | `client.signOut()` |
 | Quién soy | `client.me()`, `client.session.getSnapshot()` |
 | Una llamada autenticada cruda | `client.$fetch<T>(path, init)` |
