@@ -47,7 +47,7 @@ SECURITY_SCHEMES: dict[str, dict[str, str]] = {
 
 def _construir_app() -> t.Any:
     """
-    Monta una app con los siete routers y los seis plugins, sin base ni contenedor real.
+    Monta una app con los ocho routers y los siete plugins, sin base ni contenedor real.
 
     `configure_test_identity` alcanza: ningún `build_*_router()` toca
     `get_identity_container()` al **construir** — todos los `from … import get_X_service`
@@ -60,6 +60,7 @@ def _construir_app() -> t.Any:
     from hexcore.darwin.plugins.oauth import OAuthPlugin
     from hexcore.darwin.plugins.organization import OrganizationPlugin
     from hexcore.darwin.plugins.passkey import PasskeyPlugin
+    from hexcore.darwin.plugins.rbac import RbacPlugin
     from hexcore.darwin.plugins.two_factor import TwoFactorPlugin
     from hexcore.darwin.testing import configure_test_identity
     from hexcore.fastapi import AppFeatures, create_app
@@ -72,6 +73,7 @@ def _construir_app() -> t.Any:
             PasskeyPlugin(rp_id="darwin-openapi.local", origins=["https://darwin-openapi.local"]),
             ImpersonatePlugin(),
             OrganizationPlugin(),
+            RbacPlugin(),
         ]
     )
     configure_test_identity(plugins=plugins)

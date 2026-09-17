@@ -26,7 +26,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from hexcore.darwin.domain.exceptions import IdentityError
+from hexcore.darwin.domain.exceptions import AuthorizationError, IdentityError
+from hexcore.domain.events import DomainEvent
 
 __all__ = [
     "GLOBAL_SCOPE",
@@ -37,8 +38,13 @@ __all__ = [
     "AbstractRbacPermissionRepository",
     "AbstractRbacUserRoleRepository",
     "AbstractAuthzVersionRepository",
+    "AuthorizationChangedEvent",
     "RbacError",
     "RoleNotFoundError",
+    "RoleAlreadyExistsError",
+    "SystemRoleImmutableError",
+    "RoleCycleError",
+    "EscalationError",
     "RBAC_EXCEPTION_STATUS_MAP",
 ]
 
@@ -268,6 +274,24 @@ class AbstractAuthzVersionRepository(abc.ABC):
         """
 
 
+# ── Los eventos ───────────────────────────────────────────────────────────────
+class AuthorizationChangedEvent(DomainEvent):
+    """
+    Los permisos de un scope cambiaron: se bumpeó `darwin_authz_version`.
+
+    Es una notificación, no la fuente de verdad — la fuente es la versión persistida. Sirve
+    para invalidar una cache de proceso de un worker que no comparte memoria con el que hizo
+    el cambio, sin que ese worker tenga que sondear la versión en cada request.
+    """
+
+    scope_key: str
+    #: Qué disparó el bump: `"role_permissions_changed"`, `"role_hierarchy_changed"`,
+    #: `"role_assigned"`, `"role_revoked"`, `"role_deleted"`. Libre y no un `Literal`: es
+    #: para logs y métricas, no una decisión de código.
+    reason: str
+    version: int
+
+
 # ── Las excepciones ───────────────────────────────────────────────────────────
 class RbacError(IdentityError):
     """Base de las fallas del plugin `rbac`."""
@@ -277,8 +301,46 @@ class RoleNotFoundError(RbacError):
     """No existe ese rol. 404."""
 
 
+class RoleAlreadyExistsError(RbacError):
+    """Ya existe un rol con ese nombre en ese scope (`UNIQUE(scope_key, name)`). 409."""
+
+
+class SystemRoleImmutableError(RbacError):
+    """
+    El rol es `is_system`: no se edita ni se borra por API. 409.
+
+    No es una cuestión de permisos del actor —ni un `admin` puede—, así que no es
+    `AuthorizationError`: es una restricción sobre el propio recurso, como
+    `LastOwnerError` en `organization`. Ver el docstring de `RbacRole.is_system`.
+    """
+
+
+class RoleCycleError(RbacError):
+    """
+    `set_parents` formaría un ciclo de herencia. 409.
+
+    Mismo criterio que `PermissionCycleError` de `RoleRegistry`: se detecta al declarar la
+    herencia, no al resolver permisos — ahí sería un `RecursionError` en el camino caliente.
+    """
+
+
+class EscalationError(AuthorizationError):
+    """
+    El actor intentó otorgar más de lo que él mismo tiene. 403.
+
+    Cubre los dos caminos de escalada del plugin: darle a un rol un permiso que el actor no
+    tiene en ese scope, y asignarle a alguien un rol cuyos permisos efectivos exceden los del
+    actor. Sin este chequeo, cualquiera con `authz.manage` se auto-otorga `*` y el resto del
+    control de acceso es decorativo.
+    """
+
+
 #: El mapa que el plugin aporta vía `exception_status_map()` (Fase F2). Se declara ya, junto a
 #: la excepción, con el mismo criterio que `ORGANIZATION_EXCEPTION_STATUS_MAP`.
 RBAC_EXCEPTION_STATUS_MAP: dict[type[Exception], int] = {
     RoleNotFoundError: 404,
+    RoleAlreadyExistsError: 409,
+    SystemRoleImmutableError: 409,
+    RoleCycleError: 409,
+    EscalationError: 403,
 }

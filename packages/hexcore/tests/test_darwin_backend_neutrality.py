@@ -42,6 +42,7 @@ SPECS: tuple[tuple[str, str, str], ...] = (
     ("impersonate", "ImpersonatePlugin", ""),
     ("passkey", "PasskeyPlugin", 'rp_id="mi-app.com", origins=["https://mi-app.com"]'),
     ("organization", "OrganizationPlugin", ""),
+    ("rbac", "RbacPlugin", ""),
 )
 
 #: Los puntos de extensión que **no** pueden depender de un backend.
@@ -58,7 +59,9 @@ PUNTOS_NEUTROS: tuple[str, ...] = (
     "exception_status_map",
 )
 
-#: Los siete mixins que aportan los cuatro plugins con tabla, en orden de plugin.
+#: Los trece mixins que aportan los cinco plugins con tabla. El orden no importa —se compara
+#: como set—, porque `table_names()` los devuelve ordenados por prioridad de plugin y no por
+#: la posición en `SPECS`.
 MIXINS_ESPERADOS: tuple[str, ...] = (
     "TwoFactorMixin",
     "OAuthStateMixin",
@@ -67,6 +70,12 @@ MIXINS_ESPERADOS: tuple[str, ...] = (
     "OrganizationMixin",
     "MemberMixin",
     "InvitationMixin",
+    "RbacRoleMixin",
+    "RbacPermissionMixin",
+    "RbacRolePermissionMixin",
+    "RbacRoleParentMixin",
+    "RbacUserRoleMixin",
+    "AuthzVersionMixin",
 )
 
 _FINDER = '''
@@ -166,7 +175,7 @@ class TestSinSqlAlchemy:
             """,
         )
         assert resultado.returncode == 0, resultado.stderr
-        assert "ok 6" in resultado.stdout
+        assert "ok 7" in resultado.stdout
 
     def test_el_registro_valida(self) -> None:
         """
@@ -198,7 +207,7 @@ class TestSinSqlAlchemy:
             _imports_de_plugins(),
             f"registro = PluginRegistry({_construcciones()})",
             """
-            assert len(registro.routers()) == 6, registro.routers()
+            assert len(registro.routers()) == 7, registro.routers()
             assert len(registro.exception_status_map()) > 20
             registro.hooks()
             print("ok")
@@ -315,7 +324,7 @@ class TestSinBeanie:
             f"registro = PluginRegistry({_construcciones()})",
             """
             registro.validate()
-            assert len(registro.table_names()) == 7
+            assert len(registro.table_names()) == 13
             print("ok")
             """,
         )

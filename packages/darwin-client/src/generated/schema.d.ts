@@ -532,6 +532,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/rbac/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Asignar
+         * @description **Anti-escalada**: 403 si el rol otorga más de lo que el actor tiene en `scope`.
+         */
+        post: operations["asignar_auth_rbac_assignments_post"];
+        /** Revocar */
+        delete: operations["revocar_auth_rbac_assignments_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/rbac/me/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mis Permisos
+         * @description Roles y permisos efectivos del actor en `scope`. **Optimista para UI.**
+         *
+         *     La autoridad es `AuthorizationEngine.decide()` en cada acción real; esto es un
+         *     resumen para que el cliente no tenga que adivinar qué mostrar.
+         */
+        get: operations["mis_permisos_auth_rbac_me_permissions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/rbac/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Roles */
+        get: operations["listar_roles_auth_rbac_roles_get"];
+        put?: never;
+        /** Crear Rol */
+        post: operations["crear_rol_auth_rbac_roles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/rbac/roles/{role_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Borrar Rol */
+        delete: operations["borrar_rol_auth_rbac_roles__role_id__delete"];
+        options?: never;
+        head?: never;
+        /** Actualizar Rol */
+        patch: operations["actualizar_rol_auth_rbac_roles__role_id__patch"];
+        trace?: never;
+    };
+    "/auth/rbac/roles/{role_id}/parents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Establecer Padres
+         * @description **Ciclos y anti-escalada**: 409 si forma un ciclo, 403 si excede al actor.
+         */
+        put: operations["establecer_padres_auth_rbac_roles__role_id__parents_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/rbac/roles/{role_id}/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Establecer Permisos
+         * @description **Anti-escalada**: 403 si `permission_keys` excede lo que el actor ya tiene.
+         */
+        put: operations["establecer_permisos_auth_rbac_roles__role_id__permissions_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/refresh": {
         parameters: {
             query?: never;
@@ -880,6 +1000,21 @@ export interface components {
             /** Token */
             token: string;
         };
+        /** AssignRoleBody */
+        AssignRoleBody: {
+            /** Expires At */
+            expires_at?: string | null;
+            /**
+             * Role Id
+             * Format: uuid
+             */
+            role_id: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /**
          * AuthenticationOptionsBody
          * @description El cuerpo de `POST /auth/passkey/authenticate/options`.
@@ -937,6 +1072,16 @@ export interface components {
             name: string;
             /** Slug */
             slug?: string | null;
+        };
+        /** CreateRoleBody */
+        CreateRoleBody: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Name */
+            name: string;
         };
         /** DisableBody */
         DisableBody: {
@@ -1087,6 +1232,15 @@ export interface components {
             /** Token */
             token?: string | null;
         };
+        /** MePermissionsOut */
+        MePermissionsOut: {
+            /** Permissions */
+            permissions: string[];
+            /** Roles */
+            roles: string[];
+            /** Scope */
+            scope: string;
+        };
         /**
          * MeResponse
          * @description Quién sos, y **a nombre de quién** estás actuando.
@@ -1201,6 +1355,19 @@ export interface components {
             /** Revoked */
             revoked: number;
         };
+        /** RoleOut */
+        RoleOut: {
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Is System */
+            is_system: boolean;
+            /** Name */
+            name: string;
+            /** Scope Key */
+            scope_key: string;
+        };
         /**
          * SessionInfo
          * @description Una fila de `GET /auth/sessions`, para una pantalla de seguridad.
@@ -1245,6 +1412,16 @@ export interface components {
              * @default Bearer
              */
             token_type: string;
+        };
+        /** SetParentsBody */
+        SetParentsBody: {
+            /** Parent Ids */
+            parent_ids?: string[];
+        };
+        /** SetPermissionsBody */
+        SetPermissionsBody: {
+            /** Permission Keys */
+            permission_keys?: string[];
         };
         /** SetRoleBody */
         SetRoleBody: {
@@ -1333,6 +1510,13 @@ export interface components {
             };
             /** Name */
             name: string;
+        };
+        /** UpdateRoleBody */
+        UpdateRoleBody: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
         };
         /** ValidationError */
         ValidationError: {
@@ -2000,6 +2184,317 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    asignar_auth_rbac_assignments_post: {
+        parameters: {
+            query?: {
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignRoleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revocar_auth_rbac_assignments_delete: {
+        parameters: {
+            query: {
+                user_id: string;
+                role_id: string;
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mis_permisos_auth_rbac_me_permissions_get: {
+        parameters: {
+            query?: {
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MePermissionsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_roles_auth_rbac_roles_get: {
+        parameters: {
+            query?: {
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_rol_auth_rbac_roles_post: {
+        parameters: {
+            query?: {
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    borrar_rol_auth_rbac_roles__role_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    actualizar_rol_auth_rbac_roles__role_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRoleBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    establecer_padres_auth_rbac_roles__role_id__parents_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetParentsBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    establecer_permisos_auth_rbac_roles__role_id__permissions_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetPermissionsBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

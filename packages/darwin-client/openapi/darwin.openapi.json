@@ -14,6 +14,37 @@
         "title": "AcceptInvitationBody",
         "type": "object"
       },
+      "AssignRoleBody": {
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "role_id": {
+            "format": "uuid",
+            "title": "Role Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "role_id"
+        ],
+        "title": "AssignRoleBody",
+        "type": "object"
+      },
       "AuthenticationOptionsBody": {
         "description": "El cuerpo de `POST /auth/passkey/authenticate/options`.\n\n`email` es opcional: sin él, el flujo es con credenciales descubribles y el navegador ofrece\nlo que tenga. Con él, se limita a las credenciales de esa cuenta — y **no se revela si la\ncuenta existe**: un mail desconocido devuelve opciones sin `allowCredentials`, exactamente\nigual que el flujo sin mail.",
         "properties": {
@@ -130,6 +161,26 @@
           "name"
         ],
         "title": "CreateOrganizationBody",
+        "type": "object"
+      },
+      "CreateRoleBody": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateRoleBody",
         "type": "object"
       },
       "DisableBody": {
@@ -465,6 +516,35 @@
         "title": "MagicLinkRequested",
         "type": "object"
       },
+      "MePermissionsOut": {
+        "properties": {
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "roles",
+          "permissions"
+        ],
+        "title": "MePermissionsOut",
+        "type": "object"
+      },
       "MeResponse": {
         "description": "Quién sos, y **a nombre de quién** estás actuando.\n\n`actor_id` y `subject_id` separados incluso acá: un operador que impersona tiene que ver\nen su propia UI que está dentro de la cuenta de otro. Devolver un solo id haría que la\ninterfaz no pueda mostrarlo.",
         "properties": {
@@ -748,6 +828,39 @@
         "title": "RevokedResponse",
         "type": "object"
       },
+      "RoleOut": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_system": {
+            "title": "Is System",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scope_key": {
+            "title": "Scope Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scope_key",
+          "name",
+          "description",
+          "is_system"
+        ],
+        "title": "RoleOut",
+        "type": "object"
+      },
       "SessionInfo": {
         "description": "Una fila de `GET /auth/sessions`, para una pantalla de seguridad.",
         "properties": {
@@ -855,6 +968,33 @@
           "expires_in"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "SetParentsBody": {
+        "properties": {
+          "parent_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Parent Ids",
+            "type": "array"
+          }
+        },
+        "title": "SetParentsBody",
+        "type": "object"
+      },
+      "SetPermissionsBody": {
+        "properties": {
+          "permission_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permission Keys",
+            "type": "array"
+          }
+        },
+        "title": "SetPermissionsBody",
         "type": "object"
       },
       "SetRoleBody": {
@@ -1030,6 +1170,36 @@
           "name"
         ],
         "title": "UpdateOrganizationBody",
+        "type": "object"
+      },
+      "UpdateRoleBody": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "UpdateRoleBody",
         "type": "object"
       },
       "ValidationError": {
@@ -2139,6 +2309,517 @@
         "tags": [
           "auth",
           "passkey"
+        ]
+      }
+    },
+    "/auth/rbac/assignments": {
+      "delete": {
+        "operationId": "revocar_auth_rbac_assignments_delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Revocar Auth Rbac Assignments Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revocar",
+        "tags": [
+          "rbac"
+        ]
+      },
+      "post": {
+        "description": "**Anti-escalada**: 403 si el rol otorga más de lo que el actor tiene en `scope`.",
+        "operationId": "asignar_auth_rbac_assignments_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRoleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Asignar Auth Rbac Assignments Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Asignar",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/auth/rbac/me/permissions": {
+      "get": {
+        "description": "Roles y permisos efectivos del actor en `scope`. **Optimista para UI.**\n\nLa autoridad es `AuthorizationEngine.decide()` en cada acción real; esto es un\nresumen para que el cliente no tenga que adivinar qué mostrar.",
+        "operationId": "mis_permisos_auth_rbac_me_permissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MePermissionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Mis Permisos",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/auth/rbac/roles": {
+      "get": {
+        "operationId": "listar_roles_auth_rbac_roles_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleOut"
+                  },
+                  "title": "Response Listar Roles Auth Rbac Roles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Listar Roles",
+        "tags": [
+          "rbac"
+        ]
+      },
+      "post": {
+        "operationId": "crear_rol_auth_rbac_roles_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Crear Rol",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/auth/rbac/roles/{role_id}": {
+      "delete": {
+        "operationId": "borrar_rol_auth_rbac_roles__role_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Borrar Rol Auth Rbac Roles  Role Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Borrar Rol",
+        "tags": [
+          "rbac"
+        ]
+      },
+      "patch": {
+        "operationId": "actualizar_rol_auth_rbac_roles__role_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRoleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Actualizar Rol",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/auth/rbac/roles/{role_id}/parents": {
+      "put": {
+        "description": "**Ciclos y anti-escalada**: 409 si forma un ciclo, 403 si excede al actor.",
+        "operationId": "establecer_padres_auth_rbac_roles__role_id__parents_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetParentsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Establecer Padres Auth Rbac Roles  Role Id  Parents Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Establecer Padres",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/auth/rbac/roles/{role_id}/permissions": {
+      "put": {
+        "description": "**Anti-escalada**: 403 si `permission_keys` excede lo que el actor ya tiene.",
+        "operationId": "establecer_permisos_auth_rbac_roles__role_id__permissions_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPermissionsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Establecer Permisos Auth Rbac Roles  Role Id  Permissions Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Establecer Permisos",
+        "tags": [
+          "rbac"
         ]
       }
     },
