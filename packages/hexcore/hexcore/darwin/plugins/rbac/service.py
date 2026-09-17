@@ -122,6 +122,15 @@ class RbacService:
         """Los roles vigentes de `user_id` en `scope_key`. Para el resolver de principales."""
         return await self._user_roles.active_role_ids_for(user_id, scope_key, at=at)
 
+    async def authz_version(self, scope_key: str) -> int:
+        """
+        La versión actual de `darwin_authz_version` para `scope_key`.
+
+        Para el `/me/permissions` del router: el cliente TypeScript (Fase F3) la usa para
+        saber si el resumen que tiene en memoria quedó viejo, sin depender sólo del TTL.
+        """
+        return await self._versions.get(scope_key)
+
     async def roles_by_ids(self, role_ids: t.Iterable[UUID]) -> list[RbacRole]:
         """Para el resolver: de ids de rol a sus nombres. `None` se descarta en silencio —un
         rol borrado entre la asignación y la resolución no debería tumbar el sign-in."""
