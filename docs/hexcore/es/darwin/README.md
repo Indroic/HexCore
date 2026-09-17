@@ -264,15 +264,23 @@ mapeás dos clases sobre el mismo mixin en tablas distintas.
 `Principal` lleva `roles` y `scopes`, y de dónde salen lo decide tu app con un puerto:
 
 ```python
-from hexcore.darwin import AbstractPrincipalResolver, configure_identity
+from hexcore.darwin import (
+    AbstractPrincipalResolver,
+    ResolvedPrincipal,
+    configure_identity,
+)
 
-class RolesDeLaApp(AbstractPrincipalResolver):
+class PrincipalesDeLaApp(AbstractPrincipalResolver):
     async def resolve(self, user):
         async with uow_scope() as uow:
             fila = await uow.membresias.get_by_user(user.id)
-        return frozenset(fila.roles), frozenset(fila.permisos)
+        return ResolvedPrincipal(
+            roles=frozenset(fila.roles),
+            scopes=frozenset(fila.permisos),
+            status=fila.status,     # el estado de TU máquina de estados
+        )
 
-configure_identity(IdentityConfig(), principals=RolesDeLaApp())
+configure_identity(IdentityConfig(), principals=PrincipalesDeLaApp())
 ```
 
 El default es `NullPrincipalResolver`, que devuelve dos conjuntos vacíos: una app que no declara
@@ -284,7 +292,28 @@ efecto sin esperar a que cierre sesión — el corte llega en la rotación sigui
 que sea inmediato, la herramienta es `revoke_all_for`, que sube la generación y corta todos los
 tokens del usuario de una.
 
-Los dos viajan en el token, no en la base: `authenticate` es el camino caliente y no consulta.
+Los tres viajan en el token, no en la base: `authenticate` es el camino caliente y no consulta.
+
+### El estado de la cuenta
+
+`status` es un `str` libre y **Darwin no lo interpreta**: no sabe si `pending` puede entrar ni
+si `banned` puede leer. Sólo lo transporta hasta `auth.actor.status`, donde tu app lo lee sin
+volver a consultar la base.
+
+Existe porque Darwin sólo conoce `is_active` y `locked_until`, y sólo los mira **al rotar**. Una
+app con su propia máquina de estados tenía dos opciones malas: consultar la base en cada request
+para saber si el usuario sigue habilitado, o espejar su estado dentro de `is_active` /
+`locked_until` en cada transición y mantener los dos sincronizados para siempre. Con `status` no
+hace falta ninguna de las dos.
+
+Para un estado que directamente no puede seguir, **lanzá desde el resolver**. Tiene que ser una
+`IdentityError` —cualquier otra escapa al mapeo del módulo y sale como 500— y tené presente que
+en una rotación eso corre *después* de consumir la fila de sesión, así que el usuario queda
+deslogueado: que suele ser lo que se quiere para una cuenta suspendida.
+
+⚠️ Cambiar el estado tarda hasta un `access_ttl` en tener efecto, igual que los roles. Si un
+`banned` tiene que echar a alguien **ya**, el flujo que lo cambia llama además a
+`SessionService.revoke_all_for`.
 
 ---
 

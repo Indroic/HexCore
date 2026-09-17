@@ -22,6 +22,8 @@ import typing as t
 from datetime import datetime
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict
+
 from hexcore.darwin.domain.value_objects import VerificationPurpose
 
 if t.TYPE_CHECKING:
@@ -47,6 +49,7 @@ __all__ = [
     "AbstractAuditSink",
     "AbstractPrincipalResolver",
     "NullPrincipalResolver",
+    "ResolvedPrincipal",
 ]
 
 
@@ -356,6 +359,35 @@ class AbstractAuditSink(abc.ABC):
         raise NotImplementedError
 
 
+class ResolvedPrincipal(BaseModel):
+    """
+    Lo que la app sabe de un usuario y Darwin no: sus roles, sus permisos y su estado.
+
+    Es un modelo y no una tupla **porque va a crecer**. Empezó siendo `(roles, scopes)` y a la
+    semana hizo falta el estado; con una tupla, cada campo nuevo rompe la firma de todos los
+    resolvers escritos hasta ese momento. Con un modelo de campos opcionales, agregar uno no
+    rompe a nadie.
+
+    `status` es un `str` libre y **Darwin no lo interpreta**: no sabe si "pending" puede entrar
+    ni si "banned" puede leer. Sólo lo transporta hasta el `AuthContext`, donde la app lo lee
+    sin volver a consultar la base. Cerrarlo a un `Literal` obligaría al framework a conocer
+    los estados de cada consumidor, que es exactamente lo que no puede saber.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    roles: frozenset[str] = frozenset()
+    scopes: frozenset[str] = frozenset()
+
+    #: El estado de la cuenta **según la app**, no según Darwin.
+    #:
+    #: Viaja en el token, así que leerlo no consulta nada — y por eso puede estar hasta un
+    #: `access_ttl` desactualizado (120 s por defecto): se vuelve a resolver en cada rotación.
+    #: Si un cambio de estado tiene que echar a alguien **ya**, el flujo que lo cambia llama
+    #: además a `SessionService.revoke_all_for`, que sube la generación e invalida el cache.
+    status: str | None = None
+
+
 class AbstractPrincipalResolver(abc.ABC):
     """
     De dónde salen los roles y los scopes de un usuario.
@@ -389,38 +421,48 @@ class AbstractPrincipalResolver(abc.ABC):
 
     Uso::
 
-        class RolesDeLaApp(AbstractPrincipalResolver):
+        class PrincipalesDeLaApp(AbstractPrincipalResolver):
             def __init__(self, uow_scope):
                 self._uow_scope = uow_scope
 
             async def resolve(self, user):
                 async with self._uow_scope() as uow:
                     fila = await uow.membresias.get_by_user(user.id)
-                return frozenset(fila.roles), frozenset(fila.permisos)
+                return ResolvedPrincipal(
+                    roles=frozenset(fila.roles),
+                    scopes=frozenset(fila.permisos),
+                    status=fila.status,
+                )
 
-        configure_identity(IdentityConfig(), principals=RolesDeLaApp(uow_scope))
+        configure_identity(IdentityConfig(), principals=PrincipalesDeLaApp(uow_scope))
     """
 
     @abc.abstractmethod
-    async def resolve(self, user: "User") -> tuple[frozenset[str], frozenset[str]]:
+    async def resolve(self, user: "User") -> "ResolvedPrincipal":
         """
-        Los `(roles, scopes)` de ese usuario.
+        Los roles, scopes y estado de ese usuario.
 
-        Devolver dos conjuntos vacíos es válido y es lo que hace el default: significa "esta
-        app no usa permisos de Darwin", no "este usuario no puede nada".
+        Devolver un `ResolvedPrincipal()` vacío es válido y es lo que hace el default:
+        significa "esta app no usa permisos de Darwin", no "este usuario no puede nada".
+
+        **Lanzar desde acá aborta el flujo**, y es el mecanismo para un estado que no puede
+        seguir. Lanzá una `IdentityError` —cualquier otra excepción escapa al mapeo del módulo
+        y sale como 500. Ojo con dónde cae: en una rotación esto corre **después** de consumir
+        la fila de sesión, así que el usuario queda deslogueado, que suele ser lo que se quiere
+        para una cuenta suspendida.
         """
         raise NotImplementedError
 
 
 class NullPrincipalResolver(AbstractPrincipalResolver):
     """
-    El resolver por defecto: nadie tiene roles ni scopes.
+    El resolver por defecto: nadie tiene roles, scopes ni estado.
 
     Es el comportamiento de 9.x, y por eso es el default: una app que no declara permisos no
     empieza a recibirlos de golpe porque actualizó. Concreto y no `None` para que
     `SessionService` no tenga que preguntar si hay resolver en cada rotación.
     """
 
-    async def resolve(self, user: "User") -> tuple[frozenset[str], frozenset[str]]:
+    async def resolve(self, user: "User") -> "ResolvedPrincipal":
         del user
-        return frozenset(), frozenset()
+        return ResolvedPrincipal()

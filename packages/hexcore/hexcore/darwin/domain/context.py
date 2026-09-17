@@ -82,6 +82,17 @@ class Principal(BaseModel):
     roles: frozenset[str] = frozenset()
     scopes: frozenset[str] = frozenset()
 
+    #: El estado de la cuenta **según la app**, no según Darwin.
+    #:
+    #: Lo pone `AbstractPrincipalResolver` y viaja en el token, así que leerlo acá **no
+    #: consulta nada**. Es lo que evita que cada request autenticado tenga que ir a la base a
+    #: preguntar si el usuario sigue habilitado.
+    #:
+    #: Darwin no lo interpreta: qué estados pueden hacer qué lo decide la app. La contracara es
+    #: que puede estar hasta un `access_ttl` desactualizado — se vuelve a resolver en cada
+    #: rotación. Para un corte inmediato, `SessionService.revoke_all_for`.
+    status: str | None = None
+
     def has_scope(self, scope: str) -> bool:
         return scope in self.scopes
 
