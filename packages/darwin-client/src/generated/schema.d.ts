@@ -1109,6 +1109,8 @@ export interface components {
             roles?: string[];
             /** Scopes */
             scopes?: string[];
+            /** Status */
+            status?: string | null;
             /** Subject Id */
             subject_id: string;
             /** Username */

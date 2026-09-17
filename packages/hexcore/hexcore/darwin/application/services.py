@@ -68,6 +68,7 @@ if t.TYPE_CHECKING:
         AbstractSessionRepository,
         AbstractUserRepository,
         AbstractVerificationRepository,
+        ResolvedPrincipal,
     )
     from hexcore.darwin.infrastructure.revocation import GenerationGuard
     from hexcore.darwin.infrastructure.tokens import (
@@ -187,9 +188,7 @@ class SessionService:
         es_impersonacion = subject is not None and subject.id != actor.id
         afectado = subject if subject is not None else actor
 
-        roles_finales, scopes_finales = await self._permisos_de(
-            actor, roles=roles, scopes=scopes
-        )
+        resuelto = await self._permisos_de(actor, roles=roles, scopes=scopes)
 
         if es_impersonacion and (
             impersonation_reason is None or impersonation_granted_by is None
@@ -207,7 +206,7 @@ class SessionService:
             token_hash=hash_token(token_claro),
             family_id=uuid4(),
             transport=transport,
-            scopes=scopes_finales,
+            scopes=resuelto.scopes,
             expires_at=ahora + self._config.tokens.session_ttl,
             ip_address=ip_address,
             user_agent=user_agent,
@@ -233,8 +232,9 @@ class SessionService:
                 user_id=actor.id,
                 session_id=sesion.id,
                 email=actor.email,
-                roles=roles_finales,
-                scopes=scopes_finales,
+                roles=resuelto.roles,
+                scopes=resuelto.scopes,
+                status=resuelto.status,
             ),
             subject=Principal(
                 user_id=afectado.id, session_id=sesion.id, email=afectado.email
@@ -262,22 +262,26 @@ class SessionService:
         *,
         roles: t.Iterable[str] | None,
         scopes: t.Iterable[str] | None,
-    ) -> tuple[frozenset[str], frozenset[str]]:
+    ) -> "ResolvedPrincipal":
         """
-        Los `(roles, scopes)` a usar: los declarados a mano, o los del resolver.
+        Lo que el `Principal` va a llevar: lo declarado a mano, y el resto del resolver.
 
-        Se pregunta al resolver **sólo** por lo que no vino declarado, y no "por ninguno si
-        vino alguno": un llamador que declara scopes explícitos y deja los roles en `None`
-        —el plugin de impersonación, por ejemplo— tiene que seguir recibiendo los roles que le
-        correspondan al actor.
+        **Siempre se consulta al resolver**, aunque vengan roles y scopes explícitos: el
+        `status` no se puede declarar por parámetro —no es un permiso, es un dato de la
+        cuenta— así que saltear la consulta lo dejaría siempre en `None`. Es una llamada por
+        sign-in y por rotación, no por request.
+
+        Lo declarado gana sobre lo resuelto campo por campo, y no "todo o nada": un llamador
+        que declara scopes explícitos y deja los roles en `None` —el plugin de impersonación,
+        por ejemplo— tiene que seguir recibiendo los roles del actor.
         """
-        if roles is not None and scopes is not None:
-            return frozenset(roles), frozenset(scopes)
+        from hexcore.darwin.domain.ports import ResolvedPrincipal
 
-        resueltos_roles, resueltos_scopes = await self._principals.resolve(actor)
-        return (
-            frozenset(roles) if roles is not None else resueltos_roles,
-            frozenset(scopes) if scopes is not None else resueltos_scopes,
+        resuelto = await self._principals.resolve(actor)
+        return ResolvedPrincipal(
+            roles=frozenset(roles) if roles is not None else resuelto.roles,
+            scopes=frozenset(scopes) if scopes is not None else resuelto.scopes,
+            status=resuelto.status,
         )
 
     async def _emitir_par(
@@ -370,6 +374,7 @@ class SessionService:
                 session_id=claims.sid,
                 roles=claims.roles,
                 scopes=claims.scopes,
+                status=claims.status,
             ),
             subject=Principal(user_id=claims.sub, session_id=claims.sid),
             transport=transport,
@@ -527,8 +532,8 @@ class SessionService:
         # El respaldo importa: con el `NullPrincipalResolver` por defecto el resolver devuelve
         # vacío, y sin el fallback un llamador que creó la sesión con scopes explícitos los
         # perdería igual en la primera rotación — o sea el mismo bug con otra forma.
-        roles_resueltos, scopes_resueltos = await self._principals.resolve(actor)
-        scopes_siguientes = scopes_resueltos or anterior.scopes
+        resuelto = await self._principals.resolve(actor)
+        scopes_siguientes = resuelto.scopes or anterior.scopes
 
         token_claro = generate_token()
         siguiente = IdentitySession(
@@ -564,8 +569,9 @@ class SessionService:
                 user_id=anterior.actor_user_id,
                 session_id=siguiente.id,
                 email=actor.email,
-                roles=roles_resueltos,
+                roles=resuelto.roles,
                 scopes=scopes_siguientes,
+                status=resuelto.status,
             ),
             subject=Principal(
                 user_id=anterior.subject_user_id, session_id=siguiente.id

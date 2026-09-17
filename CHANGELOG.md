@@ -1,3 +1,9 @@
+## hexcore-v10.1.0 (2026-09-17)
+
+### Feat
+
+- **darwin**: el estado de la cuenta lo aporta la app y viaja en el token
+
 ## hexcore-v10.0.0 (2026-09-17)
 
 ### BREAKING CHANGE
