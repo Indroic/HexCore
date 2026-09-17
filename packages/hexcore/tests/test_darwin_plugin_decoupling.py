@@ -44,6 +44,7 @@ PLUGINS: tuple[tuple[str, str], ...] = (
     ("impersonate", "darwin-impersonate"),
     ("passkey", "darwin-passkey"),
     ("organization", "darwin-organization"),
+    ("rbac", "darwin-rbac"),
 )
 
 #: Los paquetes del núcleo, que son los que no pueden nombrar un plugin.

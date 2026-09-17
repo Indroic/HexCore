@@ -239,6 +239,21 @@ import pytest
     ("fastapi", "hexcore.darwin.plugins.organization.service"),
     ("joserfc", "hexcore.darwin.plugins.organization.service"),
     ("argon2", "hexcore.darwin.plugins.organization.service"),
+    # ── Fase F1 del plan rbac/drbac: dominio y persistencia de `rbac` ──────────
+    # El dominio son las entidades, los cuatro puertos y las excepciones: nada de sqlalchemy.
+    ("sqlalchemy", "hexcore.darwin.plugins.rbac.domain"),
+    ("fastapi", "hexcore.darwin.plugins.rbac.domain"),
+    ("joserfc", "hexcore.darwin.plugins.rbac.domain"),
+    ("argon2", "hexcore.darwin.plugins.rbac.domain"),
+    # `CompiledPermissionSet` es stdlib puro.
+    ("sqlalchemy", "hexcore.darwin.plugins.rbac.matcher"),
+    ("fastapi", "hexcore.darwin.plugins.rbac.matcher"),
+    # El paquete resuelve los mixins perezosamente (todavía no aporta un DarwinPlugin: eso es
+    # la Fase F2), así que nombrarlo tampoco exige sqlalchemy.
+    ("sqlalchemy", "hexcore.darwin.plugins.rbac"),
+    ("fastapi", "hexcore.darwin.plugins.rbac"),
+    ("joserfc", "hexcore.darwin.plugins.rbac"),
+    ("argon2", "hexcore.darwin.plugins.rbac"),
     # ── Fase 10: los kits de testing ──────────────────────────────────────────
     # El kit genérico son dos dobles sobre los puertos de dominio: nada de sqlalchemy. Es lo que
     # permite que un consumidor sin `[sql]` pruebe sus casos de uso.
@@ -298,6 +313,8 @@ import pytest
     ("sqlalchemy", "hexcore.darwin.plugins.passkey.orms.beanie.repository"),
     ("beanie", "hexcore.darwin.plugins.organization.orms.sqlalchemy.repository"),
     ("sqlalchemy", "hexcore.darwin.plugins.organization.orms.beanie.repository"),
+    ("beanie", "hexcore.darwin.plugins.rbac.orms.sqlalchemy.repository"),
+    ("sqlalchemy", "hexcore.darwin.plugins.rbac.orms.beanie.repository"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.
