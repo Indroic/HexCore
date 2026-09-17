@@ -1,3 +1,16 @@
+## hexcore-v10.0.0 (2026-09-17)
+
+### BREAKING CHANGE
+
+- `User.email` pasa de `str` a `str | None`, y el parámetro `email` de
+`IdentityService.sign_in()` se llama ahora `identifier`. El nombre viejo sigue resolviendo
+con un `DeprecationWarning` y se elimina en 11.0; el cuerpo HTTP de `/auth/sign-in` acepta
+`identifier`, `email` y `username`, así que un front de 9.x no necesita cambios.
+
+### Feat
+
+- **darwin**: login por username, email opcional, y las sesiones dejan de perder los permisos
+
 ## hexcore-v9.7.4 (2026-09-16)
 
 ### Fix
