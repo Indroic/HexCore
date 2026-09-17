@@ -1,3 +1,12 @@
+## hexcore-v9.7.4 (2026-09-16)
+
+### Fix
+
+- **test**: el warning se busca, no se asume que sea el primero capturado
+- **deps**: sube SQLAlchemy a 2.0.54 para que Python 3.14 tenga greenlet
+- **deps**: sube pydantic en el lock para que 3.14 tenga wheels
+- **packaging**: el paquete no declaraba ningún classifier, y el badge de Python decía "missing"
+
 ## hexcore-v9.7.3 (2026-09-16)
 
 ### Fix
