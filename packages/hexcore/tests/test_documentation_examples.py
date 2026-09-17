@@ -648,19 +648,35 @@ def test_support_policy_covers_every_released_major():
 
 
 def test_support_policy_marks_only_the_current_major_as_active():
+    """
+    Una sola serie activa, y tiene que ser la vigente **o la que está por salir**.
+
+    Lo segundo no es una concesión: es la única forma de que el test sea satisfacible. El
+    `CLAUDE.md` pide actualizar esta tabla *antes* de publicar un major, y la versión de
+    `pyproject.toml` la escribe `cz bump` recién en el push a `master`. O sea que en el PR que
+    trae el `feat!` la tabla dice `N+1.x` y el `pyproject` todavía dice `N`, y exigir igualdad
+    estricta dejaba ese PR en rojo por hacer exactamente lo que el procedimiento manda.
+
+    Aceptar `N+1` mantiene lo que el test protege de verdad —que no haya dos series activas, y
+    que nadie declare activa una serie arbitraria— y deja de castigar la ventana entre el PR y
+    el bump. La alternativa era no tocar la tabla hasta después del bump, y entonces el rojo
+    caía en `master`, donde nadie lo está mirando.
+    """
     import tomllib
 
     version = tomllib.loads(
         (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     )["project"]["version"]
-    current_major = version.split(".")[0]
+    current_major = int(version.split(".")[0])
+    aceptados = {str(current_major), str(current_major + 1)}
 
     policy = _read(README).split(POLICY_HEADING, 1)[1].split("## ", 1)[0]
     active_rows = [line for line in policy.splitlines() if ACTIVE_MARKER in line]
 
     assert len(active_rows) == 1, "debe haber exactamente una serie activa"
-    assert f"**{current_major}.x**" in active_rows[0], (
-        f"la serie activa del README no es la {current_major}.x"
+    assert any(f"**{major}.x**" in active_rows[0] for major in sorted(aceptados)), (
+        f"la serie activa del README no es la {current_major}.x ni la "
+        f"{current_major + 1}.x (la que saldría del próximo bump). Fila: {active_rows[0]!r}"
     )
 
 
