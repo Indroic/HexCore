@@ -18,12 +18,16 @@ un `actor_id` que el cliente puede mentir.
 from __future__ import annotations
 
 import typing as t
+from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from hexcore.darwin.plugins.rbac.domain import GLOBAL_SCOPE
+
+#: Vencimiento optimista de `/me/permissions` — ver el docstring de `MePermissionsOut.expires_at`.
+_ME_PERMISSIONS_HINT_TTL = timedelta(seconds=60)
 
 __all__ = [
     "CreateRoleBody",
@@ -73,6 +77,15 @@ class MePermissionsOut(BaseModel):
     scope: str
     roles: list[str]
     permissions: list[str]
+    #: La versión de `darwin_authz_version` para `scope` en el momento de resolver. El cliente
+    #: la usa para invalidar su copia sin depender sólo de `expires_at` — ver el docstring de
+    #: `RbacService.authz_version`.
+    version: int
+    #: Vencimiento **optimista**, para que un cliente sepa cuándo revalidar sin preguntar. No
+    #: es el TTL de ninguna cache del servidor —ésa vive en `PermissionMatrixCache` y no se
+    #: expone— así que un valor vencido acá no implica una decisión de autorización vieja: la
+    #: autoridad sigue siendo `AuthorizationEngine.decide()` en cada acción real.
+    expires_at: str
 
 
 def build_rbac_router(
@@ -130,8 +143,11 @@ def build_rbac_router(
         ids_de_rol = await servicio.active_role_ids(auth.actor_id, scope, at=ahora)
         roles = await servicio.roles_by_ids(ids_de_rol)
         permisos = await servicio.effective_permission_keys(auth.actor_id, scope, at=ahora)
+        version = await servicio.authz_version(scope)
         return MePermissionsOut(
             scope=scope,
+            version=version,
+            expires_at=(ahora + _ME_PERMISSIONS_HINT_TTL).isoformat(),
             roles=sorted(r.name for r in roles),
             permissions=sorted(permisos),
         )

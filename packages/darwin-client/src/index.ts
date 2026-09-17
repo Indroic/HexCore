@@ -9,12 +9,31 @@
  * sub-fase posterior.
  */
 
+export type { CompiledPermissionSet } from "./authz/matcher";
+export { compilePermissions, grantsPermission } from "./authz/matcher";
+export type {
+  AccessControl,
+  AccessControlDef,
+  ActionOf,
+  Permission,
+  ResourceOf,
+  Schema,
+} from "./authz/schema";
+export { defineAccessControl } from "./authz/schema";
+export type {
+  PermissionSnapshotState,
+  PermissionSnapshotStatus,
+  PermissionStore,
+  PermissionStoreOptions,
+} from "./authz/store";
+export { createPermissionStore } from "./authz/store";
 export type { DarwinClient, DarwinClientOptionsWithPlugins } from "./core/client";
 export { createDarwinClient } from "./core/client";
 export type { DarwinCode, DarwinErrorParams, ParsedWwwAuthenticate } from "./core/errors";
 export {
   DarwinError,
   darwinErrorFromResponse,
+  isAccessDenied,
   isRefreshable,
   isSessionDead,
   isTwoFactorRequired,
@@ -65,6 +84,8 @@ export type {
   WebAuthnJSON,
 } from "./plugins/passkey";
 export { passkey } from "./plugins/passkey";
+export type { RbacApi, RbacCheckOptions, RbacOptions } from "./plugins/rbac";
+export { rbac } from "./plugins/rbac";
 export type {
   TwoFactorApi,
   TwoFactorEnrollment,

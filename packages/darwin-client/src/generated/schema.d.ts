@@ -1234,12 +1234,16 @@ export interface components {
         };
         /** MePermissionsOut */
         MePermissionsOut: {
+            /** Expires At */
+            expires_at: string;
             /** Permissions */
             permissions: string[];
             /** Roles */
             roles: string[];
             /** Scope */
             scope: string;
+            /** Version */
+            version: number;
         };
         /**
          * MeResponse

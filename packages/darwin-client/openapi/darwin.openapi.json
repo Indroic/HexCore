@@ -518,6 +518,10 @@
       },
       "MePermissionsOut": {
         "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
           "permissions": {
             "items": {
               "type": "string"
@@ -535,12 +539,18 @@
           "scope": {
             "title": "Scope",
             "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
           }
         },
         "required": [
           "scope",
           "roles",
-          "permissions"
+          "permissions",
+          "version",
+          "expires_at"
         ],
         "title": "MePermissionsOut",
         "type": "object"
