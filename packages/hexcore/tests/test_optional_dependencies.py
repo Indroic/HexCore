@@ -248,12 +248,19 @@ import pytest
     # `CompiledPermissionSet` es stdlib puro.
     ("sqlalchemy", "hexcore.darwin.plugins.rbac.matcher"),
     ("fastapi", "hexcore.darwin.plugins.rbac.matcher"),
-    # El paquete resuelve los mixins perezosamente (todavía no aporta un DarwinPlugin: eso es
-    # la Fase F2), así que nombrarlo tampoco exige sqlalchemy.
+    # El paquete resuelve los mixins, el servicio, el resolver, el provider y el router
+    # perezosamente: `RbacPlugin` no toca ninguno de los tres extras al construirse.
     ("sqlalchemy", "hexcore.darwin.plugins.rbac"),
     ("fastapi", "hexcore.darwin.plugins.rbac"),
     ("joserfc", "hexcore.darwin.plugins.rbac"),
     ("argon2", "hexcore.darwin.plugins.rbac"),
+    # El CLI del plugin es un `typer.Typer` suelto (el núcleo no puede importar un plugin, ni
+    # siquiera para ofrecerle un lugar en su árbol de comandos): sus comandos importan todo
+    # adentro del cuerpo, igual que `hexcore.darwin.infrastructure.cli`.
+    ("sqlalchemy", "hexcore.darwin.plugins.rbac.cli"),
+    ("fastapi", "hexcore.darwin.plugins.rbac.cli"),
+    ("joserfc", "hexcore.darwin.plugins.rbac.cli"),
+    ("argon2", "hexcore.darwin.plugins.rbac.cli"),
     # ── Fase 10: los kits de testing ──────────────────────────────────────────
     # El kit genérico son dos dobles sobre los puertos de dominio: nada de sqlalchemy. Es lo que
     # permite que un consumidor sin `[sql]` pruebe sus casos de uso.
