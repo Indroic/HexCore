@@ -1,3 +1,20 @@
+## darwin-client-v1.2.0 (2026-09-17)
+
+### Feat
+
+- **darwin**: contrato de autorización en el núcleo (Fase F0 de rbac/drbac)
+
+### Fix
+
+- **darwin-client**: regenerar error-codes.ts con AccessDeniedError
+- **darwin**: regenerar el contrato de errores con AccessDeniedError
+
+## darwin-client-v1.1.0 (2026-09-17)
+
+### Feat
+
+- **darwin**: el estado de la cuenta lo aporta la app y viaja en el token
+
 ## darwin-client-v1.0.0 (2026-09-17)
 
 ### BREAKING CHANGE

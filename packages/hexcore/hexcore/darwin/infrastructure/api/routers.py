@@ -152,6 +152,12 @@ class MeResponse(BaseModel):
     impersonating: bool = False
     email: str | None = None
     username: str | None = None
+
+    #: El estado de la cuenta según la app. Sale del token, no de la base — y por eso lo
+    #: devuelve incluso este endpoint, que sí consulta: es el mismo valor que la app va a leer
+    #: de `auth.actor.status` en cualquier otra ruta, sin consultar.
+    status: str | None = None
+
     roles: list[str] = Field(default_factory=list)
     scopes: list[str] = Field(default_factory=list)
 
@@ -486,6 +492,7 @@ def build_identity_router(
             impersonating=auth.is_impersonating,
             email=email,
             username=username,
+            status=getattr(auth.actor, "status", None),
             roles=sorted(getattr(auth.actor, "roles", frozenset())),
             scopes=sorted(auth.actor.scopes),
         )

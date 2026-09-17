@@ -502,6 +502,17 @@
             "title": "Scopes",
             "type": "array"
           },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
           "subject_id": {
             "title": "Subject Id",
             "type": "string"
