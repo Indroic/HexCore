@@ -175,10 +175,18 @@ code somewhere.
 `key_store=`, `principals=`, `plugins=`, … It is what the tests use and what lets you plug in
 your application's permissions.
 
-**Roles and scopes come from `AbstractPrincipalResolver`.** The default returns two empty sets.
-It is consulted on sign-in and on every refresh rotation, and both travel inside the token, so
-`authenticate` stays DB-free. Revoking a role lands on the next rotation (one `access_ttl`); for
-an immediate cut use `revoke_all_for`.
+**Roles, scopes and account status come from `AbstractPrincipalResolver`**, which returns a
+`ResolvedPrincipal(roles, scopes, status)`. The default returns an empty one. It is consulted on
+sign-in and on every refresh rotation, and all three travel inside the token, so `authenticate`
+stays DB-free. A change lands on the next rotation (one `access_ttl`); for an immediate cut use
+`revoke_all_for`.
+
+`status` is a free-form `str` that **Darwin never interprets** — it only carries it to
+`auth.actor.status`. It exists because Darwin knows only `is_active`/`locked_until` and checks
+them only on rotation, which left apps with their own state machine either querying the database
+per request or mirroring their status into those two fields forever. To reject a status outright,
+raise an `IdentityError` from `resolve()`; on a rotation that runs after the session row is
+consumed, so the user ends up signed out.
 
 **Concrete models resolve themselves.** Declare `class UserModel(UserMixin, Base)` with
 `__tablename__ = "darwin_user"` and Darwin finds it — it never imports its own `models.py` when

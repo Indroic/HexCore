@@ -238,15 +238,23 @@ break a tie when you map two classes onto the same mixin in different tables.
 decision, expressed as a port:
 
 ```python
-from hexcore.darwin import AbstractPrincipalResolver, configure_identity
+from hexcore.darwin import (
+    AbstractPrincipalResolver,
+    ResolvedPrincipal,
+    configure_identity,
+)
 
-class AppRoles(AbstractPrincipalResolver):
+class AppPrincipals(AbstractPrincipalResolver):
     async def resolve(self, user):
         async with uow_scope() as uow:
             row = await uow.memberships.get_by_user(user.id)
-        return frozenset(row.roles), frozenset(row.permissions)
+        return ResolvedPrincipal(
+            roles=frozenset(row.roles),
+            scopes=frozenset(row.permissions),
+            status=row.status,      # your own state machine
+        )
 
-configure_identity(IdentityConfig(), principals=AppRoles())
+configure_identity(IdentityConfig(), principals=AppPrincipals())
 ```
 
 The default is `NullPrincipalResolver`, which returns two empty sets: an application that
@@ -258,8 +266,29 @@ effect without waiting for them to sign out — the cut lands on the next rotati
 immediate, the tool is `revoke_all_for`, which bumps the generation and kills every token for
 that user at once.
 
-Both travel inside the token, not in the database: `authenticate` is the hot path and does not
-query.
+All three travel inside the token, not in the database: `authenticate` is the hot path and does
+not query.
+
+### Account status
+
+`status` is a free-form `str` and **Darwin does not interpret it**: it does not know whether
+`pending` may sign in or `banned` may read. It only carries it through to `auth.actor.status`,
+where your application reads it without querying the database again.
+
+It exists because Darwin only knows `is_active` and `locked_until`, and only checks them **on
+rotation**. An application with its own state machine had two bad options: query the database on
+every request to know whether the user is still enabled, or mirror its status into `is_active` /
+`locked_until` on every transition and keep the two in sync forever. With `status`, neither is
+needed.
+
+For a status that simply cannot proceed, **raise from the resolver**. It must be an
+`IdentityError` — anything else escapes the module's exception mapping and surfaces as a 500 —
+and note that on a rotation this runs *after* the session row is consumed, so the user ends up
+signed out: usually what you want for a suspended account.
+
+⚠️ A status change takes up to one `access_ttl` to take effect, same as roles. If a `banned` must
+throw someone out **now**, the flow that changes it also calls
+`SessionService.revoke_all_for`.
 
 ---
 

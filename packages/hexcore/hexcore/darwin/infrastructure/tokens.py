@@ -198,6 +198,11 @@ class JoserfcTokenIssuer:
             # los roles ya viajan en el `Principal` que `SessionService` armó, así que pedirlos
             # de nuevo por parámetro sería una oportunidad más de olvidarlos.
             roles=frozenset(roles if roles is not None else context.actor.roles),
+            # El estado sale del actor y no de un parámetro, por lo mismo que los roles: ya
+            # está en el `Principal` que armó `SessionService`, y pedirlo de nuevo sería una
+            # oportunidad más de olvidarlo. Va también en el refresh —a diferencia de scopes y
+            # roles— porque no autoriza nada: es un dato de la cuenta, no un permiso.
+            status=context.actor.status,
             imp=context.is_impersonating,
         )
 

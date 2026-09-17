@@ -207,6 +207,10 @@ class AccessTokenClaims(BaseModel):
     #: no puede estar en el `Principal`. Sin esto, `Principal.roles` existía pero llegaba
     #: siempre vacío y `auth.actor.has_role(...)` devolvía `False` para todo el mundo.
     roles: frozenset[str] = frozenset()
+    #: El estado de la cuenta según la app. Viaja acá por lo mismo que los roles: lo que no
+    #: está en los claims no puede estar en el `Principal` sin consultar la base, y el punto de
+    #: este campo es justamente que no haga falta consultarla en cada request.
+    status: str | None = None
     #: Si esta sesión es impersonada. Explícito en vez de deducirlo comparando `act` y
     #: `sub`, para que la auditoría no dependa de una inferencia.
     imp: bool = False
