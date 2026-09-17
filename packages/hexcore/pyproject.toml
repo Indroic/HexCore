@@ -166,6 +166,10 @@ darwin-passkey = ["hexcore[darwin]", "webauthn>=2.0.0"]
 # las da el backend de almacenamiento (`EXISTS` correlacionado en el `WHERE` para SQL, miembros
 # embebidos para Mongo).
 darwin-organization = ["hexcore[darwin]"]
+# Sin dependencias nuevas: los mixins son SQLAlchemy puro y los documentos son Beanie puro,
+# igual que el resto de los plugins con tabla propia. El contrato de autorización que consume
+# (`AuthorizationProvider`) es del nucleo desde la Fase F0 y no agrega nada tampoco.
+darwin-rbac = ["hexcore[darwin]"]
 all = [
     "fastapi>=0.116.1",
     "redis>=6.4.0",
