@@ -39,6 +39,10 @@ from hexcore.darwin.domain.ports import (
     AbstractVerificationRepository,
 )
 from hexcore.darwin.domain.value_objects import VerificationPurpose
+from hexcore.darwin.infrastructure.keys import AbstractKeyStore
+
+if t.TYPE_CHECKING:
+    from hexcore.darwin.infrastructure.keys import SigningKey
 
 __all__ = [
     "to_utc",
@@ -47,11 +51,13 @@ __all__ = [
     "BeanieAccountRepository",
     "BeanieVerificationRepository",
     "BeanieAuditSink",
+    "BeanieKeyStore",
     "UserRepository",
     "SessionRepository",
     "AccountRepository",
     "VerificationRepository",
     "AuditSink",
+    "KeyStore",
 ]
 
 
@@ -119,10 +125,16 @@ class BeanieUserRepository(_BaseBeanieRepository, AbstractUserRepository):
         doc = await self._doc.find_one(self._doc.email == email)
         return _a_usuario(doc) if doc is not None else None
 
+    async def get_by_username(self, username: str) -> User | None:
+        """Ya viene normalizado por `UsernamePolicy.normalize`; no se normaliza de nuevo."""
+        doc = await self._doc.find_one(self._doc.username == username)
+        return _a_usuario(doc) if doc is not None else None
+
     async def add(self, user: User) -> User:
         doc = self._doc(
             entity_id=user.id,
             email=user.email,
+            username=user.username,
             email_verified=user.email_verified,
             name=user.name,
             image=user.image,
@@ -143,6 +155,7 @@ class BeanieUserRepository(_BaseBeanieRepository, AbstractUserRepository):
             {
                 "$set": {
                     "email": user.email,
+                    "username": user.username,
                     "email_verified": user.email_verified,
                     "name": user.name,
                     "image": user.image,
@@ -202,6 +215,9 @@ class BeanieSessionRepository(_BaseBeanieRepository, AbstractSessionRepository):
             token_hash=identity_session.token_hash,
             family_id=identity_session.family_id,
             transport=identity_session.transport,
+            # `sorted` por el mismo motivo que en el backend SQL: el orden de un `frozenset`
+            # varía entre procesos y ensuciaría todo diff de documento.
+            scopes=sorted(identity_session.scopes),
             expires_at=identity_session.expires_at,
             revoked_at=identity_session.revoked_at,
             consumed_at=identity_session.consumed_at,
@@ -476,6 +492,7 @@ def _a_usuario(doc: t.Any) -> User:
     return User(
         id=doc.entity_id,
         email=doc.email,
+        username=doc.username,
         email_verified=doc.email_verified,
         name=doc.name,
         image=doc.image,
@@ -496,6 +513,7 @@ def _a_sesion(doc: t.Any) -> IdentitySession:
         token_hash=doc.token_hash,
         family_id=doc.family_id,
         transport=doc.transport,
+        scopes=frozenset(doc.scopes or ()),
         expires_at=to_utc(doc.expires_at) or datetime.now(UTC),
         revoked_at=to_utc(doc.revoked_at),
         consumed_at=to_utc(doc.consumed_at),
@@ -570,3 +588,76 @@ SessionRepository = BeanieSessionRepository
 AccountRepository = BeanieAccountRepository
 VerificationRepository = BeanieVerificationRepository
 AuditSink = BeanieAuditSink
+
+
+class BeanieKeyStore(AbstractKeyStore):
+    """
+    `AbstractKeyStore` sobre la colección `darwin_jwks`. El espejo de `SqlAlchemyKeyStore`.
+
+    Mismo motivo para existir: la colección estaba declarada y no había almacén que la leyera,
+    así que el default seguía siendo `StaticKeyStore` con una clave generada al arrancar — un
+    reload deslogueaba a todo el mundo, y con más de un proceso cada uno firmaba con la suya.
+
+    **No cachea**, igual que el de SQL: el camino caliente de verificación ya cachea en
+    `tokens.py`, y un segundo cache haría que una rotación tarde en propagarse por dos motivos.
+    """
+
+    #: `t.Any` por lo mismo que en `_BaseBeanieRepository`: el documento es inyectable.
+    _doc: t.Any
+
+    def __init__(self, *, document: type | None = None, model: type | None = None) -> None:
+        self._doc = document or model or self._documento_por_defecto()
+
+    @staticmethod
+    def _documento_por_defecto() -> type:
+        from hexcore.darwin.infrastructure.orms.beanie.documents import JwksDocument
+
+        return JwksDocument
+
+    async def get(self, kid: str) -> "SigningKey | None":
+        """`kid` viene del token, o sea de quien lo presenta: va como valor de la consulta."""
+        doc: t.Any = await self._doc.find_one(self._doc.kid == kid)
+        return _a_clave(doc) if doc is not None else None
+
+    async def get_active(self) -> "SigningKey":
+        from hexcore.darwin.infrastructure.keys import NoActiveKeyError
+
+        doc: t.Any = await self._doc.find_one(self._doc.status == "active")
+        if doc is None:
+            raise NoActiveKeyError(
+                "No hay ninguna clave 'active' en la colección de JWKS. Sembrala con:\n\n"
+                "    hexcore identity generate-keys --persist\n"
+            )
+        return _a_clave(doc)
+
+    async def list_verifiable(self) -> "list[SigningKey]":
+        docs: list[t.Any] = await self._doc.find(
+            {"status": {"$in": ["active", "verify_only"]}}
+        ).to_list()
+        return [_a_clave(doc) for doc in docs]
+
+    async def add(self, key: "SigningKey") -> None:
+        """Persiste una clave. Es lo que usa `generate-keys --persist`."""
+        await self._doc(
+            kid=key.kid,
+            algorithm=key.algorithm,
+            public_key=key.public_key,
+            private_key=key.private_key,
+            status=key.status,
+        ).insert()
+
+
+def _a_clave(doc: t.Any) -> "SigningKey":
+    from hexcore.darwin.infrastructure.keys import SigningKey
+
+    return SigningKey(
+        kid=doc.kid,
+        algorithm=doc.algorithm,
+        public_key=doc.public_key,
+        private_key=doc.private_key,
+        status=doc.status,
+        created_at=to_utc(doc.created_at),
+    )
+
+
+KeyStore = BeanieKeyStore

@@ -52,6 +52,8 @@ The core never names a backend. Each backend exposes the **same names**:
 | `SessionRepository` | Sessions |
 | `AccountRepository` | Linked accounts |
 | `VerificationRepository` | Single-use tokens |
+| `AuditSink` | Audit log |
+| `KeyStore` | Signing keys, over `darwin_jwks` |
 
 And for plugin schemas:
 
@@ -194,16 +196,82 @@ class User(UserMixin, Base):
     # your columns
 ```
 
-And declare it:
+And declare it, **if needed**:
 
 ```python
 IdentityConfig(user_model=User)
 ```
 
-It is validated **at configure time**, not on the first login: it rejects a `BaseModel[T]` — which
-would blow up after the commit — and a class that does not compose `UserMixin`.
+It is rarely needed: Darwin resolves each table's concrete class by looking for the mapped class
+that composes the matching mixin, preferring the one on the canonical table. `IdentityConfig`
+accepts all six (`user_model`, `session_model`, `account_model`, `verification_model`,
+`audit_model`, `jwks_model`) to break a tie when you map two classes onto the same mixin in
+different tables.
 
-`validate_user_model(model_cls)` is the check, and `IdentityStep` runs it at startup.
+It is validated **at configure time**, not on the first login: it rejects a `BaseModel[T]` — which
+would blow up after the commit — and a class that does not compose its table's mixin.
+
+`validate_identity_model(kind, model_cls)` is the check (with `validate_user_model` as the
+shorthand for the user table), and `IdentityStep` runs it at startup.
+
+⚠️ **Why resolution is not simply "import `models.py`".** That module declares all six concrete
+classes on `Base`, so importing it to obtain one declares the other five too. If you already
+declared yours on `darwin_user`, that is two classes fighting over the same table and SQLAlchemy
+fails with `InvalidRequestError: Table 'darwin_user' is already defined for this MetaData
+instance` — on the first use of any repository, not when the model is declared, so the traceback
+points at a session query. The fix it suggests, `extend_existing=True`, is worse: it would let
+the last class declared overwrite the first one's columns depending on import order.
+
+---
+
+## Migrating to 10.0
+
+Two schema changes, and the Mongo one is the one that bites.
+
+**SQL.** `darwin_user.email` becomes nullable, and `darwin_user.username` and
+`darwin_session.scopes` appear. The next `alembic revision --autogenerate` emits them for you:
+
+```python
+op.alter_column("darwin_user", "email", existing_type=sa.String(320), nullable=True)
+op.add_column("darwin_user", sa.Column("username", sa.String(64), nullable=True))
+op.create_unique_constraint("uq_darwin_user_username", "darwin_user", ["username"])
+op.add_column("darwin_session", sa.Column("scopes", sa.JSON(), nullable=False, server_default="[]"))
+```
+
+**Mongo.** The unique indexes on `email` and `username` must be **sparse**, and the `email` one
+carried over from 9.x **is not**. A non-sparse unique index treats every document missing the
+field as sharing the same `null`, so the second user without an email fails with
+`DuplicateKeyError` on insert. Beanie **does not rebuild an index that already exists**, so drop
+it by hand before starting up:
+
+```js
+db.darwin_user.dropIndex("email_1")
+```
+
+On the next startup, `init_beanie` recreates it with `sparse: true`.
+
+---
+
+## Signing keys are persisted
+
+`darwin_jwks` is read by `KeyStore`, which the container resolves per backend. The default only
+falls back to `StaticKeyStore` — in-memory keys, generated at startup — when no backend can be
+resolved, and `IdentityStep` **refuses to start** with that when `debug=False`.
+
+Seed the first key:
+
+```bash
+hexcore identity generate-keys --persist
+```
+
+With ephemeral keys, a reload invalidates every session and, with more than one process, each
+worker signs with a key the others cannot verify: the symptom is an intermittent 401 that does
+not reproduce in development, where there is a single process.
+
+For the same reason, `IdentityStep` also refuses to start in production with the default
+`MemoryCache`: the session denylist and the generation counter live there, and an in-memory cache
+is **per process**, so a `sign-out` cuts the session in the worker that served the request and
+leaves it alive in all the others.
 
 The available mixins are `UserMixin`, `SessionMixin`, `AccountMixin`, `VerificationMixin`,
 `AuditLogMixin`, `JwksMixin` and `TimestampMixin`, with the default table names exposed as

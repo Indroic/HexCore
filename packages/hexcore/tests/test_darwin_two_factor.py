@@ -367,7 +367,7 @@ class TestInscripcion:
 
         # Y el sign-in sigue funcionando normal.
         _, _, par = await contenedor.identity_service().sign_in(
-            email=MAIL, password=PASS
+            identifier=MAIL, password=PASS
         )
         assert par.access_token
 
@@ -479,7 +479,7 @@ class TestSignInEnDosPasos:
         await _con_2fa(contenedor, servicio, reloj)
 
         with pytest.raises(TwoFactorRequiredError) as excinfo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
 
         assert excinfo.value.challenge, "el desafío es lo único que sale del primer paso"
 
@@ -506,7 +506,7 @@ class TestSignInEnDosPasos:
         await _con_2fa(contenedor, servicio, reloj)
 
         with pytest.raises(InvalidCredentialsError):
-            await contenedor.identity_service().sign_in(email=MAIL, password="otra cosa")
+            await contenedor.identity_service().sign_in(identifier=MAIL, password="otra cosa")
 
     @pytest.mark.anyio
     async def test_el_segundo_paso_abre_la_sesion(self, contenedor, servicio, reloj):
@@ -514,7 +514,7 @@ class TestSignInEnDosPasos:
         reloj.advance(seconds=DEFAULT_STEP)
 
         with pytest.raises(TwoFactorRequiredError) as excinfo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         desafio = excinfo.value.challenge or ""
 
         entrado, sesion, par = await servicio.complete_sign_in(
@@ -532,7 +532,7 @@ class TestSignInEnDosPasos:
         reloj.advance(seconds=DEFAULT_STEP)
 
         with pytest.raises(TwoFactorRequiredError) as excinfo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         desafio = excinfo.value.challenge or ""
 
         await servicio.complete_sign_in(
@@ -558,7 +558,7 @@ class TestSignInEnDosPasos:
         reloj.advance(seconds=DEFAULT_STEP)
 
         with pytest.raises(TwoFactorRequiredError) as excinfo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         desafio = excinfo.value.challenge or ""
 
         with pytest.raises(TwoFactorInvalidCodeError):
@@ -579,9 +579,9 @@ class TestSignInEnDosPasos:
         reloj.advance(seconds=DEFAULT_STEP)
 
         with pytest.raises(TwoFactorRequiredError) as primero:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         with pytest.raises(TwoFactorRequiredError) as segundo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
 
         with pytest.raises(InvalidCredentialsError):
             await servicio.complete_sign_in(
@@ -600,7 +600,7 @@ class TestSignInEnDosPasos:
         _, secreto = await _con_2fa(contenedor, servicio, reloj)
 
         with pytest.raises(TwoFactorRequiredError) as excinfo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         desafio = excinfo.value.challenge or ""
 
         reloj.advance(minutes=6)  # el TTL por default son 5
@@ -623,7 +623,7 @@ class TestSignInEnDosPasos:
         reloj.advance(seconds=DEFAULT_STEP)
 
         with pytest.raises(TwoFactorRequiredError) as excinfo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         desafio_de_ana = excinfo.value.challenge or ""
 
         # El código de Beto contra el desafío de Ana: el desafío se consume y el código falla.
@@ -663,13 +663,13 @@ class TestReplay:
         codigo = totp_code(secreto, reloj.now().timestamp())
 
         with pytest.raises(TwoFactorRequiredError) as primero:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         await servicio.complete_sign_in(
             challenge=primero.value.challenge or "", code=codigo
         )
 
         with pytest.raises(TwoFactorRequiredError) as segundo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         with pytest.raises(TwoFactorInvalidCodeError):
             await servicio.complete_sign_in(
                 challenge=segundo.value.challenge or "", code=codigo
@@ -689,7 +689,7 @@ class TestReplay:
         codigo = totp_code(secreto, reloj.now().timestamp())
 
         with pytest.raises(TwoFactorRequiredError) as excinfo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         desafio = excinfo.value.challenge or ""
 
         resultados = await asyncio.gather(
@@ -719,7 +719,7 @@ class TestReplay:
         reloj.advance(seconds=DEFAULT_STEP)
 
         with pytest.raises(TwoFactorRequiredError) as primero:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         await servicio.complete_sign_in(
             challenge=primero.value.challenge or "",
             code=totp_code(secreto, reloj.now().timestamp()),
@@ -727,7 +727,7 @@ class TestReplay:
 
         reloj.advance(seconds=DEFAULT_STEP)
         with pytest.raises(TwoFactorRequiredError) as segundo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
 
         _, _, par = await servicio.complete_sign_in(
             challenge=segundo.value.challenge or "",
@@ -750,7 +750,7 @@ class TestTechoDeIntentos:
 
         reloj.advance(seconds=DEFAULT_STEP)
         with pytest.raises(TwoFactorRequiredError) as excinfo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
 
         # Ni el código correcto entra: el techo se chequea antes de calcular nada.
         with pytest.raises(TwoFactorInvalidCodeError):
@@ -770,7 +770,7 @@ class TestTechoDeIntentos:
 
         reloj.advance(seconds=DEFAULT_STEP)
         with pytest.raises(TwoFactorRequiredError) as excinfo:
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
         await servicio.complete_sign_in(
             challenge=excinfo.value.challenge or "",
             code=totp_code(secreto, reloj.now().timestamp()),
@@ -811,7 +811,7 @@ class TestDesactivar:
         )
 
         _, _, par = await contenedor.identity_service().sign_in(
-            email=MAIL, password=PASS
+            identifier=MAIL, password=PASS
         )
 
         assert par.access_token
@@ -1186,7 +1186,7 @@ async def test_un_hook_del_sign_in_puede_abortar_sin_ser_two_factor(
         await _alta(contenedor)
 
         with pytest.raises(AuthorizationError, match="bloqueado"):
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
     finally:
         limpiar()
 
@@ -1225,6 +1225,6 @@ async def test_un_hook_del_sign_in_que_explota_no_deja_entrar(contenedor, reloj)
         await _alta(contenedor)
 
         with pytest.raises(RuntimeError, match="con_bug"):
-            await contenedor.identity_service().sign_in(email=MAIL, password=PASS)
+            await contenedor.identity_service().sign_in(identifier=MAIL, password=PASS)
     finally:
         limpiar()

@@ -27,7 +27,7 @@ if t.TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import Response
 
-    from hexcore.darwin.application.config import CookieConfig
+    from hexcore.darwin.application.config import CookieConfig, TokenConfig
     from hexcore.darwin.domain.value_objects import TokenPair
 
 __all__ = [
@@ -101,8 +101,11 @@ class CookieTransport(AbstractTransport):
 
     name: t.ClassVar[Transport] = "cookie"
 
-    def __init__(self, config: "CookieConfig") -> None:
+    def __init__(
+        self, config: "CookieConfig", *, refresh_max_age: int | None = None
+    ) -> None:
         self._config = config
+        self._refresh_max_age = refresh_max_age
 
     def extract_access(self, request: "Request") -> str | None:
         return request.cookies.get(self._config.name_for("access"))
@@ -125,9 +128,16 @@ class CookieTransport(AbstractTransport):
             # El refresh va a `Path=/` igual que el access, y no a la ruta de refresh: con
             # el prefijo `__Host-` el navegador **exige** `Path=/`, así que restringirlo
             # haría que la cookie se rechace entera.
+            #
+            # `max_age` es el de `refresh_ttl`, **no** el del access token. Sin `max_age` la
+            # cookie es de sesión: el navegador la descarta al cerrarse, así que cerrar el
+            # navegador deslogueaba aunque el refresh viviera 30 días. Y con el `expires_in`
+            # del par —que es la vida del access, 120 s por defecto— habría durado dos
+            # minutos, que es peor todavía.
             response.set_cookie(
                 cfg.name_for("refresh"),
                 tokens.refresh_token,
+                max_age=self._refresh_max_age,
                 httponly=cfg.http_only,
                 secure=cfg.secure,
                 samesite=cfg.same_site,
@@ -221,9 +231,18 @@ class TransportResolver:
         self,
         *,
         cookies: "CookieConfig",
+        tokens: "TokenConfig | None" = None,
         default: Transport = "cookie",
     ) -> None:
-        self._cookie = CookieTransport(cookies)
+        # `tokens` opcional para no romper a quien construya el resolver a mano, pero el
+        # llamador del framework —`resolve_transport`— siempre lo pasa: sin él la cookie de
+        # refresh sale sin `max_age` y muere al cerrar el navegador.
+        self._cookie = CookieTransport(
+            cookies,
+            refresh_max_age=(
+                int(tokens.refresh_ttl.total_seconds()) if tokens is not None else None
+            ),
+        )
         self._bearer = BearerTransport()
         self._default: Transport = default
 

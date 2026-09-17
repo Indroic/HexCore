@@ -45,9 +45,13 @@ from hexcore.darwin.domain.ports import (
     AbstractVerificationRepository,
 )
 from hexcore.darwin.domain.value_objects import VerificationPurpose
+from hexcore.darwin.infrastructure.keys import AbstractKeyStore
+from hexcore.darwin.infrastructure.orms.sqlalchemy.registry import identity_model
 
 if t.TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from hexcore.darwin.infrastructure.keys import SigningKey
 
 __all__ = [
     "SqlAlchemyUserRepository",
@@ -55,12 +59,14 @@ __all__ = [
     "SqlAlchemyAccountRepository",
     "SqlAlchemyVerificationRepository",
     "SqlAlchemyAuditSink",
+    "SqlAlchemyKeyStore",
     # Los alias neutros: ver el bloque del final del archivo.
     "UserRepository",
     "SessionRepository",
     "AccountRepository",
     "VerificationRepository",
     "AuditSink",
+    "KeyStore",
 ]
 
 SessionScope = t.Callable[[], t.AsyncContextManager["AsyncSession"]]
@@ -109,9 +115,7 @@ class SqlAlchemyUserRepository(_BaseIdentityRepository, AbstractUserRepository):
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import UserModel
-
-        return UserModel
+        return identity_model("user")
 
     async def get_by_id(self, user_id: UUID) -> User | None:
         async with self._session_scope() as session:
@@ -123,6 +127,15 @@ class SqlAlchemyUserRepository(_BaseIdentityRepository, AbstractUserRepository):
         async with self._session_scope() as session:
             resultado = await session.execute(
                 select(self._model).where(self._model.email == email)
+            )
+            fila = resultado.scalar_one_or_none()
+            return _a_usuario(fila) if fila is not None else None
+
+    async def get_by_username(self, username: str) -> User | None:
+        """Ya viene normalizado por `UsernamePolicy.normalize`; no se normaliza de nuevo."""
+        async with self._session_scope() as session:
+            resultado = await session.execute(
+                select(self._model).where(self._model.username == username)
             )
             fila = resultado.scalar_one_or_none()
             return _a_usuario(fila) if fila is not None else None
@@ -174,9 +187,7 @@ class SqlAlchemySessionRepository(_BaseIdentityRepository, AbstractSessionReposi
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import SessionModel
-
-        return SessionModel
+        return identity_model("session")
 
     async def get(self, session_id: UUID) -> IdentitySession | None:
         async with self._session_scope() as session:
@@ -282,9 +293,7 @@ class SqlAlchemyAccountRepository(_BaseIdentityRepository, AbstractAccountReposi
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import AccountModel
-
-        return AccountModel
+        return identity_model("account")
 
     async def get_by_provider(
         self, provider_id: str, account_id: str
@@ -351,9 +360,7 @@ class SqlAlchemyVerificationRepository(
 
     @staticmethod
     def _modelo_por_defecto() -> type:
-        from hexcore.darwin.infrastructure.orms.sqlalchemy.models import VerificationModel
-
-        return VerificationModel
+        return identity_model("verification")
 
     async def add(self, verification: Verification) -> Verification:
         async with self._session_scope() as session:
@@ -463,11 +470,7 @@ class SqlAlchemyAuditSink(AbstractAuditSink):
 
     def __init__(self, *, session: "AsyncSession", model: type | None = None) -> None:
         self._session = session
-        if model is None:
-            from hexcore.darwin.infrastructure.orms.sqlalchemy.models import AuditLogModel
-
-            model = AuditLogModel
-        self._model = model
+        self._model = model or identity_model("audit")
 
     async def record(
         self,
@@ -532,6 +535,7 @@ def _campos_usuario(user: User) -> dict[str, t.Any]:
     return {
         "id": user.id,
         "email": user.email,
+        "username": user.username,
         "email_verified": user.email_verified,
         "name": user.name,
         "image": user.image,
@@ -546,6 +550,7 @@ def _a_usuario(fila: t.Any) -> User:
     return User(
         id=fila.id,
         email=fila.email,
+        username=fila.username,
         email_verified=fila.email_verified,
         name=fila.name,
         image=fila.image,
@@ -566,6 +571,10 @@ def _campos_sesion(sesion: IdentitySession) -> dict[str, t.Any]:
         "token_hash": sesion.token_hash,
         "family_id": sesion.family_id,
         "transport": sesion.transport,
+        # `sorted` y no `list`: el orden de un `frozenset` varía entre procesos por el hash
+        # aleatorio de strings, y una columna JSON que cambia de orden sin que cambie el
+        # contenido ensucia todo diff de fila y toda comparación en un test.
+        "scopes": sorted(sesion.scopes),
         "expires_at": sesion.expires_at,
         "revoked_at": sesion.revoked_at,
         "consumed_at": sesion.consumed_at,
@@ -586,6 +595,7 @@ def _a_sesion(fila: t.Any) -> IdentitySession:
         token_hash=fila.token_hash,
         family_id=fila.family_id,
         transport=fila.transport,
+        scopes=frozenset(fila.scopes or ()),
         expires_at=_aware(fila.expires_at),
         revoked_at=_aware_opt(fila.revoked_at),
         consumed_at=_aware_opt(fila.consumed_at),
@@ -682,3 +692,107 @@ SessionRepository = SqlAlchemySessionRepository
 AccountRepository = SqlAlchemyAccountRepository
 VerificationRepository = SqlAlchemyVerificationRepository
 AuditSink = SqlAlchemyAuditSink
+
+
+class SqlAlchemyKeyStore(AbstractKeyStore):
+    """
+    `AbstractKeyStore` sobre la tabla `darwin_jwks`. **El almacén que faltaba.**
+
+    La tabla existía desde el principio —`JwksMixin`, `JwksModel`, `DEFAULT_JWKS_TABLE`— y
+    `jwks_document()` sabía armar el documento de `/.well-known/jwks.json` a partir de un
+    almacén. Lo que no existía era el almacén que leyera la tabla, así que el default seguía
+    siendo `StaticKeyStore` con una clave **generada al arrancar**. Las consecuencias son las
+    dos peores que puede tener un despliegue de auth:
+
+    - Un reload invalida todas las sesiones, porque la clave nueva no verifica los tokens
+      viejos. El síntoma es "se deslogueó todo el mundo en el deploy".
+    - Con más de un proceso, cada uno firma con una clave distinta y verifica sólo la suya, así
+      que un request cae en el worker correcto una de cada N veces. El síntoma es un 401
+      intermitente que no se reproduce en desarrollo, donde hay un solo proceso.
+
+    Cada operación abre su propia sesión, igual que el resto de los repositorios del módulo.
+    **No cachea**: el camino caliente de verificación ya cachea las claves en `tokens.py`, y un
+    segundo cache acá haría que una rotación tarde en propagarse por dos motivos en vez de uno.
+    """
+
+    #: `t.Any` por lo mismo que en `_BaseIdentityRepository`: la clase es inyectable, así que
+    #: su tipo concreto no se conoce estáticamente y anotarlo `type` contaminaría de
+    #: "parcialmente desconocido" cada consulta.
+    _model: t.Any
+
+    def __init__(
+        self,
+        *,
+        model: type | None = None,
+        session_scope: SessionScope | None = None,
+    ) -> None:
+        self._model = model or identity_model("jwks")
+        self._session_scope = session_scope or _scope_por_defecto()
+
+    async def get(self, kid: str) -> "SigningKey | None":
+        """
+        La clave con ese `kid`.
+
+        `kid` viene del token, o sea de quien lo presenta. Va como **parámetro** de la consulta
+        —nunca interpolado— que es lo que el docstring del puerto exige tratar como entrada
+        hostil.
+        """
+        async with self._session_scope() as session:
+            fila = await session.get(self._model, kid)
+            return _a_clave(fila) if fila is not None else None
+
+    async def get_active(self) -> "SigningKey":
+        from hexcore.darwin.infrastructure.keys import NoActiveKeyError
+
+        async with self._session_scope() as session:
+            resultado = await session.execute(
+                select(self._model).where(self._model.status == "active")
+            )
+            fila = resultado.scalars().first()
+
+        if fila is None:
+            raise NoActiveKeyError(
+                "No hay ninguna clave 'active' en la tabla de JWKS. Sembrala con:\n\n"
+                "    hexcore identity generate-keys --persist\n"
+            )
+        return _a_clave(fila)
+
+    async def list_verifiable(self) -> "list[SigningKey]":
+        async with self._session_scope() as session:
+            resultado = await session.execute(
+                select(self._model).where(
+                    self._model.status.in_(("active", "verify_only"))
+                )
+            )
+            return [_a_clave(fila) for fila in resultado.scalars().all()]
+
+    async def add(self, key: "SigningKey") -> None:
+        """Persiste una clave. Es lo que usa `generate-keys --persist`."""
+        async with self._session_scope() as session:
+            session.add(
+                self._model(
+                    kid=key.kid,
+                    algorithm=key.algorithm,
+                    public_key=key.public_key,
+                    private_key=key.private_key,
+                    status=key.status,
+                )
+            )
+            await session.commit()
+
+
+def _a_clave(fila: t.Any) -> "SigningKey":
+    from hexcore.darwin.infrastructure.keys import SigningKey
+
+    return SigningKey(
+        kid=fila.kid,
+        algorithm=fila.algorithm,
+        public_key=fila.public_key,
+        private_key=fila.private_key,
+        status=fila.status,
+        created_at=_aware_opt(fila.created_at),
+    )
+
+
+#: Alias neutro, igual que el resto: el contenedor lo resuelve por nombre y no por backend.
+KeyStore = SqlAlchemyKeyStore

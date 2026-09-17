@@ -1111,6 +1111,8 @@ export interface components {
             scopes?: string[];
             /** Subject Id */
             subject_id: string;
+            /** Username */
+            username?: string | null;
         };
         /** MemberOut */
         MemberOut: {
@@ -1246,21 +1248,50 @@ export interface components {
         SetRoleBody: {
             role: components["schemas"]["OrgRole"];
         };
-        /** SignInRequest */
+        /**
+         * SignInRequest
+         * @description El cuerpo de `POST /auth/sign-in`.
+         *
+         *     Acepta el identificador con **tres nombres**: `identifier`, que es el canónico desde 10.0,
+         *     más `email` y `username`. Los dos viejos no son cortesía: un cliente de 9.x manda
+         *     `{"email": ..., "password": ...}`, y sin ellos ese cuerpo dejaría de validar y todo front
+         *     existente se rompería en el deploy.
+         *
+         *     Son **tres campos opcionales más un validador**, y no un `validation_alias` con
+         *     `AliasChoices`, que sería la forma corta. El motivo es concreto: FastAPI reconstruye el
+         *     campo al armar el parámetro de cuerpo, y en esa reconstrucción pydantic descarta el alias y
+         *     avisa con `UnsupportedFieldAttributeWarning` — en cada arranque de cada app que monte el
+         *     router. La validación igual funcionaba, pero un warning que no se puede arreglar desde la
+         *     app del consumidor es ruido permanente. De paso, esta forma deja decir **qué** falta en vez
+         *     de un "field required" sobre un campo que el cliente no sabe que existe.
+         */
         SignInRequest: {
             /** Email */
-            email: string;
+            email?: string | null;
+            /** Identifier */
+            identifier?: string | null;
             /** Password */
             password: string;
+            /** Username */
+            username?: string | null;
         };
-        /** SignUpRequest */
+        /**
+         * SignUpRequest
+         * @description El cuerpo de `POST /auth/sign-up`.
+         *
+         *     `email` es opcional desde 10.0: qué se exige lo decide `IdentityConfig.require_email`, y
+         *     duplicar el requisito acá daría dos lugares donde puede discrepar. Un cuerpo sin ninguno de
+         *     los dos identificadores lo rechaza el servicio con un 400.
+         */
         SignUpRequest: {
             /** Email */
-            email: string;
+            email?: string | null;
             /** Name */
             name?: string | null;
             /** Password */
             password: string;
+            /** Username */
+            username?: string | null;
         };
         /**
          * SignedOutResponse

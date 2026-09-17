@@ -268,6 +268,50 @@ def test_los_atributos_de_la_cookie_son_los_seguros():
         asyncio.run(dispose_engine())
 
 
+def test_las_cookies_viven_lo_que_su_credencial(client, contenedor):
+    """
+    Cada cookie con el `max_age` de lo que representa, y ninguno con el del access token.
+
+    Dos defectos en el mismo bloque de código:
+
+    - La de **refresh** salía sin `max_age`, o sea como cookie de sesión: el navegador la
+      descartaba al cerrarse y el usuario se deslogueaba, aunque `refresh_ttl` fueran 30 días.
+    - La de **CSRF** salía con `max_age=tokens.expires_in`, que es la vida del access token
+      (120 s). Pasados dos minutos de inactividad el navegador la descartaba y el
+      `CsrfMiddleware` rechazaba con 403 el siguiente `POST` — `/auth/refresh` incluido, así
+      que la sesión no se podía ni renovar.
+    """
+    _alta(client)
+    r = _sign_in_cookie(client)
+    crudas = r.headers.get_list("set-cookie")
+
+    def _max_age(prefijo: str) -> int | None:
+        cruda = next(c for c in crudas if c.startswith(prefijo))
+        for parte in cruda.split(";"):
+            clave, _, valor = parte.strip().partition("=")
+            if clave.lower() == "max-age":
+                return int(valor)
+        return None
+
+    # De la config vigente, no de números a mano: si alguien cambia un default, el test
+    # tiene que seguir describiendo la regla y no el valor.
+    vidas = contenedor.config.tokens
+    acceso_ttl = int(vidas.access_ttl.total_seconds())
+    refresco_ttl = int(vidas.refresh_ttl.total_seconds())
+
+    assert _max_age("session=") == acceso_ttl, (
+        "La cookie de acceso tiene que durar lo que el access token."
+    )
+    assert _max_age("refresh=") == refresco_ttl, (
+        "La cookie de refresco salió sin max_age (cookie de sesión: muere al cerrar el "
+        "navegador) o con el del access token."
+    )
+    assert _max_age("csrf=") == refresco_ttl, (
+        "La cookie de CSRF tiene que durar lo que la sesión. Con el max_age del access "
+        "token vence a los dos minutos y el double-submit rechaza hasta el refresh."
+    )
+
+
 def test_la_cookie_de_csrf_es_legible_por_el_cliente(client, contenedor):
     """
     **No** es `HttpOnly`, y tiene que no serlo: el cliente la lee para devolverla en el

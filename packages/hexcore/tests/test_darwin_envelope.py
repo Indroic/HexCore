@@ -422,7 +422,7 @@ async def _usuario_con_sesion(contenedor):
     """Un usuario dado de alta y logueado. Devuelve `(usuario, sesión, par de tokens)`."""
     identidad = contenedor.identity_service()
     usuario, _ = await identidad.sign_up(email="dueño@test.com", password="una-clave-larga")
-    return await identidad.sign_in(email="dueño@test.com", password="una-clave-larga")
+    return await identidad.sign_in(identifier="dueño@test.com", password="una-clave-larga")
 
 
 @pytest.mark.anyio
@@ -604,7 +604,7 @@ async def test_el_circuito_completo_conserva_la_impersonacion(contenedor):
     identidad = contenedor.identity_service()
     soporte, _ = await identidad.sign_up(email="soporte@test.com", password="clave-larga-1")
     _, sesion_soporte, _ = await identidad.sign_in(
-        email="soporte@test.com", password="clave-larga-1"
+        identifier="soporte@test.com", password="clave-larga-1"
     )
     cliente, _ = await identidad.sign_up(email="cliente@test.com", password="clave-larga-2")
 

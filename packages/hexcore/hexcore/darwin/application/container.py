@@ -32,11 +32,13 @@ if t.TYPE_CHECKING:
         AbstractAuditSink,
         AbstractClock,
         AbstractPasswordHasher,
+        AbstractPrincipalResolver,
         AbstractRevocationList,
         AbstractSessionRepository,
         AbstractUserRepository,
         AbstractVerificationRepository,
     )
+    from hexcore.darwin.infrastructure.revocation import GenerationGuard
     from hexcore.darwin.infrastructure.envelope import (
         AuthEnvelopeCodec,
         AuthEnvelopeRestorer,
@@ -100,6 +102,7 @@ class IdentityContainer:
         revocations: "AbstractRevocationList | None" = None,
         audit: "AbstractAuditSink | None" = None,
         events: "EventBus | None" = None,
+        principals: "AbstractPrincipalResolver | None" = None,
         plugins: "PluginRegistry | list[DarwinPlugin] | tuple[DarwinPlugin, ...] | None" = None,
     ) -> None:
         self._config = config
@@ -116,6 +119,7 @@ class IdentityContainer:
         self._revocations = revocations
         self._audit = audit
         self._events = events
+        self._principals = principals
         if plugins is not None:
             from hexcore.darwin.application.plugins import PluginRegistry
 
@@ -135,6 +139,7 @@ class IdentityContainer:
         self._repos_modulo: t.Any = None
         self._envelope_codec: "AuthEnvelopeCodec | None" = None
         self._envelope_restorer: "AuthEnvelopeRestorer | None" = None
+        self._generations: "GenerationGuard | None" = None
 
     @property
     def config(self) -> "IdentityConfig":
@@ -174,24 +179,51 @@ class IdentityContainer:
 
     def key_store(self) -> "AbstractKeyStore":
         """
-        El almacén de claves.
+        El almacén de claves. **Persistido si hay backend de almacenamiento.**
 
-        El default es `StaticKeyStore` con **una clave generada al arrancar**, y eso sirve para
-        desarrollo y tests pero **no para producción**: la clave cambia en cada arranque, así
-        que un reload invalida todas las sesiones, y con más de un proceso cada uno firma con
-        una clave distinta. En producción se inyecta un almacén persistido.
+        Antes el default era siempre `StaticKeyStore` con una clave generada al arrancar, y
+        eso no sirve en producción por dos motivos que se manifiestan distinto:
+
+        - Un reload invalida todas las sesiones, porque la clave nueva no verifica los tokens
+          viejos. Se ve como "se deslogueó todo el mundo en el deploy".
+        - Con más de un proceso, cada uno firma con la suya y verifica sólo la suya, así que un
+          request cae en el worker que corresponde una de cada N veces. Se ve como un 401
+          intermitente que no se reproduce en desarrollo, donde hay un solo proceso.
+
+        La tabla `darwin_jwks` existía desde el principio; lo que faltaba era el almacén que la
+        leyera. Ahora se resuelve por backend, igual que los repositorios, y `StaticKeyStore`
+        queda como lo que siempre debió ser: el default de tests y desarrollo.
+
+        Si el backend no se puede resolver —un proceso que sólo verifica tokens y no tiene
+        extra de base— se cae al efímero. `IdentityStep` es el que se niega a arrancar con eso
+        fuera de `debug`.
         """
         with self._lock:
             if self._key_store is None:
-                from hexcore.darwin.infrastructure.keys import (
-                    StaticKeyStore,
-                    generate_signing_key,
-                )
-
-                self._key_store = StaticKeyStore(
-                    [generate_signing_key(algorithm=self._config.tokens.algorithm)]
-                )
+                self._key_store = self._almacen_persistido() or self._almacen_efimero()
             return self._key_store
+
+    def _almacen_persistido(self) -> "AbstractKeyStore | None":
+        """El `KeyStore` del backend resuelto, o `None` si no hay backend usable."""
+        try:
+            return t.cast("AbstractKeyStore", self._repositorios().KeyStore())
+        except Exception:
+            # Sin extra de base no hay dónde persistir, y eso no es un error: un proceso que
+            # sólo verifica tokens no necesita el backend. Quien sí lo necesita se entera al
+            # arrancar, en `IdentityStep`.
+            return None
+
+    def _almacen_efimero(self) -> "AbstractKeyStore":
+        """`StaticKeyStore` con una clave nueva. **La clave cambia en cada arranque.**"""
+        from hexcore.darwin.infrastructure.keys import (
+            StaticKeyStore,
+            generate_signing_key,
+        )
+
+        return StaticKeyStore(
+            [generate_signing_key(algorithm=self._config.tokens.algorithm)],
+            ephemeral=True,
+        )
 
     def revocations(self) -> "AbstractRevocationList":
         with self._lock:
@@ -202,6 +234,38 @@ class IdentityContainer:
 
                 self._revocations = CacheRevocationList(clock=self.clock())
             return self._revocations
+
+    def generations(self) -> "GenerationGuard":
+        """
+        La capa 3 de la revocación: el contador de generación por usuario.
+
+        Existía la clase y no existía el proveedor, así que `authenticate` nunca la consultaba
+        y "cerrar sesión en todos los dispositivos" no cortaba nada hasta que cada access token
+        venciera solo. Ver el docstring de `SessionService.authenticate`.
+        """
+        with self._lock:
+            if self._generations is None:
+                from hexcore.darwin.infrastructure.revocation import GenerationGuard
+
+                self._generations = GenerationGuard(
+                    users=self.users(), clock=self.clock()
+                )
+            return self._generations
+
+    def principals(self) -> "AbstractPrincipalResolver":
+        """
+        De dónde salen los roles y los scopes. Por defecto, de ningún lado.
+
+        El default es `NullPrincipalResolver`, que devuelve dos conjuntos vacíos: es el
+        comportamiento de 9.x, y una app que no declara permisos no tiene que empezar a
+        recibirlos porque actualizó.
+        """
+        with self._lock:
+            if self._principals is None:
+                from hexcore.darwin.domain.ports import NullPrincipalResolver
+
+                self._principals = NullPrincipalResolver()
+            return self._principals
 
     # ── El backend de almacenamiento ──────────────────────────────────────────
     @property
@@ -244,35 +308,48 @@ class IdentityContainer:
                 )
             return self._repos_modulo
 
+    def _fabricar_repo(self, atributo: str, kind: str) -> t.Any:
+        """
+        Construye un repositorio pasándole el modelo declarado, si lo hay.
+
+        `model=` **sólo lo entiende el backend de SQL**: en Beanie el documento no es
+        inyectable de la misma forma. Por eso se pasa nada más cuando el consumidor declaró
+        uno, y si no se deja que el repositorio resuelva el suyo.
+
+        Está factorizado porque los cinco proveedores hacían lo mismo y sólo el de usuarios lo
+        hacía bien: los otros cuatro construían sin `model=`, así que un consumidor que
+        renombrara la tabla de sesiones no tenía forma de decirlo.
+        """
+        fabrica = getattr(self._repositorios(), atributo)
+        declarado = getattr(self._config, f"{kind}_model", None)
+        return fabrica(model=declarado) if declarado is not None else fabrica()
+
     def users(self) -> "AbstractUserRepository":
         with self._lock:
             if self._users is None:
-                fabrica = self._repositorios().UserRepository
-                # `model=` sólo lo entiende el backend de SQL: en Beanie el documento no es
-                # inyectable de la misma forma. Se pasa nada más si el consumidor declaró uno.
-                self._users = (
-                    fabrica(model=self._config.user_model)
-                    if self._config.user_model is not None
-                    else fabrica()
-                )
+                self._users = self._fabricar_repo("UserRepository", "user")
             return self._users
 
     def sessions_repository(self) -> "AbstractSessionRepository":
         with self._lock:
             if self._sessions_repo is None:
-                self._sessions_repo = self._repositorios().SessionRepository()
+                self._sessions_repo = self._fabricar_repo(
+                    "SessionRepository", "session"
+                )
             return self._sessions_repo
 
     def accounts(self) -> "AbstractAccountRepository":
         with self._lock:
             if self._accounts is None:
-                self._accounts = self._repositorios().AccountRepository()
+                self._accounts = self._fabricar_repo("AccountRepository", "account")
             return self._accounts
 
     def verifications(self) -> "AbstractVerificationRepository":
         with self._lock:
             if self._verifications is None:
-                self._verifications = self._repositorios().VerificationRepository()
+                self._verifications = self._fabricar_repo(
+                    "VerificationRepository", "verification"
+                )
             return self._verifications
 
     def events(self) -> "EventBus | None":
@@ -386,6 +463,8 @@ class IdentityContainer:
                     config=self._config,
                     events=self.events(),
                     audit=self._audit,
+                    principals=self.principals(),
+                    generations=self.generations(),
                 )
             return self._session_service
 
@@ -412,6 +491,28 @@ class IdentityContainer:
 
 _container: IdentityContainer | None = None
 _container_lock = threading.RLock()
+
+
+def _validar_modelos(config: "IdentityConfig") -> None:
+    """
+    Valida los modelos concretos declarados en la config, los que haya.
+
+    Tolera la ausencia del extra `[darwin-sqlalchemy]`: `IdentityConfig` se construye también
+    en un proceso que sólo verifica tokens y no toca la base, y exigirle sqlalchemy ahí sería
+    pedirle una dependencia que no usa. Mismo criterio que `_resuelve_el_almacenamiento`.
+    """
+    try:
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.registry import MIXIN_POR_TIPO
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import (
+            validate_identity_model,
+        )
+    except ImportError:
+        return
+
+    for kind in MIXIN_POR_TIPO:
+        declarado = getattr(config, f"{kind}_model", None)
+        if declarado is not None:
+            validate_identity_model(kind, declarado)
 
 
 def configure_identity(
@@ -459,7 +560,6 @@ def configure_identity(
         configure_identity(IdentityConfig(), plugins=registro)
     """
     from hexcore.darwin.application.config import IdentityConfig
-    from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import validate_user_model
 
     global _container
 
@@ -474,10 +574,14 @@ def configure_identity(
             config = IdentityConfig()
 
     # Al **configurar**, no en el primer login. Rechaza un `BaseModel[T]` (que explotaría
-    # después del commit) y una clase que no componga `UserMixin`. Mismo criterio que
+    # después del commit) y una clase que no componga el mixin de su tabla. Mismo criterio que
     # `CQRSFactory._assert_enqueuer_for_background_commands`.
-    if config.user_model is not None:
-        validate_user_model(config.user_model)
+    #
+    # Los seis y no sólo el de usuario: desde que `IdentityConfig` acepta los otros cinco, un
+    # `session_model` mal declarado tenía que fallar acá y no con un `AttributeError` en el
+    # primer refresh. El import es perezoso y tolerante porque este módulo se importa sin el
+    # extra `[darwin-sqlalchemy]`: sin sqlalchemy no hay modelo que validar, y eso no es un error.
+    _validar_modelos(config)
 
     # Los plugins se validan **al cablear**, igual que el modelo de usuario: nombre duplicado,
     # `requires` inexistente, ciclo y conflicto de tablas son errores de cableado, y descubrir

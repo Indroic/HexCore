@@ -118,6 +118,100 @@ async def test_las_fechas_vuelven_tz_aware(usuarios):
 
 
 @pytest.mark.anyio
+async def test_alta_y_lectura_por_username(usuarios):
+    """
+    La consulta nueva de 10.0, contra la base real. El fake tiene su propio índice, así que
+    probarlo sólo ahí no dice nada sobre el `WHERE` que corre en producción.
+    """
+    creado = await usuarios.add(User(username="indroic", email="ana@ejemplo.com"))
+    leido = await usuarios.get_by_username("indroic")
+
+    assert leido is not None
+    assert leido.id == creado.id
+    assert leido.username == "indroic"
+
+
+@pytest.mark.anyio
+async def test_un_username_inexistente_devuelve_none(usuarios):
+    """No lanza: el flujo de sign-in distingue 'no existe' de 'falló la consulta'."""
+    assert await usuarios.get_by_username("nadie") is None
+
+
+@pytest.mark.anyio
+async def test_una_cuenta_sin_mail_se_persiste(usuarios):
+    """
+    El caso que 9.x no admitía: `darwin_user.email` era NOT NULL. Si la columna no quedó
+    nullable, esto falla con `IntegrityError` en el INSERT.
+    """
+    creado = await usuarios.add(User(username="indroic"))
+    leido = await usuarios.get_by_id(creado.id)
+
+    assert leido is not None
+    assert leido.email is None
+    assert leido.username == "indroic"
+
+
+@pytest.mark.anyio
+async def test_dos_cuentas_sin_mail_conviven(usuarios):
+    """
+    **El motivo por el que el `UniqueConstraint` de `email` se pudo dejar puesto.** En SQLite y
+    en Postgres dos NULL son distintos entre sí, así que varias filas sin mail no chocan. Si
+    algún día eso deja de valer, este test es el que avisa.
+    """
+    await usuarios.add(User(username="uno"))
+    await usuarios.add(User(username="dos"))
+
+    assert (await usuarios.get_by_username("uno")) is not None
+    assert (await usuarios.get_by_username("dos")) is not None
+
+
+@pytest.mark.anyio
+async def test_username_duplicado_viola_el_unique(usuarios):
+    """Igual que el mail: el unique va en la base, no en el servicio."""
+    await usuarios.add(User(username="indroic"))
+
+    with pytest.raises(IntegrityError):
+        await usuarios.add(User(username="indroic"))
+
+
+@pytest.mark.anyio
+async def test_cambiar_el_username_lo_reindexa(usuarios):
+    """El valor viejo deja de resolver. Sin esto, un rename dejaría dos nombres vivos."""
+    creado = await usuarios.add(User(username="viejo"))
+    await usuarios.update(creado.model_copy(update={"username": "nuevo"}))
+
+    assert await usuarios.get_by_username("viejo") is None
+    assert (await usuarios.get_by_username("nuevo")) is not None
+
+
+@pytest.mark.anyio
+async def test_los_scopes_de_la_sesion_sobreviven_el_round_trip(usuarios, sesiones):
+    """
+    La columna que se agregó para que la rotación no pierda los permisos. Se guarda como JSON,
+    así que el `frozenset` tiene que volver siendo un `frozenset` y no una lista.
+    """
+    usuario = await _crear_usuario(usuarios)
+    creada = await sesiones.add(
+        _sesion(usuario.id, scopes=frozenset({"facturas.leer", "facturas.crear"}))
+    )
+    leida = await sesiones.get(creada.id)
+
+    assert leida is not None
+    assert leida.scopes == frozenset({"facturas.leer", "facturas.crear"})
+
+
+@pytest.mark.anyio
+async def test_una_sesion_sin_scopes_vuelve_con_el_conjunto_vacio(usuarios, sesiones):
+    """El default de la columna es `[]`, no NULL: `frozenset(None)` sería un TypeError."""
+    usuario = await _crear_usuario(usuarios)
+    creada = await sesiones.add(_sesion(usuario.id))
+    leida = await sesiones.get(creada.id)
+
+    assert leida is not None
+    assert leida.scopes == frozenset()
+
+
+@pytest.mark.anyio
 async def test_mail_duplicado_viola_el_unique(usuarios):
     """El unique va en la base: dos signups concurrentes no pueden crear dos cuentas."""
     await _crear_usuario(usuarios)

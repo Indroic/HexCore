@@ -52,7 +52,7 @@ __all__ = [
 #: Lo vigila `test_removed_in_is_ahead_of_the_published_version`: si un bump vuelve a alcanzar
 #: este valor, el fallo salta en CI y no en el aviso que lee el usuario. Ese test es el que
 #: convierte "se nos pasó" en "no se puede releasear".
-REMOVED_IN = "10.0"
+REMOVED_IN = "11.0"
 
 
 def warn_deprecated(

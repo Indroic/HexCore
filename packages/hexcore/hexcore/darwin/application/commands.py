@@ -24,6 +24,8 @@ from __future__ import annotations
 import typing as t
 from uuid import UUID
 
+from pydantic import AliasChoices, Field
+
 from hexcore.darwin.domain.context import Transport
 from hexcore.darwin.domain.value_objects import CoreVerificationPurpose, TokenPair
 from hexcore.domain.cqrs.commands import Command
@@ -69,11 +71,18 @@ __all__ = [
 
 # ── Comandos ──────────────────────────────────────────────────────────────────
 class SignUp(Command):
-    """Crea una cuenta con credencial local."""
+    """
+    Crea una cuenta con credencial local.
 
-    email: str
+    `email` es opcional desde 10.0; qué se exige lo decide `IdentityConfig.require_email` y
+    `usernames`. El comando no lo valida por su cuenta porque la política vive en la config y
+    duplicarla acá daría dos lugares donde el requisito puede discrepar.
+    """
+
+    email: str | None = None
     password: str
     name: str | None = None
+    username: str | None = None
 
 
 class VerifyEmail(Command):
@@ -84,9 +93,17 @@ class VerifyEmail(Command):
 
 
 class SignIn(Command):
-    """Autentica con credencial local y crea la sesión."""
+    """
+    Autentica con credencial local y crea la sesión.
 
-    email: str
+    El campo se llama `identifier` desde 10.0 —puede ser el mail o el nombre de usuario— y
+    acepta `email` y `username` como alias de entrada. El alias no es cortesía: un cliente de
+    9.x manda `{"email": ...}` en el cuerpo JSON, y sin él ese cuerpo dejaría de validar.
+    """
+
+    identifier: t.Annotated[
+        str, Field(validation_alias=AliasChoices("identifier", "email", "username"))
+    ]
     password: str
     transport: Transport = "cookie"
     ip_address: str | None = None
@@ -169,10 +186,13 @@ class SignUpResult(t.NamedTuple):
 
     `verification_code` viene **en claro** porque hay que mandarlo por mail: la fila guarda su
     hash, así que es la única vez que existe. No lo loguees.
+
+    Es `None` cuando la cuenta se creó sin mail: no hay a dónde mandarlo, y devolver un código
+    que nadie va a poder canjear sería peor que no devolver ninguno.
     """
 
     user: "User"
-    verification_code: str
+    verification_code: str | None
 
 
 class SignInResult(t.NamedTuple):
@@ -226,7 +246,10 @@ class _SessionHandler:
 class SignUpHandler(_IdentityHandler, AbstractCommandHandler[SignUp, SignUpResult]):
     async def handle(self, command: SignUp) -> SignUpResult:
         usuario, codigo = await self.service.sign_up(
-            email=command.email, password=command.password, name=command.name
+            email=command.email,
+            password=command.password,
+            name=command.name,
+            username=command.username,
         )
         return SignUpResult(user=usuario, verification_code=codigo)
 
@@ -239,7 +262,7 @@ class VerifyEmailHandler(_IdentityHandler, AbstractCommandHandler[VerifyEmail, "
 class SignInHandler(_IdentityHandler, AbstractCommandHandler[SignIn, SignInResult]):
     async def handle(self, command: SignIn) -> SignInResult:
         usuario, sesion, par = await self.service.sign_in(
-            email=command.email,
+            identifier=command.identifier,
             password=command.password,
             transport=command.transport,
             ip_address=command.ip_address,

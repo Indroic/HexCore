@@ -71,7 +71,9 @@ it** — only signature, `exp`, audience and transport.
 2. A `sid` denylist in `ICache`: `SignOut` blocks the session, and a still-valid token is
    rejected without waiting for expiry.
 3. A per-user generation counter: `SignOutEverywhere` increments it and every token from the
-   previous generation is rejected without enumerating them.
+   previous generation is rejected without enumerating them. `GenerationGuard` enforces it and
+   caches the counter for 60 s; `revoke_all_for` drops that entry in the same flow, so the cut
+   is immediate.
 
 The refresh token **does** hit the database: it rotates the session atomically and detects
 reuse. A stolen refresh token revokes the entire family on the first attempt.
@@ -118,11 +120,15 @@ IdentityConfig(
     cookies=CookieConfig(...),
     passwords=PasswordPolicy(...),
     user_model=None,                 # your class, if you compose UserMixin
+    session_model=None,              # …and the other four, only to break a tie
     storage=None,                    # "sqlalchemy" | "beanie" | None (detects)
     trusted_origins=(),
     worker_context_ttl=timedelta(hours=24),
     require_verified_email=True,
     max_verification_attempts=5,
+    usernames=None,                  # UsernamePolicy(), to enable usernames
+    require_email=True,
+    sign_in_identifiers=("email",),  # or ("email", "username")
 )
 ```
 
@@ -146,11 +152,45 @@ requires exactly this).
 
 `PasswordPolicy`: `min_length` 12 (length over composition, what NIST recommends),
 `max_length` 1024 (a ceiling exists because hashing 10 MB is free DoS), `denylist`
-(compared normalised).
+(compared normalised), `acknowledge_weak_minimum` (required to go below 8).
+
+`UsernamePolicy`: `min_length` 3, `max_length` 32, `pattern` (applied to the normalised value;
+**rejects `@`**, so a username cannot look like an email), `case_sensitive` False, `reserved`.
+
+**Username sign-in, and the email as an optional identifier (10.0).** `User.email` is
+`str | None`. Three settings control it: `usernames` enables the field, `require_email` decides
+whether sign-up demands an address, and `sign_in_identifiers` decides what you can log in with —
+having usernames and accepting them as a credential are separate decisions. `IdentityConfig`
+refuses to build on any combination where nobody could sign in.
+
+`sign_in()` takes `identifier=` (`email=` still resolves and warns, removed in 11.0), and the
+HTTP body accepts `identifier`, `email` or `username` — one of them — so a 9.x front end keeps
+working. `require_verified_email` is a **no-op for an account with no email**; without that, a
+username-only account could never sign in.
+
+⚠️ An account with no email cannot recover its password or verify anything. Both flows send a
+code somewhere.
 
 `configure_identity(config, **components)` accepts any port to inject: `users=`, `clock=`,
-`key_store=`, `plugins=`, … It is what the tests use and what lets you persist keys in
-production.
+`key_store=`, `principals=`, `plugins=`, … It is what the tests use and what lets you plug in
+your application's permissions.
+
+**Roles and scopes come from `AbstractPrincipalResolver`.** The default returns two empty sets.
+It is consulted on sign-in and on every refresh rotation, and both travel inside the token, so
+`authenticate` stays DB-free. Revoking a role lands on the next rotation (one `access_ttl`); for
+an immediate cut use `revoke_all_for`.
+
+**Concrete models resolve themselves.** Declare `class UserModel(UserMixin, Base)` with
+`__tablename__ = "darwin_user"` and Darwin finds it — it never imports its own `models.py` when
+one of yours already occupies the table. That import declares all six defaults at once, and the
+collision surfaces as `InvalidRequestError: Table 'darwin_user' is already defined`, thrown at
+the first repository call rather than at the declaration. The `*_model` config fields only break
+ties.
+
+**The key store is persisted.** `KeyStore` reads `darwin_jwks` per backend; seed it with
+`hexcore identity generate-keys --persist`. `IdentityStep` refuses to start with `debug=False`
+when the key store is ephemeral or the cache is the default `MemoryCache` — both are per-process
+and break silently as soon as there is a second worker.
 
 ---
 

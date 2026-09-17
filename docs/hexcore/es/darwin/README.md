@@ -81,7 +81,10 @@ El access token es un JWT con `exp` corto. **No se toca la base para validarlo**
 2. Denylist de `sid` en `ICache`: `SignOut` bloquea la sesión y un token vigente se rechaza sin
    esperar a que expire.
 3. Contador de generación por usuario: `SignOutEverywhere` lo incrementa y todos los tokens de
-   la generación anterior se rechazan sin enumerarlos.
+   la generación anterior se rechazan sin enumerarlos. Lo verifica `GenerationGuard`, que
+   cachea el contador 60 s para no consultar la base en cada petición; `revoke_all_for`
+   descarta esa entrada en el mismo flujo, así que el corte es inmediato y no "dentro de un
+   minuto".
 
 El refresh token **sí** toca la base: rota la sesión atómicamente y detecta reuso. Un refresh
 robado revoca la familia entera en el primer intento.
@@ -130,6 +133,7 @@ IdentityConfig(
     cookies=CookieConfig(...),
     passwords=PasswordPolicy(...),
     user_model=None,                 # tu clase, si componés UserMixin
+    session_model=None,              # idem para las otras cinco tablas
     storage=None,                    # "sqlalchemy" | "beanie" | None (detecta)
     trusted_origins=(),
     worker_context_ttl=timedelta(hours=24),
@@ -142,10 +146,14 @@ IdentityConfig(
 | :-- | :-- | :-- |
 | `secret_key` | `None` | La clave de firma. **Sin default**: se lee de `HEXCORE_DARWIN_SECRET_KEY` |
 | `user_model` | `None` | Tu clase, si componés `UserMixin`. Se valida al configurar |
+| `session_model`, `account_model`, `verification_model`, `audit_model`, `jwks_model` | `None` | Idem para las otras cinco tablas. **Casi nunca hacen falta**: si declarás tus modelos, Darwin los encuentra solo (ver abajo) |
 | `storage` | `None` | `"sqlalchemy"`, `"beanie"`, o detección |
 | `trusted_origins` | `()` | Orígenes válidos para el chequeo anti-CSRF |
 | `worker_context_ttl` | 24 h | Ventana en que el sobre del actor sigue siendo canjeable |
-| `require_verified_email` | `True` | Si el sign-in exige mail verificado |
+| `require_verified_email` | `True` | Si el sign-in exige mail verificado. **No aplica a una cuenta sin mail**: exigirlo ahí sería un 403 permanente |
+| `usernames` | `None` | La `UsernamePolicy`, o `None` si esta app no usa nombres de usuario |
+| `require_email` | `True` | Si el alta exige una dirección de correo |
+| `sign_in_identifiers` | `("email",)` | Con qué se puede entrar: `"email"`, `"username"`, o los dos |
 | `max_verification_attempts` | `5` | Intentos por token de verificación antes de invalidarlo |
 
 `TokenConfig`:
@@ -176,13 +184,107 @@ IdentityConfig(
 | `min_length` | `12` | Longitud sobre composición: es lo que recomienda el NIST |
 | `max_length` | `1024` | Un techo existe porque hashear 10 MB es un DoS gratis |
 | `denylist` | `frozenset()` | Contraseñas prohibidas, comparadas normalizadas |
+| `acknowledge_weak_minimum` | `False` | Permite bajar `min_length` de 8. Es un flag aparte para que cueste escribirlo y quede en el diff |
+
+`UsernamePolicy`:
+
+| Campo | Default | Nota |
+| :-- | :-- | :-- |
+| `min_length` / `max_length` | `3` / `32` | — |
+| `pattern` | `^[a-z0-9][a-z0-9_.-]*$` | Sobre el valor ya normalizado. **No admite `@`**, para que un username no pueda tener forma de mail |
+| `case_sensitive` | `False` | Con `False`, `Ana` y `ana` son el mismo usuario |
+| `reserved` | `frozenset()` | Nombres que nadie puede tomar, comparados normalizados |
+
+---
+
+## Entrar con nombre de usuario
+
+```python
+IdentityConfig(
+    usernames=UsernamePolicy(min_length=4, reserved=frozenset({"admin", "api"})),
+    require_email=False,
+    sign_in_identifiers=("email", "username"),
+)
+```
+
+Con eso, `POST /auth/sign-up` acepta `{"username": "indroic", "password": "..."}` sin mail, y
+`POST /auth/sign-in` acepta cualquiera de los dos en el campo `identifier`.
+
+**Tener usernames y aceptarlos para entrar son dos decisiones distintas**, y por eso son dos
+campos: un foro puede mostrar `@pepe` en cada mensaje y aun así exigir el mail para el login.
+Dejá `sign_in_identifiers=("email",)` y el username queda como identificador público nomás.
+
+⚠️ **Una cuenta sin mail no puede recuperar la contraseña ni verificar nada**: los dos flujos se
+apoyan en mandar un código a alguna parte. Si usás `require_email=False`, necesitás otro camino
+de recuperación.
+
+El cuerpo de `/auth/sign-in` acepta el identificador con **tres nombres** —`identifier`, `email`
+y `username`— para que un front de 9.x que manda `{"email": ...}` siga funcionando. Mandá uno
+solo: si vienen varios, se rechaza.
 
 En producción **falla si no hay clave de firma**, y eso es deliberado. Para generar una:
 `hexcore identity generate-secret`.
 
 `configure_identity(config, **componentes)` acepta cualquier puerto a inyectar: `users=`,
-`clock=`, `key_store=`, `plugins=`, … Es lo que usan los tests y lo que permite persistir las
-claves en producción.
+`clock=`, `key_store=`, `principals=`, `plugins=`, … Es lo que usan los tests y lo que permite
+enchufar los permisos de tu app.
+
+---
+
+## Tus modelos concretos
+
+Si declarás tus propios modelos sobre las tablas de Darwin —el camino recomendado, y el único
+que permite agregarles columnas— **no hace falta configurar nada**:
+
+```python
+from hexcore.darwin import UserMixin
+from hexcore.sql import Base
+
+class UserModel(UserMixin, Base):
+    __tablename__ = "darwin_user"
+    plan: Mapped[str] = mapped_column(String(32), default="free")
+```
+
+Darwin resuelve la clase concreta de cada tabla en tres pasos: lo que declaraste en
+`IdentityConfig`, después la clase mapeada que compone el mixin correspondiente, y recién si no
+hay ninguna, la de su `models.py`.
+
+⚠️ **Ese orden es el que evita un arranque roto.** Importar `models.py` para obtener *una* clase
+ejecuta el módulo entero, que declara **las seis** sobre `Base`. Con tu `UserModel` ya declarado
+sobre `darwin_user`, eso son dos clases peleando por la misma tabla y SQLAlchemy corta con
+`InvalidRequestError: Table 'darwin_user' is already defined for this MetaData instance` — al
+primer uso de cualquier repositorio, así que el stack trace apunta a una consulta de sesiones y
+no al import que la causó. Los `*_model` de `IdentityConfig` existen sólo para desempatar cuando
+mapeás dos clases sobre el mismo mixin en tablas distintas.
+
+---
+
+## Roles y scopes
+
+`Principal` lleva `roles` y `scopes`, y de dónde salen lo decide tu app con un puerto:
+
+```python
+from hexcore.darwin import AbstractPrincipalResolver, configure_identity
+
+class RolesDeLaApp(AbstractPrincipalResolver):
+    async def resolve(self, user):
+        async with uow_scope() as uow:
+            fila = await uow.membresias.get_by_user(user.id)
+        return frozenset(fila.roles), frozenset(fila.permisos)
+
+configure_identity(IdentityConfig(), principals=RolesDeLaApp())
+```
+
+El default es `NullPrincipalResolver`, que devuelve dos conjuntos vacíos: una app que no declara
+permisos no empieza a recibirlos porque actualizó.
+
+**Se consulta en el sign-in y en cada rotación de refresh**, o sea cada `access_ttl` (2 minutos)
+mientras la sesión esté viva. Re-resolver es lo que hace que quitarle un rol a alguien tenga
+efecto sin esperar a que cierre sesión — el corte llega en la rotación siguiente. Si necesitás
+que sea inmediato, la herramienta es `revoke_all_for`, que sube la generación y corta todos los
+tokens del usuario de una.
+
+Los dos viajan en el token, no en la base: `authenticate` es el camino caliente y no consulta.
 
 ---
 

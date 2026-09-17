@@ -26,6 +26,7 @@ export type {
   MeResponse,
   SessionResponse,
   SessionState,
+  SignInRequest,
   SignInResult,
 } from "./core/types";
 export type { DarwinErrorCode } from "./generated/error-codes";

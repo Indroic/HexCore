@@ -78,6 +78,43 @@ class TestElContratoVolcado:
             f"estas rutas del núcleo no tienen `response_model`: {faltantes}"
         )
 
+    def test_el_cuerpo_de_sign_in_publica_los_tres_nombres(self, darwin_openapi):
+        """
+        El contrato es lo que el cliente TypeScript genera, así que si los alias no salen acá,
+        un front que manda `{"email": ...}` queda sin tipo aunque el backend lo acepte.
+
+        Los tres son **opcionales** en el schema: cuál hace falta lo decide un validador, no la
+        forma. Un `required: [email]` heredado de 9.x rompería al que manda `identifier`.
+        """
+        schema = darwin_openapi._construir_app().openapi()
+        cuerpo = schema["components"]["schemas"]["SignInRequest"]
+
+        for nombre in ("identifier", "email", "username"):
+            assert nombre in cuerpo["properties"], (
+                f"'{nombre}' no está en el cuerpo de sign-in; un cliente que lo mande queda "
+                f"sin tipo generado."
+            )
+        assert cuerpo.get("required", []) == ["password"], (
+            "Sólo `password` es obligatorio: el identificador puede venir con cualquiera de "
+            f"los tres nombres. Requeridos declarados: {cuerpo.get('required')}"
+        )
+
+    def test_el_alta_admite_username_y_un_mail_opcional(self, darwin_openapi):
+        """El cambio de 10.0: se puede crear una cuenta sin dirección de correo."""
+        schema = darwin_openapi._construir_app().openapi()
+        cuerpo = schema["components"]["schemas"]["SignUpRequest"]
+
+        assert "username" in cuerpo["properties"]
+        assert "email" not in cuerpo.get("required", []), (
+            "Si `email` sigue siendo obligatorio en el contrato, el cliente no puede expresar "
+            "un alta sólo con username."
+        )
+
+    def test_me_devuelve_el_username(self, darwin_openapi):
+        schema = darwin_openapi._construir_app().openapi()
+
+        assert "username" in schema["components"]["schemas"]["MeResponse"]["properties"]
+
     def test_el_schema_tiene_los_dos_securityschemes(self, darwin_openapi):
         app = darwin_openapi._construir_app()
         schema = app.openapi()

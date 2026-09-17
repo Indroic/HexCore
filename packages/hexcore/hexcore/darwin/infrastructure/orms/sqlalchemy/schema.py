@@ -21,6 +21,7 @@ __all__ = [
     "drop_identity_tables",
     "identity_tables",
     "validate_user_model",
+    "validate_identity_model",
     "ensure_identity_schema_loaded",
     "plugin_models",
 ]
@@ -63,16 +64,22 @@ def identity_tables(
     Los objetos `Table` de los modelos de identidad.
 
     Args:
-        models: Los modelos a considerar. Por defecto, los seis concretos de `models.py`.
-            Pasá los tuyos si extendiste el esquema.
+        models: Los modelos a considerar. Por defecto, **los seis que este despliegue resuelve**
+            —los tuyos si los declaraste, los de `models.py` si no— vía `resolve_identity_models`.
+            No `IDENTITY_MODELS` directo: eso importaba `models.py` y colisionaba con el modelo
+            del consumidor. Ver el docstring de `registry`.
         plugins: Los plugins cuyas tablas sumar. Van **después** de las del núcleo, y eso
             importa: `drop_identity_tables` invierte la lista completa, así que las de los
             plugins se borran primero — el único orden que funciona, porque referencian a
             `darwin_user` por FK.
     """
-    from hexcore.darwin.infrastructure.orms.sqlalchemy.models import IDENTITY_MODELS
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.registry import (
+        resolve_identity_models,
+    )
 
-    objetivo: list[t.Any] = list(models if models is not None else IDENTITY_MODELS)
+    objetivo: list[t.Any] = list(
+        models if models is not None else resolve_identity_models()
+    )
     if plugins:
         objetivo.extend(plugin_models(plugins))
     # `t.Any` y no `type`: `__table__` lo agrega el mapeo declarativo de SQLAlchemy en
@@ -175,29 +182,37 @@ async def drop_identity_tables(
         )
 
 
-def validate_user_model(model: type) -> None:
+def validate_identity_model(kind: str, model: type) -> None:
     """
-    Valida el modelo de usuario configurado. Falla al arrancar, no en el primer login.
+    Valida uno de los seis modelos de identidad. Falla al arrancar, no en el primer login.
 
     Rechaza tres cosas:
 
     1. **Heredar `BaseModel[T]`.** Es la regla 1 de `models_mixins`: el UoW le pediría una
        entidad de dominio y explotaría *después* del commit, dejando la fila escrita y
        devolviendo 500.
-    2. **No componer `UserMixin`.** Sin sus columnas, los flujos de auth fallan con un
-       `AttributeError` en runtime en vez de un error claro acá.
+    2. **No componer el mixin de esa tabla.** Sin sus columnas, los flujos de auth fallan con
+       un `AttributeError` en runtime en vez de un error claro acá.
     3. **No estar mapeado.** Una clase que no llegó a `Base` no tiene tabla.
+
+    Args:
+        kind: Cuál de las seis tablas. Las claves de `registry.MIXIN_POR_TIPO`.
+        model: La clase declarada por el consumidor.
 
     Raises:
         TypeError: con el reemplazo copiable en el mensaje.
 
     Uso::
 
-        validate_user_model(config.user_model)
+        validate_identity_model("user", config.user_model)
     """
-    from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import UserMixin
+    from hexcore.darwin.infrastructure.orms.sqlalchemy import models_mixins
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.registry import MIXIN_POR_TIPO
     from hexcore.infrastructure.repositories.orms.sqlalchemy import Base, BaseModel
 
+    nombre_mixin, _ = MIXIN_POR_TIPO[kind]
+    mixin = getattr(models_mixins, nombre_mixin)
+    tabla = getattr(models_mixins, f"DEFAULT_{kind.upper()}_TABLE", f"darwin_{kind}")
     nombre = getattr(model, "__name__", repr(model))
 
     if issubclass(model, BaseModel):
@@ -210,27 +225,36 @@ def validate_user_model(model: type) -> None:
             f"ya se confirmó, y nada rollbackea: queda la fila escrita y el usuario recibe "
             f"un 500.\n\n"
             f"Heredá del mixin y de `Base`:\n\n"
-            f"    from hexcore.darwin import UserMixin\n"
+            f"    from hexcore.darwin import {nombre_mixin}\n"
             f"    from hexcore.sql import Base\n\n"
-            f"    class {nombre}(UserMixin, Base):\n"
-            f'        __tablename__ = "darwin_user"\n'
+            f"    class {nombre}({nombre_mixin}, Base):\n"
+            f'        __tablename__ = "{tabla}"\n'
         )
 
-    if not issubclass(model, UserMixin):
+    if not issubclass(model, mixin):
         raise TypeError(
-            f"'{nombre}' no compone `UserMixin`, así que le faltan las columnas que los "
-            f"flujos de autenticación leen (email, email_verified, token_generation, "
-            f"locked_until).\n\n"
-            f"    from hexcore.darwin import UserMixin\n\n"
-            f"    class {nombre}(UserMixin, Base):\n"
-            f'        __tablename__ = "darwin_user"\n'
+            f"'{nombre}' no compone `{nombre_mixin}`, así que le faltan las columnas que los "
+            f"flujos de autenticación leen.\n\n"
+            f"    from hexcore.darwin import {nombre_mixin}\n\n"
+            f"    class {nombre}({nombre_mixin}, Base):\n"
+            f'        __tablename__ = "{tabla}"\n'
         )
 
     if not issubclass(model, Base):
         raise TypeError(
             f"'{nombre}' no hereda de `hexcore.sql.Base`, así que no está mapeado a ninguna "
-            f"tabla. Agregá `Base` a sus bases: `class {nombre}(UserMixin, Base):`"
+            f"tabla. Agregá `Base` a sus bases: `class {nombre}({nombre_mixin}, Base):`"
         )
+
+
+def validate_user_model(model: type) -> None:
+    """
+    Valida el modelo de usuario. Atajo de `validate_identity_model("user", model)`.
+
+    Se mantiene con su nombre propio porque está en la superficie pública desde que Darwin
+    existe y es el único de los seis que el consumidor declara a menudo.
+    """
+    validate_identity_model("user", model)
 
 
 def ensure_identity_schema_loaded(

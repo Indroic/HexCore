@@ -24,7 +24,7 @@ import typing as t
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from hexcore.darwin.domain.context import AuthContext
 from hexcore.darwin.infrastructure.api.dependencies import (
@@ -55,9 +55,18 @@ __all__ = [
 
 # ── DTOs ──────────────────────────────────────────────────────────────────────
 class SignUpRequest(BaseModel):
-    email: str
+    """
+    El cuerpo de `POST /auth/sign-up`.
+
+    `email` es opcional desde 10.0: qué se exige lo decide `IdentityConfig.require_email`, y
+    duplicar el requisito acá daría dos lugares donde puede discrepar. Un cuerpo sin ninguno de
+    los dos identificadores lo rechaza el servicio con un 400.
+    """
+
+    email: str | None = None
     password: str
     name: str | None = None
+    username: str | None = None
 
 
 class VerifyEmailRequest(BaseModel):
@@ -66,8 +75,51 @@ class VerifyEmailRequest(BaseModel):
 
 
 class SignInRequest(BaseModel):
-    email: str
+    """
+    El cuerpo de `POST /auth/sign-in`.
+
+    Acepta el identificador con **tres nombres**: `identifier`, que es el canónico desde 10.0,
+    más `email` y `username`. Los dos viejos no son cortesía: un cliente de 9.x manda
+    `{"email": ..., "password": ...}`, y sin ellos ese cuerpo dejaría de validar y todo front
+    existente se rompería en el deploy.
+
+    Son **tres campos opcionales más un validador**, y no un `validation_alias` con
+    `AliasChoices`, que sería la forma corta. El motivo es concreto: FastAPI reconstruye el
+    campo al armar el parámetro de cuerpo, y en esa reconstrucción pydantic descarta el alias y
+    avisa con `UnsupportedFieldAttributeWarning` — en cada arranque de cada app que monte el
+    router. La validación igual funcionaba, pero un warning que no se puede arreglar desde la
+    app del consumidor es ruido permanente. De paso, esta forma deja decir **qué** falta en vez
+    de un "field required" sobre un campo que el cliente no sabe que existe.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    identifier: str | None = None
+    email: str | None = None
+    username: str | None = None
     password: str
+
+    @model_validator(mode="after")
+    def _hay_exactamente_un_identificador(self) -> "SignInRequest":
+        presentes = [
+            v for v in (self.identifier, self.email, self.username) if v is not None
+        ]
+        if not presentes:
+            raise ValueError(
+                "Falta el identificador: mandá 'identifier' (o 'email' / 'username', que son "
+                "sus nombres previos) junto con 'password'."
+            )
+        if len(presentes) > 1:
+            raise ValueError(
+                "Vinieron varios identificadores a la vez. 'identifier', 'email' y 'username' "
+                "son tres nombres del mismo campo: mandá uno solo."
+            )
+        return self
+
+    @property
+    def credential(self) -> str:
+        """El identificador, venga con el nombre que venga. El validador garantiza que hay uno."""
+        return t.cast(str, self.identifier or self.email or self.username)
 
 
 class SessionResponse(BaseModel):
@@ -99,6 +151,7 @@ class MeResponse(BaseModel):
     subject_id: str
     impersonating: bool = False
     email: str | None = None
+    username: str | None = None
     roles: list[str] = Field(default_factory=list)
     scopes: list[str] = Field(default_factory=list)
 
@@ -135,7 +188,9 @@ def resolve_transport(request: Request) -> "AbstractTransport":
     from hexcore.darwin.infrastructure.transports import TransportResolver
 
     contenedor = get_identity_container()
-    return TransportResolver(cookies=contenedor.config.cookies).resolve(request)
+    return TransportResolver(
+        cookies=contenedor.config.cookies, tokens=contenedor.config.tokens
+    ).resolve(request)
 
 
 def emit_tokens(
@@ -163,10 +218,20 @@ def emit_tokens(
     if clave is None:  # pragma: no cover - `IdentityConfig` ya lo garantiza
         return
 
+    # `max_age` **de la sesión, no del access token**.
+    #
+    # Acá estaba con `tokens.expires_in`, que es la vida del access token: 120 s por defecto.
+    # Pasado ese rato el navegador descartaba la cookie de CSRF, y el `CsrfMiddleware` —que
+    # exige que el header `X-CSRF-Token` coincida con ella— rechazaba con 403 el siguiente
+    # `POST`. Incluido `POST /auth/refresh`, o sea que una pestaña inactiva más de dos minutos
+    # no podía renovar la sesión y el usuario quedaba afuera sin entender por qué.
+    #
+    # El valor es un HMAC del `sid`, así que es válido mientras viva la sesión: alinearlo con
+    # el refresh es lo coherente, y es el mismo número que la cookie de refresh.
     response.set_cookie(
         config.cookies.name_for("csrf"),
         derive_csrf_token(str(tokens.session_id), clave.get_secret_value()),
-        max_age=tokens.expires_in,
+        max_age=int(config.tokens.refresh_ttl.total_seconds()),
         httponly=False,
         secure=config.cookies.secure,
         samesite=config.cookies.same_site,
@@ -257,9 +322,15 @@ def build_identity_router(
 
             servicio = get_identity_container().identity_service()
             usuario, codigo = await servicio.sign_up(
-                email=payload.email, password=payload.password, name=payload.name
+                email=payload.email,
+                password=payload.password,
+                name=payload.name,
+                username=payload.username,
             )
-            return {"user_id": str(usuario.id), "verification_code": codigo}
+            cuerpo = {"user_id": str(usuario.id)}
+            if codigo is not None:
+                cuerpo["verification_code"] = codigo
+            return cuerpo
 
     @router.post("/verify-email", dependencies=limite)
     async def verify_email(payload: VerifyEmailRequest) -> dict[str, bool]:
@@ -285,7 +356,7 @@ def build_identity_router(
 
         contenedor = get_identity_container()
         _, _, tokens = await contenedor.identity_service().sign_in(
-            email=payload.email,
+            identifier=payload.credential,
             password=payload.password,
             transport=transport.name,
             ip_address=_ip(request),
@@ -401,16 +472,20 @@ def build_identity_router(
         from hexcore.darwin.application.container import get_identity_container
 
         email = None
+        username = None
         actor_id = auth.actor_id
         if not isinstance(actor_id, str):
             usuario = await get_identity_container().users().get_by_id(actor_id)
-            email = usuario.email if usuario is not None else None
+            if usuario is not None:
+                email = usuario.email
+                username = usuario.username
 
         return MeResponse(
             actor_id=str(actor_id),
             subject_id=str(auth.subject_id),
             impersonating=auth.is_impersonating,
             email=email,
+            username=username,
             roles=sorted(getattr(auth.actor, "roles", frozenset())),
             scopes=sorted(auth.actor.scopes),
         )

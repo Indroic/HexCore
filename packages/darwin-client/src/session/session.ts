@@ -6,6 +6,7 @@ import type {
   MeResponse,
   SessionResponse,
   SessionState,
+  SignInRequest,
   SignInResult,
 } from "../core/types";
 import type { DarwinTokens } from "../transport";
@@ -24,7 +25,13 @@ export interface Session {
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => SessionState;
   getServerSnapshot: () => SessionState;
-  signIn: (email: string, password: string) => Promise<SignInResult>;
+  /**
+   * Abre sesión con el identificador que el backend habilite: el mail o el nombre de usuario.
+   *
+   * El parámetro se llamaba `email` hasta la 0.2: es posicional, así que el renombre no rompe
+   * ningún call site, sólo describe mejor lo que ya se podía pasar.
+   */
+  signIn: (identifier: string, password: string) => Promise<SignInResult>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   me: () => Promise<MeResponse>;
@@ -109,11 +116,15 @@ export function createSession(options: DarwinClientOptions): Session {
     return { status: "signed-in", session };
   }
 
-  async function signIn(email: string, password: string): Promise<SignInResult> {
+  async function signIn(identifier: string, password: string): Promise<SignInResult> {
     try {
+      // El cuerpo va tipado contra el contrato generado y no como objeto anónimo: `$fetch`
+      // toma `body?: unknown`, así que sin el tipo un campo mal escrito no lo atrapa nadie
+      // hasta el 422 del servidor.
+      const body: SignInRequest = { identifier, password };
       const session = await fetcher.$fetch<SessionResponse>("/auth/sign-in", {
         method: "POST",
-        body: { email, password },
+        body,
       });
       return await completeAuthentication(session);
     } catch (error) {

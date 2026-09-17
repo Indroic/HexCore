@@ -27,6 +27,8 @@ import typing as t
 
 import pytest
 
+from rutas import PAQUETE as RAIZ
+
 pytest.importorskip("joserfc")
 pytest.importorskip("argon2")
 pytest.importorskip("sqlalchemy")
@@ -429,3 +431,132 @@ class TestLosDocumentosLleganAInitBeanie:
         firma = inspect.signature(init_identity_documents)
         assert "plugins" in firma.parameters
         assert firma.parameters["plugins"].kind is inspect.Parameter.KEYWORD_ONLY
+
+
+# ── El modelo concreto se resuelve sin importar `models.py` ───────────────────
+class TestElRegistryResuelveElModeloConcreto:
+    """
+    La regresión del arranque roto.
+
+    Los repositorios conseguían su modelo con `from ...orms.sqlalchemy.models import X`, y ese
+    import no trae una clase: ejecuta el módulo, que declara **las seis** sobre `Base`. Un
+    consumidor con su propio modelo sobre `darwin_user` —el camino que la documentación
+    recomienda— terminaba con dos clases peleando por la misma tabla y la app no arrancaba, con
+    un `InvalidRequestError` que apunta a la consulta y no al import que la causó.
+    """
+
+    def test_devuelve_la_clase_que_esta_sobre_la_tabla_canonica(self) -> None:
+        """
+        El desempate es el nombre de la tabla, no el mixin.
+
+        Cualquier clase del proyecto que componga `UserMixin` es candidata por mixin —un modelo
+        de otra app, una clase de test que quedó colgando— y ninguna de ellas es la de
+        identidad. La tabla sí la identifica.
+        """
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.registry import identity_model
+
+        for kind, tabla in (
+            ("user", "darwin_user"),
+            ("session", "darwin_session"),
+            ("account", "darwin_account"),
+            ("verification", "darwin_verification"),
+            ("audit", "darwin_audit_log"),
+            ("jwks", "darwin_jwks"),
+        ):
+            modelo = identity_model(kind)  # pyright: ignore[reportArgumentType]
+            assert modelo.__tablename__ == tabla, (
+                f"identity_model('{kind}') devolvió {modelo!r}, que está sobre "
+                f"'{modelo.__tablename__}' y no sobre '{tabla}'."
+            )
+
+    def test_una_clase_retirada_del_metadata_no_es_candidata(self) -> None:
+        """
+        Una clase declarada y retirada con `Base.metadata.remove()` sigue en
+        `Base.__subclasses__()` hasta que la recolecta el GC. Tomarla como candidata haría que
+        el resultado dependa del momento de la recolección.
+        """
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import UserMixin
+        from hexcore.darwin.infrastructure.orms.sqlalchemy.registry import identity_model
+        from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
+
+        class UsuarioFantasma(UserMixin, Base):
+            __tablename__ = "usuario_fantasma"
+
+        Base.metadata.remove(UsuarioFantasma.__table__)
+
+        assert identity_model("user").__tablename__ == "darwin_user"
+
+    def test_el_modelo_del_consumidor_no_rompe_el_arranque(self) -> None:
+        """
+        El escenario reportado, de punta a punta y en un proceso limpio.
+
+        En subproceso porque la prueba es **qué no se importó**, y en la suite `models.py` ya
+        está cargado por otros tests. Mismo motivo y misma técnica que
+        `test_los_mixins_no_registran_tablas`.
+        """
+        import subprocess
+        import sys
+        import textwrap
+
+        codigo = textwrap.dedent(
+            """
+            from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import (
+                AccountMixin, AuditLogMixin, JwksMixin, SessionMixin,
+                UserMixin, VerificationMixin,
+            )
+            from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
+
+            # Lo que declara el consumidor en su paquete `models/`, con una columna propia.
+            from sqlalchemy import String
+            from sqlalchemy.orm import Mapped, mapped_column
+
+            class UserModel(UserMixin, Base):
+                __tablename__ = "darwin_user"
+                plan: Mapped[str] = mapped_column(String(32), default="free")
+
+            class SessionModel(SessionMixin, Base):
+                __tablename__ = "darwin_session"
+
+            class AccountModel(AccountMixin, Base):
+                __tablename__ = "darwin_account"
+
+            class VerificationModel(VerificationMixin, Base):
+                __tablename__ = "darwin_verification"
+
+            class AuditLogModel(AuditLogMixin, Base):
+                __tablename__ = "darwin_audit_log"
+
+            class JwksModel(JwksMixin, Base):
+                __tablename__ = "darwin_jwks"
+
+            import sys
+            from hexcore.darwin.infrastructure.orms.sqlalchemy import repositories as r
+
+            repos = [
+                r.UserRepository(), r.SessionRepository(),
+                r.AccountRepository(), r.VerificationRepository(),
+            ]
+            assert repos[0]._model is UserModel, repos[0]._model
+            assert repos[1]._model is SessionModel, repos[1]._model
+            assert repos[2]._model is AccountModel, repos[2]._model
+            assert repos[3]._model is VerificationModel, repos[3]._model
+
+            DEFAULTS = "hexcore.darwin.infrastructure.orms.sqlalchemy.models"
+            print("IMPORTADO" if DEFAULTS in sys.modules else "OK")
+            """
+        )
+        salida = subprocess.run(
+            [sys.executable, "-c", codigo],
+            capture_output=True,
+            text=True,
+            cwd=str(RAIZ),
+        )
+
+        assert salida.returncode == 0, (
+            f"Declarar los seis modelos propios rompió el arranque:\n{salida.stderr}"
+        )
+        assert salida.stdout.strip() == "OK", (
+            "Los repositorios importaron `models.py` teniendo los modelos del consumidor "
+            "declarados. Ese import declara las seis clases por defecto y es exactamente lo "
+            "que colisiona con `darwin_user`."
+        )

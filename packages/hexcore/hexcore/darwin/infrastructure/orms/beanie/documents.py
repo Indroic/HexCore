@@ -86,8 +86,13 @@ class UserDocument(_Base):
                 pass
     """
 
-    email: str
+    #: **Opcional desde 10.0**, igual que en el backend de SQL.
+    email: str | None = None
     email_verified: bool = False
+
+    #: El nombre de usuario, ya normalizado por `UsernamePolicy.normalize`.
+    username: str | None = None
+
     name: str | None = None
     image: str | None = None
 
@@ -104,9 +109,19 @@ class UserDocument(_Base):
         use_cache = False
         indexes = [
             IndexModel([("entity_id", pymongo.ASCENDING)], unique=True),
-            # `email` único: es la clave de login, y sin el índice dos altas concurrentes con el
-            # mismo mail crean dos cuentas y el login pasa a ser una lotería.
-            IndexModel([("email", pymongo.ASCENDING)], unique=True),
+            # `email` y `username` únicos: son las claves de login, y sin el índice dos altas
+            # concurrentes con el mismo valor crean dos cuentas y entrar pasa a ser una lotería.
+            #
+            # ⚠️ **`sparse=True` no es opcional acá.** Un índice único no-sparse en Mongo trata
+            # todos los documentos sin el campo como si compartieran el mismo valor `null`, así
+            # que el segundo usuario sin mail —o sin username— falla con `DuplicateKeyError` al
+            # insertar. Con los dos campos opcionales desde 10.0, eso pasaría de inmediato.
+            #
+            # ⚠️ Beanie **no reconstruye un índice que ya existe**: un despliegue que venía de
+            # 9.x tiene el de `email` creado sin `sparse`, y hay que hacerle `dropIndex` antes
+            # de volver a levantar. Está documentado en `almacenamiento.md`.
+            IndexModel([("email", pymongo.ASCENDING)], unique=True, sparse=True),
+            IndexModel([("username", pymongo.ASCENDING)], unique=True, sparse=True),
         ]
 
 
@@ -132,6 +147,10 @@ class SessionDocument(_Base):
 
     #: Atado al `aud` del token: impide replayear una cookie como Bearer.
     transport: str = "cookie"
+
+    #: Los permisos con los que se abrió la sesión, para restaurarlos al rotar. Ver el campo
+    #: homónimo de `IdentitySession`.
+    scopes: list[str] = Field(default_factory=list)
 
     expires_at: datetime
     revoked_at: datetime | None = None

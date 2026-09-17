@@ -86,7 +86,10 @@ only signature, `exp`, audience and transport.
 2. A `sid` denylist in `ICache`: `SignOut` blocks the session and a still-valid token is rejected
    without waiting for expiry.
 3. A per-user generation counter: `SignOutEverywhere` increments it and every token from the
-   previous generation is rejected without enumerating them.
+   previous generation is rejected without enumerating them. `GenerationGuard` checks it,
+   caching the counter for 60 s so the hot path does not query the database on every request;
+   `revoke_all_for` drops that entry in the same flow, so the cut is immediate rather than
+   "within a minute".
 
 The refresh token **does** hit the database: it rotates the session atomically and detects reuse.
 A stolen refresh token revokes the entire family on the first attempt.
@@ -140,6 +143,7 @@ IdentityConfig(
     cookies=CookieConfig(...),
     passwords=PasswordPolicy(...),
     user_model=None,                 # your class, if you compose UserMixin
+    session_model=None,              # same for the other five tables
     storage=None,                    # "sqlalchemy" | "beanie" | None (detects)
     trusted_origins=(),
     worker_context_ttl=timedelta(hours=24),
@@ -152,10 +156,14 @@ IdentityConfig(
 | :-- | :-- | :-- |
 | `secret_key` | `None` | The signing key. **No default**: read from `HEXCORE_DARWIN_SECRET_KEY` |
 | `user_model` | `None` | Your class, if you compose `UserMixin`. Validated at configure time |
+| `session_model`, `account_model`, `verification_model`, `audit_model`, `jwks_model` | `None` | Same for the other five tables. **Rarely needed**: if you declare your models, Darwin finds them (see below) |
 | `storage` | `None` | `"sqlalchemy"`, `"beanie"`, or detection |
 | `trusted_origins` | `()` | Valid origins for the anti-CSRF check |
 | `worker_context_ttl` | 24 h | Window in which the actor envelope remains redeemable |
-| `require_verified_email` | `True` | Whether sign-in requires a verified email |
+| `require_verified_email` | `True` | Whether sign-in requires a verified email. **Does not apply to an account with no email**: requiring it there would be a permanent 403 |
+| `usernames` | `None` | The `UsernamePolicy`, or `None` if this app has no usernames |
+| `require_email` | `True` | Whether sign-up requires an email address |
+| `sign_in_identifiers` | `("email",)` | What you can sign in with: `"email"`, `"username"`, or both |
 | `max_verification_attempts` | `5` | Attempts per verification token before invalidating it |
 
 `TokenConfig`:
@@ -191,8 +199,67 @@ In production it **fails if there is no signing key**, and that is deliberate. T
 `hexcore identity generate-secret`.
 
 `configure_identity(config, **components)` accepts any port to inject: `users=`, `clock=`,
-`key_store=`, `plugins=`, … It is what the tests use and what lets you persist the keys in
-production.
+`key_store=`, `principals=`, `plugins=`, … It is what the tests use and what lets you plug in
+your application's permissions.
+
+---
+
+## Your own concrete models
+
+If you declare your own models on Darwin's tables — the recommended path, and the only one that
+lets you add columns to them — **no configuration is needed**:
+
+```python
+from hexcore.darwin import UserMixin
+from hexcore.sql import Base
+
+class UserModel(UserMixin, Base):
+    __tablename__ = "darwin_user"
+    plan: Mapped[str] = mapped_column(String(32), default="free")
+```
+
+Darwin resolves each table's concrete class in three steps: what you declared in
+`IdentityConfig`, then the mapped class composing the matching mixin, and only if there is none,
+the one from its own `models.py`.
+
+⚠️ **That order is what prevents a broken startup.** Importing `models.py` to obtain *one* class
+runs the whole module, which declares **all six** on `Base`. With your `UserModel` already
+declared on `darwin_user`, that is two classes fighting over the same table, and SQLAlchemy
+fails with `InvalidRequestError: Table 'darwin_user' is already defined for this MetaData
+instance` — on the first use of any repository, so the traceback points at a session query
+rather than at the import that caused it. The `*_model` fields on `IdentityConfig` exist only to
+break a tie when you map two classes onto the same mixin in different tables.
+
+---
+
+## Roles and scopes
+
+`Principal` carries `roles` and `scopes`, and where they come from is your application's
+decision, expressed as a port:
+
+```python
+from hexcore.darwin import AbstractPrincipalResolver, configure_identity
+
+class AppRoles(AbstractPrincipalResolver):
+    async def resolve(self, user):
+        async with uow_scope() as uow:
+            row = await uow.memberships.get_by_user(user.id)
+        return frozenset(row.roles), frozenset(row.permissions)
+
+configure_identity(IdentityConfig(), principals=AppRoles())
+```
+
+The default is `NullPrincipalResolver`, which returns two empty sets: an application that
+declares no permissions does not start receiving them because it upgraded.
+
+**It is consulted on sign-in and on every refresh rotation**, that is every `access_ttl`
+(2 minutes) while the session is alive. Re-resolving is what makes revoking someone's role take
+effect without waiting for them to sign out — the cut lands on the next rotation. If you need it
+immediate, the tool is `revoke_all_for`, which bumps the generation and kills every token for
+that user at once.
+
+Both travel inside the token, not in the database: `authenticate` is the hot path and does not
+query.
 
 ---
 

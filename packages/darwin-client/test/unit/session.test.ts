@@ -107,6 +107,35 @@ describe("createSession", () => {
     });
   });
 
+  it("signIn manda el identificador como 'identifier', no como 'email'", async () => {
+    // El backend acepta los tres nombres para no romper a un front de 9.x, pero el cliente
+    // manda el canónico: si mandara 'email', un identificador que es un nombre de usuario
+    // viajaría en un campo que dice ser otra cosa.
+    let cuerpo: unknown;
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      if (path === "/auth/sign-in") {
+        cuerpo = JSON.parse(String(init?.body));
+        return jsonResponse({
+          body: {
+            session_id: "s1",
+            expires_in: 120,
+            token_type: "Bearer",
+            access_token: "at",
+          },
+        });
+      }
+      return jsonResponse({
+        body: { actor_id: "u1", subject_id: "u1", impersonating: false },
+      });
+    }) as unknown as typeof fetch;
+
+    const session = nuevaSesion(fetchImpl);
+    await session.signIn("indroic", "pass");
+
+    expect(cuerpo).toEqual({ identifier: "indroic", password: "pass" });
+  });
+
   it("signIn con 2FA activado devuelve el resultado discriminado, sin tocar el store", async () => {
     const { fetchImpl } = fakeServer({ twoFactor: true });
     const session = nuevaSesion(fetchImpl);
