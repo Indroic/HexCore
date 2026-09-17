@@ -1,3 +1,14 @@
+## hexcore-v10.2.0 (2026-09-17)
+
+### Feat
+
+- **darwin**: contrato de autorización en el núcleo (Fase F0 de rbac/drbac)
+
+### Fix
+
+- **darwin-client**: regenerar error-codes.ts con AccessDeniedError
+- **darwin**: regenerar el contrato de errores con AccessDeniedError
+
 ## hexcore-v10.1.0 (2026-09-17)
 
 ### Feat
