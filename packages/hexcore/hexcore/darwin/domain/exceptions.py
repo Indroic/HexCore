@@ -37,6 +37,7 @@ __all__ = [
     "CsrfValidationError",
     # ── Estado (409 / 423) ──
     "EmailAlreadyRegisteredError",
+    "UsernameAlreadyTakenError",
     "AccountLockedError",
     # ── Integridad (500) ──
     "WorkerContextIntegrityError",
@@ -164,6 +165,18 @@ class EmailAlreadyRegisteredError(IdentityError):
     """
 
 
+class UsernameAlreadyTakenError(IdentityError):
+    """
+    Ese nombre de usuario ya está tomado.
+
+    Es el hermano de `EmailAlreadyRegisteredError` y se mapea al mismo 409, pero **no es el
+    mismo oráculo**: a diferencia del mail, un username suele ser público —aparece en la URL
+    del perfil, al lado de cada mensaje— así que decir que está tomado no revela nada que no se
+    pueda averiguar mirando. De hecho un alta que no lo dijera sería inusable: quien elige un
+    nombre necesita saber que tiene que elegir otro.
+    """
+
+
 class AccountLockedError(IdentityError):
     """
     La cuenta está bloqueada, por intentos fallidos o por decisión administrativa.
@@ -203,6 +216,7 @@ IDENTITY_EXCEPTION_STATUS_MAP: dict[type[Exception], int] = {
     ImpersonationNotPermittedError: 403,
     CsrfValidationError: 403,
     EmailAlreadyRegisteredError: 409,
+    UsernameAlreadyTakenError: 409,
     AccountLockedError: 423,
     WorkerContextIntegrityError: 500,
 }

@@ -92,6 +92,64 @@ class TestDocumentos:
         for documento in IDENTITY_DOCUMENTS:
             assert not issubclass(documento, BaseDocument), documento.__name__
 
+    def test_los_indices_unicos_opcionales_son_sparse(self):
+        """
+        ⚠️ **La trampa de Mongo, y es de pérdida de servicio, no de rendimiento.**
+
+        Un índice único **no-sparse** trata a todos los documentos que no tienen el campo como
+        si compartieran el mismo valor `null`. Con `email` y `username` opcionales desde 10.0,
+        eso significa que el **segundo** usuario sin mail falla con `DuplicateKeyError` en el
+        insert — un alta que funciona una vez y después no, sin nada en el código que lo
+        explique.
+
+        El índice de `email` venía de 9.x sin `sparse`, cuando la columna era obligatoria y por
+        lo tanto daba igual. Al volverla opcional dejó de dar igual.
+
+        ⚠️ Beanie **no reconstruye un índice que ya existe**: un despliegue que viene de 9.x
+        necesita `db.darwin_user.dropIndex("email_1")` antes de levantar. Está en
+        `docs/hexcore/*/darwin/almacenamiento.md`.
+        """
+        por_campo = {
+            tuple(indice.document["key"])[0]: indice.document
+            for indice in UserDocument.Settings.indexes
+        }
+
+        for campo in ("email", "username"):
+            assert campo in por_campo, f"falta el índice de {campo}"
+            assert por_campo[campo].get("unique") is True, (
+                f"el índice de {campo} tiene que ser único: es una clave de login, y sin eso "
+                f"dos altas concurrentes crean dos cuentas."
+            )
+            assert por_campo[campo].get("sparse") is True, (
+                f"el índice único de {campo} no es sparse. En Mongo eso hace que todos los "
+                f"documentos sin el campo colisionen entre sí: el segundo usuario sin {campo} "
+                f"falla con DuplicateKeyError al insertar."
+            )
+
+    def test_los_dos_identificadores_son_opcionales(self):
+        """
+        El cambio de 10.0, del lado de Mongo.
+
+        Se inspecciona `model_fields` en vez de construir el documento: un `Document` de Beanie
+        sin `init_beanie` levanta `CollectionWasNotInitialized`, y levantar un Mongo para
+        preguntar si un campo tiene default sería desproporcionado.
+        """
+        campos = UserDocument.model_fields
+
+        for nombre in ("email", "username"):
+            assert not campos[nombre].is_required(), (
+                f"{nombre} es obligatorio, así que una cuenta que no lo tenga no se puede "
+                f"crear — que es exactamente lo que 10.0 viene a permitir."
+            )
+            assert campos[nombre].get_default() is None
+
+    def test_la_sesion_guarda_sus_scopes(self):
+        """La lista que permite restaurar los permisos al rotar. Default `[]`, nunca `None`."""
+        campo = SessionDocument.model_fields["scopes"]
+
+        assert not campo.is_required()
+        assert campo.get_default(call_default_factory=True) == []
+
     def test_cada_uno_tiene_su_coleccion(self):
         nombres = [d.Settings.name for d in IDENTITY_DOCUMENTS]
 
@@ -472,6 +530,70 @@ class TestMapeo:
         assert entidad.purpose == "magic_link"
         assert entidad.attempts == 2
         assert entidad.expires_at.tzinfo is not None
+
+    def test_el_usuario_mapea_los_dos_identificadores(self):
+        """
+        Los campos que agregó 10.0, en el mapeador. Un olvido acá no rompe ningún test de
+        esquema —la columna existe— pero hace que el username no vuelva nunca de la base, y el
+        síntoma es un login que dice "credenciales inválidas" con la contraseña correcta.
+        """
+        import types
+
+        from hexcore.darwin.infrastructure.orms.beanie.repositories import _a_usuario
+
+        doc = types.SimpleNamespace(
+            entity_id=uuid4(),
+            email=None,
+            username="indroic",
+            email_verified=False,
+            name=None,
+            image=None,
+            token_generation=0,
+            locked_until=None,
+            is_active=True,
+            extra={},
+            created_at=AHORA,
+            updated_at=AHORA,
+        )
+
+        entidad = _a_usuario(doc)
+
+        assert entidad.username == "indroic"
+        assert entidad.email is None
+
+    def test_la_sesion_mapea_los_scopes_como_frozenset(self):
+        """
+        Mongo devuelve una lista; la entidad los quiere `frozenset`. Y una sesión vieja sin el
+        campo devuelve `None`, que `frozenset(None)` convertiría en `TypeError`.
+        """
+        import types
+
+        from hexcore.darwin.infrastructure.orms.beanie.repositories import _a_sesion
+
+        def _doc(scopes):
+            return types.SimpleNamespace(
+                entity_id=uuid4(),
+                actor_user_id=uuid4(),
+                subject_user_id=uuid4(),
+                token_hash="h",
+                family_id=uuid4(),
+                transport="cookie",
+                scopes=scopes,
+                expires_at=AHORA + timedelta(hours=1),
+                revoked_at=None,
+                consumed_at=None,
+                ip_address=None,
+                user_agent=None,
+                impersonation_reason=None,
+                impersonation_granted_by=None,
+                impersonation_expires_at=None,
+                is_active=True,
+                created_at=AHORA,
+                updated_at=AHORA,
+            )
+
+        assert _a_sesion(_doc(["a", "b"])).scopes == frozenset({"a", "b"})
+        assert _a_sesion(_doc(None)).scopes == frozenset()
 
 
 # ── Con un Mongo real ─────────────────────────────────────────────────────────

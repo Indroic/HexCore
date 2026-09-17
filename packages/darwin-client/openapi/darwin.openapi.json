@@ -505,6 +505,17 @@
           "subject_id": {
             "title": "Subject Id",
             "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
           }
         },
         "required": [
@@ -848,28 +859,65 @@
         "type": "object"
       },
       "SignInRequest": {
+        "description": "El cuerpo de `POST /auth/sign-in`.\n\nAcepta el identificador con **tres nombres**: `identifier`, que es el canónico desde 10.0,\nmás `email` y `username`. Los dos viejos no son cortesía: un cliente de 9.x manda\n`{\"email\": ..., \"password\": ...}`, y sin ellos ese cuerpo dejaría de validar y todo front\nexistente se rompería en el deploy.\n\nSon **tres campos opcionales más un validador**, y no un `validation_alias` con\n`AliasChoices`, que sería la forma corta. El motivo es concreto: FastAPI reconstruye el\ncampo al armar el parámetro de cuerpo, y en esa reconstrucción pydantic descarta el alias y\navisa con `UnsupportedFieldAttributeWarning` — en cada arranque de cada app que monte el\nrouter. La validación igual funcionaba, pero un warning que no se puede arreglar desde la\napp del consumidor es ruido permanente. De paso, esta forma deja decir **qué** falta en vez\nde un \"field required\" sobre un campo que el cliente no sabe que existe.",
         "properties": {
           "email": {
-            "title": "Email",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "identifier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identifier"
           },
           "password": {
             "title": "Password",
             "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
           }
         },
         "required": [
-          "email",
           "password"
         ],
         "title": "SignInRequest",
         "type": "object"
       },
       "SignUpRequest": {
+        "description": "El cuerpo de `POST /auth/sign-up`.\n\n`email` es opcional desde 10.0: qué se exige lo decide `IdentityConfig.require_email`, y\nduplicar el requisito acá daría dos lugares donde puede discrepar. Un cuerpo sin ninguno de\nlos dos identificadores lo rechaza el servicio con un 400.",
         "properties": {
           "email": {
-            "title": "Email",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
           },
           "name": {
             "anyOf": [
@@ -885,10 +933,20 @@
           "password": {
             "title": "Password",
             "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
           }
         },
         "required": [
-          "email",
           "password"
         ],
         "title": "SignUpRequest",

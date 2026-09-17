@@ -45,6 +45,8 @@ __all__ = [
     "AbstractVerificationRepository",
     "AbstractRevocationList",
     "AbstractAuditSink",
+    "AbstractPrincipalResolver",
+    "NullPrincipalResolver",
 ]
 
 
@@ -123,6 +125,17 @@ class AbstractUserRepository(abc.ABC):
     @abc.abstractmethod
     async def get_by_email(self, email: str) -> "User | None":
         """`email` ya viene normalizado por `Email`. No normalizar acá de nuevo."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def get_by_username(self, username: str) -> "User | None":
+        """
+        `username` ya viene normalizado por `UsernamePolicy.normalize`. No normalizar de nuevo.
+
+        Mismo contrato que `get_by_email` y por el mismo motivo: si cada adaptador normalizara
+        por su cuenta, dos backends podrían discrepar y el mismo usuario existiría en uno y no
+        en el otro.
+        """
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -341,3 +354,73 @@ class AbstractAuditSink(abc.ABC):
         metadata: t.Mapping[str, t.Any] | None = None,
     ) -> None:
         raise NotImplementedError
+
+
+class AbstractPrincipalResolver(abc.ABC):
+    """
+    De dónde salen los roles y los scopes de un usuario.
+
+    Existe porque **no había forma de poblarlos por HTTP**. `Principal` tiene `roles` y
+    `scopes` desde siempre, y `AccessTokenClaims` transporta los scopes, pero el único camino
+    para llenarlos era llamar a `IdentityService.sign_in(scopes=...)` a mano: la ruta
+    `POST /auth/sign-in` no los pasa, así que toda sesión abierta por el router salía con los
+    dos conjuntos vacíos y `auth.require_scopes(...)` rechazaba a todo el mundo.
+
+    El hook `SIGN_IN_AUTHENTICATED` tampoco alcanzaba. Es un hook `before` sobre el usuario:
+    puede reemplazarlo o abortar el login, pero corre **antes** de que la sesión exista y no
+    tiene dónde depositar unos permisos. Servía para exigir un segundo factor, no para decidir
+    qué puede hacer alguien.
+
+    Es un puerto y no un callable en la config por lo mismo que el resto de los puertos del
+    módulo: se puede testear solo, se puede declarar su contrato, y `configure_identity` lo
+    valida al cablear en vez de fallar en el primer login.
+
+    **Dónde se llama**, y esto es lo que hay que tener presente al implementarlo:
+
+    - En el sign-in, una vez.
+    - En **cada rotación de refresh**, o sea cada `access_ttl` (120 s por defecto) mientras la
+      sesión esté activa. Re-resolver es deliberado: es lo que hace que quitarle un rol a
+      alguien tenga efecto sin esperar a que cierre sesión. La contracara es que esto está en
+      un camino caliente-ish, así que una implementación que pegue tres queries por llamada se
+      va a notar. Cachear adentro es válido y esperable.
+
+    Si el corte tiene que ser inmediato y no "dentro de dos minutos", la herramienta es
+    `bump_token_generation`, que invalida todos los tokens del usuario de una.
+
+    Uso::
+
+        class RolesDeLaApp(AbstractPrincipalResolver):
+            def __init__(self, uow_scope):
+                self._uow_scope = uow_scope
+
+            async def resolve(self, user):
+                async with self._uow_scope() as uow:
+                    fila = await uow.membresias.get_by_user(user.id)
+                return frozenset(fila.roles), frozenset(fila.permisos)
+
+        configure_identity(IdentityConfig(), principals=RolesDeLaApp(uow_scope))
+    """
+
+    @abc.abstractmethod
+    async def resolve(self, user: "User") -> tuple[frozenset[str], frozenset[str]]:
+        """
+        Los `(roles, scopes)` de ese usuario.
+
+        Devolver dos conjuntos vacíos es válido y es lo que hace el default: significa "esta
+        app no usa permisos de Darwin", no "este usuario no puede nada".
+        """
+        raise NotImplementedError
+
+
+class NullPrincipalResolver(AbstractPrincipalResolver):
+    """
+    El resolver por defecto: nadie tiene roles ni scopes.
+
+    Es el comportamiento de 9.x, y por eso es el default: una app que no declara permisos no
+    empieza a recibirlos de golpe porque actualizó. Concreto y no `None` para que
+    `SessionService` no tenga que preguntar si hay resolver en cada rotación.
+    """
+
+    async def resolve(self, user: "User") -> tuple[frozenset[str], frozenset[str]]:
+        del user
+        return frozenset(), frozenset()

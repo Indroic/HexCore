@@ -9,7 +9,7 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 192 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 200 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
@@ -32,6 +32,7 @@ from hexcore.darwin.application.config import IdentityConfig as IdentityConfig
 from hexcore.darwin.application.config import PasswordPolicy as PasswordPolicy
 from hexcore.darwin.application.config import SECRET_KEY_ENV as SECRET_KEY_ENV
 from hexcore.darwin.application.config import TokenConfig as TokenConfig
+from hexcore.darwin.application.config import UsernamePolicy as UsernamePolicy
 from hexcore.darwin.application.container import IdentityContainer as IdentityContainer
 from hexcore.darwin.application.container import configure_identity as configure_identity
 from hexcore.darwin.application.container import get_identity_container as get_identity_container
@@ -92,6 +93,7 @@ from hexcore.darwin.domain.exceptions import TokenExpiredError as TokenExpiredEr
 from hexcore.darwin.domain.exceptions import TokenMalformedError as TokenMalformedError
 from hexcore.darwin.domain.exceptions import TokenRevokedError as TokenRevokedError
 from hexcore.darwin.domain.exceptions import UnauthenticatedError as UnauthenticatedError
+from hexcore.darwin.domain.exceptions import UsernameAlreadyTakenError as UsernameAlreadyTakenError
 from hexcore.darwin.domain.exceptions import WorkerContextIntegrityError as WorkerContextIntegrityError
 from hexcore.darwin.domain.permissions import Permission as Permission
 from hexcore.darwin.domain.permissions import PermissionCycleError as PermissionCycleError
@@ -109,15 +111,18 @@ from hexcore.darwin.domain.ports import AbstractAccountRepository as AbstractAcc
 from hexcore.darwin.domain.ports import AbstractAuditSink as AbstractAuditSink
 from hexcore.darwin.domain.ports import AbstractClock as AbstractClock
 from hexcore.darwin.domain.ports import AbstractPasswordHasher as AbstractPasswordHasher
+from hexcore.darwin.domain.ports import AbstractPrincipalResolver as AbstractPrincipalResolver
 from hexcore.darwin.domain.ports import AbstractRevocationList as AbstractRevocationList
 from hexcore.darwin.domain.ports import AbstractSessionRepository as AbstractSessionRepository
 from hexcore.darwin.domain.ports import AbstractUserRepository as AbstractUserRepository
 from hexcore.darwin.domain.ports import AbstractVerificationRepository as AbstractVerificationRepository
+from hexcore.darwin.domain.ports import NullPrincipalResolver as NullPrincipalResolver
 from hexcore.darwin.domain.value_objects import AccessTokenClaims as AccessTokenClaims
 from hexcore.darwin.domain.value_objects import CoreVerificationPurpose as CoreVerificationPurpose
 from hexcore.darwin.domain.value_objects import Email as Email
 from hexcore.darwin.domain.value_objects import TokenPair as TokenPair
 from hexcore.darwin.domain.value_objects import TokenType as TokenType
+from hexcore.darwin.domain.value_objects import Username as Username
 from hexcore.darwin.domain.value_objects import VerificationPurpose as VerificationPurpose
 from hexcore.darwin.infrastructure.api.dependencies import WWW_AUTHENTICATE as WWW_AUTHENTICATE
 from hexcore.darwin.infrastructure.api.dependencies import identity_exception_headers as identity_exception_headers
@@ -183,6 +188,8 @@ from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import SessionM
 from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import TimestampMixin as TimestampMixin
 from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import UserMixin as UserMixin
 from hexcore.darwin.infrastructure.orms.sqlalchemy.models_mixins import VerificationMixin as VerificationMixin
+from hexcore.darwin.infrastructure.orms.sqlalchemy.registry import identity_model as identity_model
+from hexcore.darwin.infrastructure.orms.sqlalchemy.registry import resolve_identity_models as resolve_identity_models
 from hexcore.darwin.infrastructure.orms.sqlalchemy.repositories import SqlAlchemyAccountRepository as SqlAlchemyAccountRepository
 from hexcore.darwin.infrastructure.orms.sqlalchemy.repositories import SqlAlchemyAuditSink as SqlAlchemyAuditSink
 from hexcore.darwin.infrastructure.orms.sqlalchemy.repositories import SqlAlchemySessionRepository as SqlAlchemySessionRepository
@@ -192,6 +199,7 @@ from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import create_identity
 from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import drop_identity_tables as drop_identity_tables
 from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import ensure_identity_schema_loaded as ensure_identity_schema_loaded
 from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import identity_tables as identity_tables
+from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import validate_identity_model as validate_identity_model
 from hexcore.darwin.infrastructure.orms.sqlalchemy.schema import validate_user_model as validate_user_model
 from hexcore.darwin.infrastructure.revocation import CacheErrorPolicy as CacheErrorPolicy
 from hexcore.darwin.infrastructure.revocation import CacheRevocationList as CacheRevocationList
@@ -213,6 +221,7 @@ __all__ = [
     "AbstractClock",
     "AbstractKeyStore",
     "AbstractPasswordHasher",
+    "AbstractPrincipalResolver",
     "AbstractRevocationList",
     "AbstractSessionRepository",
     "AbstractTransport",
@@ -285,6 +294,7 @@ __all__ = [
     "ListActiveSessions",
     "MeResponse",
     "NoActiveKeyError",
+    "NullPrincipalResolver",
     "PasswordPolicy",
     "Permission",
     "PermissionCycleError",
@@ -348,6 +358,9 @@ __all__ = [
     "UserRegisteredEvent",
     "UserSignInFailedEvent",
     "UserSignedInEvent",
+    "Username",
+    "UsernameAlreadyTakenError",
+    "UsernamePolicy",
     "Verification",
     "VerificationMixin",
     "VerificationModel",
@@ -378,6 +391,7 @@ __all__ = [
     "hash_token",
     "identity_action",
     "identity_exception_headers",
+    "identity_model",
     "identity_startup_steps",
     "identity_tables",
     "jwks_document",
@@ -394,9 +408,11 @@ __all__ = [
     "require_scopes",
     "reset_default_registry",
     "reset_identity",
+    "resolve_identity_models",
     "resolve_transport",
     "run_hooks",
     "session_response_body",
     "system_context",
+    "validate_identity_model",
     "validate_user_model",
 ]

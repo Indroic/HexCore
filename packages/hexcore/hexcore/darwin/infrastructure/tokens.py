@@ -130,7 +130,7 @@ class JoserfcTokenIssuer:
         """
         return await self._emitir(
             context, session_id=session_id, generation=generation, scopes=scopes,
-            typ="at+jwt", ttl=self._ttl.access,
+            roles=None, typ="at+jwt", ttl=self._ttl.access,
         )
 
     async def issue_refresh(
@@ -143,12 +143,13 @@ class JoserfcTokenIssuer:
         """
         Emite un refresh token.
 
-        Sin `scopes` a propósito: un refresh no autoriza nada, sólo canjea. Meterle permisos
-        haría que un refresh robado sirviera para actuar, no sólo para renovar.
+        Sin `scopes` **ni `roles`** a propósito: un refresh no autoriza nada, sólo canjea.
+        Meterle permisos haría que un refresh robado sirviera para actuar, no sólo para
+        renovar.
         """
         return await self._emitir(
             context, session_id=session_id, generation=generation, scopes=(),
-            typ="rt+jwt", ttl=self._ttl.refresh,
+            roles=(), typ="rt+jwt", ttl=self._ttl.refresh,
         )
 
     async def _emitir(
@@ -158,6 +159,7 @@ class JoserfcTokenIssuer:
         session_id: UUID,
         generation: int,
         scopes: t.Iterable[str] | None,
+        roles: t.Iterable[str] | None,
         typ: TokenType,
         ttl: timedelta,
     ) -> str:
@@ -192,6 +194,10 @@ class JoserfcTokenIssuer:
             exp=int((ahora + ttl).timestamp()),
             jti=uuid4(),
             scopes=frozenset(scopes or ()),
+            # `None` = tomarlos del actor. A diferencia de los scopes, que el llamador declara,
+            # los roles ya viajan en el `Principal` que `SessionService` armó, así que pedirlos
+            # de nuevo por parámetro sería una oportunidad más de olvidarlos.
+            roles=frozenset(roles if roles is not None else context.actor.roles),
             imp=context.is_impersonating,
         )
 

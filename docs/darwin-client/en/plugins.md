@@ -45,7 +45,7 @@ const enrollment = await client.twoFactor.enroll(); // { secret, uri, confirmed:
 // ...the user scans `uri` and confirms with a code...
 await client.twoFactor.confirm(code);
 
-const result = await client.signIn(email, password);
+const result = await client.signIn(identifier, password);
 if (result.status === "two-factor-required") {
   await client.twoFactor.complete(result.challenge, code);
 }

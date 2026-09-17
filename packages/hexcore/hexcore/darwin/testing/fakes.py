@@ -104,10 +104,14 @@ class PlainTextHasher(AbstractPasswordHasher):
 # ── Usuarios ──────────────────────────────────────────────────────────────────
 class FakeUserRepository(AbstractUserRepository):
     """
-    Usuarios en memoria, indexados por id y por mail.
+    Usuarios en memoria, indexados por id, por mail y por nombre de usuario.
 
-    El índice por mail se mantiene en paralelo y no se recorre la lista: es la consulta del
+    Los índices se mantienen en paralelo y no se recorre la lista: son las consultas del
     sign-in, y un test con doscientos usuarios sembrados no debería ser cuadrático.
+
+    Los dos identificadores son **opcionales**, así que las entradas de índice se escriben sólo
+    si el valor existe: indexar `None` haría que dos usuarios sin mail compartan la misma clave
+    y el segundo pisara al primero.
 
     Uso::
 
@@ -118,6 +122,7 @@ class FakeUserRepository(AbstractUserRepository):
     def __init__(self, users: t.Iterable[User] = ()) -> None:
         self._por_id: dict[UUID, User] = {}
         self._por_email: dict[str, UUID] = {}
+        self._por_username: dict[str, UUID] = {}
         self._lock = threading.RLock()
         for usuario in users:
             self._guardar(usuario)
@@ -126,13 +131,19 @@ class FakeUserRepository(AbstractUserRepository):
         copia = _copiar(usuario)
         with self._lock:
             anterior = self._por_id.get(copia.id)
-            if anterior is not None and anterior.email != copia.email:
-                # Un cambio de mail tiene que sacar la entrada vieja del índice: si no, el mail
-                # anterior seguiría resolviendo al usuario y un test de "cambié mi mail" pasaría
-                # con las dos direcciones funcionando.
-                self._por_email.pop(anterior.email, None)
+            if anterior is not None:
+                # Un cambio de identificador tiene que sacar la entrada vieja del índice: si no,
+                # el valor anterior seguiría resolviendo al usuario y un test de "cambié mi
+                # mail" pasaría con las dos direcciones funcionando.
+                if anterior.email is not None and anterior.email != copia.email:
+                    self._por_email.pop(anterior.email, None)
+                if anterior.username is not None and anterior.username != copia.username:
+                    self._por_username.pop(anterior.username, None)
             self._por_id[copia.id] = copia
-            self._por_email[copia.email] = copia.id
+            if copia.email is not None:
+                self._por_email[copia.email] = copia.id
+            if copia.username is not None:
+                self._por_username[copia.username] = copia.id
         return _copiar(copia)
 
     async def get_by_id(self, user_id: UUID) -> User | None:
@@ -144,6 +155,13 @@ class FakeUserRepository(AbstractUserRepository):
         """`email` ya viene normalizado por `Email`; no se vuelve a normalizar acá."""
         with self._lock:
             user_id = self._por_email.get(email)
+            fila = self._por_id.get(user_id) if user_id is not None else None
+        return _copiar(fila) if fila is not None else None
+
+    async def get_by_username(self, username: str) -> User | None:
+        """Ya viene normalizado por `UsernamePolicy.normalize`; no se normaliza de nuevo."""
+        with self._lock:
+            user_id = self._por_username.get(username)
             fila = self._por_id.get(user_id) if user_id is not None else None
         return _copiar(fila) if fila is not None else None
 

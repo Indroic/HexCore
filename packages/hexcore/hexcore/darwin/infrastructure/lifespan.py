@@ -63,6 +63,8 @@ class IdentityStep:
         configure_identity(self._config, **self._components)
         logger.info("Darwin configurado.")
 
+        self._verificar_defaults_de_produccion()
+
         if self._verify_schema:
             self._verificar_esquema()
 
@@ -91,7 +93,9 @@ class IdentityStep:
         migración es demasiado tarde para confiar en que alguien lo revise.
         """
         try:
-            from hexcore.darwin.infrastructure.orms.sqlalchemy.models import IDENTITY_MODELS
+            from hexcore.darwin.infrastructure.orms.sqlalchemy.registry import (
+                resolve_identity_models,
+            )
             from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
         except ImportError:
             # Sin el extra `[darwin-sqlalchemy]` no hay metadata que verificar.
@@ -100,7 +104,12 @@ class IdentityStep:
         # `t.Any` y no `type`: `__tablename__` lo agrega el mapeo declarativo en tiempo de
         # ejecución, así que no está en el tipo estático de una `type` cualquiera. Mismo
         # criterio que `identity_tables`.
-        esperadas: list[t.Any] = list(IDENTITY_MODELS)
+        #
+        # Resueltos y no `IDENTITY_MODELS`: importar `models.py` acá declaraba un segundo
+        # modelo sobre `darwin_user` y rompía el arranque del consumidor que ya tenía el suyo
+        # — y además verificaba las tablas por defecto en vez de las que él declaró. Ver el
+        # docstring de `registry`.
+        esperadas: list[t.Any] = list(resolve_identity_models(self._config_vigente()))
         esperadas.extend(self._modelos_de_los_plugins())
 
         registradas = set(Base.metadata.tables)
@@ -118,6 +127,101 @@ class IdentityStep:
             ", ".join(sorted(faltan)),
             list(self._nombres_de_los_plugins()),
         )
+
+    def _verificar_defaults_de_produccion(self) -> None:
+        """
+        Se niega a arrancar con los defaults de desarrollo si `debug=False`.
+
+        Los dos que chequea son fallas **silenciosas**: la app arranca, los tests pasan, y el
+        agujero aparece recién cuando hay más de un proceso. Es el mismo criterio que
+        `IdentityConfig.secret_key`, que no tiene default por la misma razón — sólo que acá el
+        valor por defecto no es inseguro en sí, es inseguro *en producción*.
+
+        Falla en vez de avisar, al revés que `_verificar_esquema`. La diferencia es que ahí hay
+        un caso legítimo —una app que crea sus tablas sin Alembic— y acá no: un despliegue de
+        producción con la clave de firma en memoria del proceso no es una decisión, es un
+        descuido.
+        """
+        if self._en_debug():
+            return
+
+        contenedor = self._contenedor_o_none()
+        if contenedor is None:  # pragma: no cover - contenedor a medio armar
+            return
+
+        if getattr(contenedor.key_store(), "ephemeral", False):
+            raise ValueError(
+                "Darwin arrancaría con una clave de firma **generada en cada arranque**, y "
+                "`debug` está en False.\n\n"
+                "Con esto, un reload invalida todas las sesiones y, con más de un proceso, "
+                "cada worker firma con una clave que los otros no verifican: el síntoma es un "
+                "401 intermitente que no se reproduce en desarrollo.\n\n"
+                "Sembrá la tabla de claves:\n\n"
+                "    hexcore identity generate-keys --persist\n\n"
+                "o inyectá el almacén: `configure_identity(config, key_store=...)`."
+            )
+
+        if self._cache_es_de_proceso():
+            raise ValueError(
+                "Darwin arrancaría con un `MemoryCache` y `debug` está en False.\n\n"
+                "La denylist de sesiones y el contador de generación viven en ese cache, y un "
+                "cache en memoria es **por proceso**: un `sign-out` corta la sesión en el "
+                "worker que atendió el pedido y la deja viva en todos los demás, igual que "
+                "'cerrar sesión en todos los dispositivos'.\n\n"
+                "Declará un cache compartido en `ServerConfig.cache_backend` (Redis, "
+                "Memcached, el que uses)."
+            )
+
+    @staticmethod
+    def _cache_es_de_proceso() -> bool:
+        """Si el cache configurado es el `MemoryCache` por defecto del framework."""
+        try:
+            from hexcore.config import LazyConfig
+            from hexcore.infrastructure.cache.cache_backends.memory import MemoryCache
+
+            return isinstance(LazyConfig.get_config().cache_backend, MemoryCache)
+        except Exception:  # pragma: no cover - config a medio armar
+            return False
+
+    @staticmethod
+    def _en_debug() -> bool:
+        """Si la app está en modo debug. Sin config resoluble se asume producción."""
+        try:
+            from hexcore.config import LazyConfig
+
+            return bool(LazyConfig.get_config().debug)
+        except Exception:  # pragma: no cover - config a medio armar
+            return False
+
+    def _contenedor_o_none(self) -> t.Any:
+        from hexcore.darwin.application.container import get_identity_container
+
+        try:
+            return get_identity_container()
+        except Exception:  # pragma: no cover - contenedor a medio armar
+            return None
+
+    def _config_vigente(self) -> t.Any:
+        """
+        La config que quedó vigente, o `None` si el contenedor no llegó a armarse.
+
+        Se lee del contenedor y no de `self._config`: `start()` ya corrió
+        `configure_identity`, y el llamador puede haber pasado `None` para que la tome de
+        `ServerConfig.darwin`. Acá queremos la que realmente rige.
+
+        Tolera que no haya contenedor por el mismo motivo que `_nombres_de_los_plugins`: el
+        paso se puede instanciar y llamar suelto, y un chequeo que existe para **avisar** no
+        puede ser lo que impide arrancar. Sin config, `resolve_identity_models` resuelve por
+        mixin, que es el comportamiento correcto en ausencia de declaración explícita.
+        """
+        from hexcore.darwin.application.container import get_identity_container
+
+        try:
+            return get_identity_container().config
+        except Exception:  # pragma: no cover - contenedor a medio armar
+            # `getattr` y no `self._config`: el paso se puede construir con `__new__` —lo hacen
+            # los tests del chequeo— y ahí `__init__` no corrió.
+            return getattr(self, "_config", None)
 
     def _nombres_de_los_plugins(self) -> tuple[str, ...]:
         """Los plugins activos, o vacío si el contenedor no llegó a armarse."""

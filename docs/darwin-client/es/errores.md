@@ -12,7 +12,7 @@ import {
 } from "@hexcore-js/darwin-client";
 
 try {
-  await client.signIn(email, password);
+  await client.signIn(identifier, password);
 } catch (err) {
   if (err instanceof DarwinError) {
     console.log(err.code, err.status, err.detail);

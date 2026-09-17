@@ -47,6 +47,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "system_context": ("hexcore.darwin.domain.context", "system_context"),
     # ── Value objects ─────────────────────────────────────────────────────────
     "Email": ("hexcore.darwin.domain.value_objects", "Email"),
+    "Username": ("hexcore.darwin.domain.value_objects", "Username"),
     "AccessTokenClaims": ("hexcore.darwin.domain.value_objects", "AccessTokenClaims"),
     "TokenPair": ("hexcore.darwin.domain.value_objects", "TokenPair"),
     "TokenType": ("hexcore.darwin.domain.value_objects", "TokenType"),
@@ -81,6 +82,14 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "AbstractClock": ("hexcore.darwin.domain.ports", "AbstractClock"),
     "AbstractPasswordHasher": ("hexcore.darwin.domain.ports", "AbstractPasswordHasher"),
     "AbstractUserRepository": ("hexcore.darwin.domain.ports", "AbstractUserRepository"),
+    "AbstractPrincipalResolver": (
+        "hexcore.darwin.domain.ports",
+        "AbstractPrincipalResolver",
+    ),
+    "NullPrincipalResolver": (
+        "hexcore.darwin.domain.ports",
+        "NullPrincipalResolver",
+    ),
     "AbstractSessionRepository": (
         "hexcore.darwin.domain.ports",
         "AbstractSessionRepository",
@@ -128,6 +137,10 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "EmailAlreadyRegisteredError": (
         "hexcore.darwin.domain.exceptions",
         "EmailAlreadyRegisteredError",
+    ),
+    "UsernameAlreadyTakenError": (
+        "hexcore.darwin.domain.exceptions",
+        "UsernameAlreadyTakenError",
     ),
     "AccountLockedError": ("hexcore.darwin.domain.exceptions", "AccountLockedError"),
     "WorkerContextIntegrityError": (
@@ -217,6 +230,18 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "validate_user_model": (
         "hexcore.darwin.infrastructure.orms.sqlalchemy.schema",
         "validate_user_model",
+    ),
+    "validate_identity_model": (
+        "hexcore.darwin.infrastructure.orms.sqlalchemy.schema",
+        "validate_identity_model",
+    ),
+    "identity_model": (
+        "hexcore.darwin.infrastructure.orms.sqlalchemy.registry",
+        "identity_model",
+    ),
+    "resolve_identity_models": (
+        "hexcore.darwin.infrastructure.orms.sqlalchemy.registry",
+        "resolve_identity_models",
     ),
     "ensure_identity_schema_loaded": (
         "hexcore.darwin.infrastructure.orms.sqlalchemy.schema",
@@ -416,6 +441,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "TokenConfig": ("hexcore.darwin.application.config", "TokenConfig"),
     "CookieConfig": ("hexcore.darwin.application.config", "CookieConfig"),
     "PasswordPolicy": ("hexcore.darwin.application.config", "PasswordPolicy"),
+    "UsernamePolicy": ("hexcore.darwin.application.config", "UsernamePolicy"),
     "SECRET_KEY_ENV": ("hexcore.darwin.application.config", "SECRET_KEY_ENV"),
     "IdentityContainer": (
         "hexcore.darwin.application.container",

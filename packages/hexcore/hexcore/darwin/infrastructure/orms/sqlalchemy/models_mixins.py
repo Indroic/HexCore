@@ -108,8 +108,18 @@ class UserMixin(TimestampMixin):
     __tablename__: t.ClassVar[str]
 
     id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
-    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    #: **Nullable desde 10.0.** No todo padrón tiene mails, y la alternativa era inventar
+    #: direcciones falsas. El `UniqueConstraint` se queda: en SQLite y en Postgres dos NULL son
+    #: distintos entre sí, así que varias filas sin mail conviven sin chocar.
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    #: El nombre de usuario, ya normalizado por `UsernamePolicy.normalize`.
+    #:
+    #: La unicidad la da el `UniqueConstraint` sobre el valor normalizado, **no** un índice
+    #: funcional sobre `lower(username)`: un índice funcional no es portable a SQLite, donde
+    #: corre la suite, y normalizar antes de guardar da la misma garantía sin ese costo.
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     image: Mapped[str | None] = mapped_column(String(2048), nullable=True)
 
@@ -136,6 +146,7 @@ class UserMixin(TimestampMixin):
         # conoce. Un nombre fijo rompería en cuanto alguien renombre la tabla.
         return (
             UniqueConstraint("email", name=f"uq_{cls.__tablename__}_email"),
+            UniqueConstraint("username", name=f"uq_{cls.__tablename__}_username"),
             Index(f"ix_{cls.__tablename__}_created_at", "created_at"),
         )
 
@@ -189,6 +200,17 @@ class SessionMixin(TimestampMixin):
 
     #: Atado al `aud` del token: impide replayear una cookie como Bearer y esquivar CSRF.
     transport: Mapped[str] = mapped_column(String(16), nullable=False, default="cookie")
+
+    @declared_attr
+    def scopes(cls) -> Mapped[list[str]]:  # noqa: N805
+        # Los permisos con los que se abrió la sesión, para poder restaurarlos al rotar. Ver
+        # el campo homónimo de `IdentitySession`.
+        #
+        # Columna JSON y no una tabla aparte: no se consulta nunca por scope —siempre se leen
+        # todos los de una sesión, junto con el resto de la fila— así que una tabla de
+        # asociación agregaría un JOIN al camino del refresh sin habilitar ninguna consulta
+        # nueva. `declared_attr` porque un default mutable tiene que crearse por clase.
+        return mapped_column(JSON_PORTABLE, nullable=False, default=list)
 
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(

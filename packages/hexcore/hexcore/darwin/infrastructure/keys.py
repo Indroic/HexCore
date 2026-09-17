@@ -212,9 +212,20 @@ class StaticKeyStore(AbstractKeyStore):
         await almacen.retire(clave_vieja.kid)   # recién después del TTL máximo de token
     """
 
-    def __init__(self, keys: t.Iterable[SigningKey] | None = None) -> None:
+    #: Si estas claves se generaron al arrancar y mueren con el proceso.
+    #:
+    #: Lo marca el contenedor cuando arma el almacén por defecto, y lo lee `IdentityStep` para
+    #: negarse a arrancar con él fuera de `debug`. Es un flag y no un `isinstance` porque un
+    #: `StaticKeyStore` **sembrado** desde un gestor de secretos es perfectamente válido en
+    #: producción: lo que no sirve no es la clase, es que la clave sea distinta en cada arranque.
+    ephemeral: bool = False
+
+    def __init__(
+        self, keys: t.Iterable[SigningKey] | None = None, *, ephemeral: bool = False
+    ) -> None:
         self._keys: dict[str, SigningKey] = {}
         self._lock = threading.RLock()
+        self.ephemeral = ephemeral
         for clave in keys or ():
             self._keys[clave.kid] = clave
 

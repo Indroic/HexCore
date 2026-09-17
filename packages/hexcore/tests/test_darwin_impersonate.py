@@ -539,7 +539,7 @@ class TestSesionImpersonada:
         cliente = await _usuario(contenedor, CLIENTE)
 
         _, propia, par_propio = await contenedor.identity_service().sign_in(
-            email=OPERADOR, password=PASS, transport="bearer",
+            identifier=OPERADOR, password=PASS, transport="bearer",
             scopes=(IMPERSONATE_SCOPE,),
         )
         contexto = await contenedor.session_service().authenticate(
@@ -622,7 +622,7 @@ class TestRefresh:
         """El chequeo no rompe el camino normal."""
         await _usuario(contenedor, OPERADOR)
         _, _, par = await contenedor.identity_service().sign_in(
-            email=OPERADOR, password=PASS, transport="bearer"
+            identifier=OPERADOR, password=PASS, transport="bearer"
         )
 
         _, nuevo = await contenedor.session_service().refresh(
@@ -991,7 +991,7 @@ def cliente_http(contenedor, plugin):
 
 async def _bearer(contenedor, email, scopes=()):
     _, _, par = await contenedor.identity_service().sign_in(
-        email=email, password=PASS, transport="bearer", scopes=scopes
+        identifier=email, password=PASS, transport="bearer", scopes=scopes
     )
     return {
         "Authorization": f"Bearer {par.access_token}",

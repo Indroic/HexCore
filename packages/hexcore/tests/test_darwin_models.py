@@ -283,6 +283,7 @@ def test_los_constraints_criticos_existen_con_nombre():
         c.name for c in UserModel.__table__.constraints if c.name is not None
     }
     assert "uq_darwin_user_email" in unicos_usuario
+    assert "uq_darwin_user_username" in unicos_usuario
 
     unicos_cuenta = {
         c.name for c in AccountModel.__table__.constraints if c.name is not None
@@ -294,6 +295,37 @@ def test_los_constraints_criticos_existen_con_nombre():
         c.name for c in SessionModel.__table__.constraints if c.name is not None
     }
     assert "uq_darwin_session_token_hash" in unicos_sesion
+
+
+def test_los_dos_identificadores_son_nullable():
+    """
+    El cambio de esquema de 10.0. `email` era NOT NULL, y eso dejaba afuera a todo padrón sin
+    direcciones: empleados, alumnos, socios de un club.
+
+    El `UniqueConstraint` de `email` **se queda** aunque la columna sea nullable, y eso es
+    correcto: en SQLite y en Postgres dos NULL son distintos entre sí, así que varias filas sin
+    mail conviven. Quién exige tener alguno es `IdentityConfig`, no la tabla.
+    """
+    columnas = UserModel.__table__.columns
+
+    assert columnas["email"].nullable is True, (
+        "Si email vuelve a ser NOT NULL, una cuenta sólo con username no se puede insertar."
+    )
+    assert "username" in columnas
+    assert columnas["username"].nullable is True, (
+        "Una app que no usa usernames tiene todas sus filas con username NULL."
+    )
+
+
+def test_la_sesion_guarda_sus_scopes():
+    """
+    La columna que permite restaurar los permisos al rotar. `nullable=False` con default `[]`
+    y no NULL: `frozenset(None)` sería un `TypeError` al hidratar una fila vieja.
+    """
+    columnas = SessionModel.__table__.columns
+
+    assert "scopes" in columnas
+    assert columnas["scopes"].nullable is False
 
 
 def test_no_se_guarda_ningun_secreto_en_claro():

@@ -1138,7 +1138,7 @@ def cliente_http(contenedor, plugin):
 
 async def _bearer(contenedor, email):
     _, _, par = await contenedor.identity_service().sign_in(
-        email=email, password=PASS, transport="bearer"
+        identifier=email, password=PASS, transport="bearer"
     )
     return {
         "Authorization": f"Bearer {par.access_token}",

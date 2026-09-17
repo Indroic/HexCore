@@ -7,6 +7,15 @@ export type SessionResponse = components["schemas"]["SessionResponse"];
 /** Quién sos, y a nombre de quién estás actuando (`GET /auth/me`). */
 export type MeResponse = components["schemas"]["MeResponse"];
 
+/**
+ * El cuerpo de `POST /auth/sign-in`.
+ *
+ * El backend acepta el identificador con tres nombres —`identifier`, `email` y `username`—
+ * porque `email` era el único hasta la 9.x. El cliente manda siempre `identifier`: los otros
+ * dos existen para que un front viejo siga andando contra un backend nuevo, no para elegir.
+ */
+export type SignInRequest = components["schemas"]["SignInRequest"];
+
 export interface DarwinClientOptions {
   /** La URL base de Darwin, sin `/auth` — por ejemplo `"https://api.miapp.com"`. */
   baseUrl: string;

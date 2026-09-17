@@ -20,7 +20,7 @@ export interface DarwinClient {
     getServerSnapshot: () => SessionState;
   };
 
-  signIn: (email: string, password: string) => Promise<SignInResult>;
+  signIn: (identifier: string, password: string) => Promise<SignInResult>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   me: () => Promise<MeResponse>;

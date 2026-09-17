@@ -34,6 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 __all__ = [
     "TokenType",
     "Email",
+    "Username",
     "AccessTokenClaims",
     "TokenPair",
     "VerificationPurpose",
@@ -119,6 +120,48 @@ class Email(BaseModel):
         return self.value
 
 
+class Username(BaseModel):
+    """
+    Un nombre de usuario normalizado. El hermano de `Email`.
+
+    La normalización es **strip más case-folding**, y se hace por el mismo motivo que en
+    `Email`: el username es clave única de login, así que sin esto `Pepe` y `pepe` crean dos
+    cuentas y entrar se vuelve una lotería según cómo lo tipeó cada uno.
+
+    El largo, la forma y los nombres reservados **no están acá**: los decide `UsernamePolicy`,
+    igual que `Email` no sabe nada de `PasswordPolicy`. Este objeto garantiza la forma canónica,
+    no la política — que es lo que permite construirlo al leer una fila vieja cuya política ya
+    cambió.
+
+    Uso::
+
+        Username(value="  Pepe_1990 ").value   # -> "pepe_1990"
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    value: str = Field(min_length=1, max_length=64)
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def _normalizar(cls, raw: t.Any) -> t.Any:
+        if not isinstance(raw, str):
+            return raw
+        return raw.strip().casefold()
+
+    @model_validator(mode="after")
+    def _no_tiene_espacios(self) -> "Username":
+        if any(c.isspace() for c in self.value):
+            raise ValueError(
+                f"'{self.value}' tiene espacios, y un nombre de usuario no puede tenerlos: "
+                f"serían invisibles al final y harían que dos cuentas se vean iguales."
+            )
+        return self
+
+    def __str__(self) -> str:
+        return self.value
+
+
 class AccessTokenClaims(BaseModel):
     """
     El claim set de un token de Darwin.
@@ -159,6 +202,11 @@ class AccessTokenClaims(BaseModel):
     jti: UUID = Field(default_factory=uuid4)
     #: `frozenset`: inmutable y serializable, al contrario del `List[Enum]` anterior.
     scopes: frozenset[str] = frozenset()
+    #: Los roles del actor. Viajan en el token por el mismo motivo que los scopes: `authenticate`
+    #: reconstruye el `AuthContext` **sin tocar la base**, así que lo que no está en los claims
+    #: no puede estar en el `Principal`. Sin esto, `Principal.roles` existía pero llegaba
+    #: siempre vacío y `auth.actor.has_role(...)` devolvía `False` para todo el mundo.
+    roles: frozenset[str] = frozenset()
     #: Si esta sesión es impersonada. Explícito en vez de deducirlo comparando `act` y
     #: `sub`, para que la auditoría no dependa de una inferencia.
     imp: bool = False

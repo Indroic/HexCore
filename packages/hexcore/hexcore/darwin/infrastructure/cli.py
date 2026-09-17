@@ -44,6 +44,11 @@ def generate_keys(
         "Ed25519", "--algorithm", "-a", help="Algoritmo de firma."
     ),
     kid: str = typer.Option(None, "--kid", help="Identificador de la clave."),
+    persist: bool = typer.Option(
+        False,
+        "--persist",
+        help="Además, guarda la clave en la tabla de JWKS del backend configurado.",
+    ),
 ) -> None:
     """
     Genera un par de claves de firma de tokens, en JWK.
@@ -80,6 +85,34 @@ def generate_keys(
         )
     )
 
+    if not persist:
+        return
+
+    # Se persiste **después** de emitir por stdout, y no en vez de: si el guardado falla, quien
+    # corrió el comando igual tiene la clave y puede reintentar. Al revés, un fallo dejaría una
+    # clave generada que ya no existe en ningún lado.
+    import asyncio
+
+    from hexcore.darwin.application.container import get_identity_container
+
+    async def _guardar() -> None:
+        almacen = get_identity_container().key_store()
+        guardar = getattr(almacen, "add", None)
+        if guardar is None:
+            raise typer.BadParameter(
+                f"El almacén de claves resuelto ({type(almacen).__name__}) no persiste: no "
+                f"tiene `add`. Con `--persist` hace falta un backend de almacenamiento "
+                f"configurado (`HEXCORE_DARWIN_STORAGE` o `IdentityConfig.storage`)."
+            )
+        await guardar(clave)
+
+    asyncio.run(_guardar())
+    typer.secho(
+        f"Clave '{clave.kid}' guardada en la tabla de JWKS.",
+        fg=typer.colors.BRIGHT_GREEN,
+        err=True,
+    )
+
 
 @identity_cli.command(name="create-tables")
 def create_tables() -> None:
@@ -111,17 +144,26 @@ def check_schema() -> None:
 
     Sale con código 1 si falta alguna, para poder ponerlo en un pre-commit o en CI.
     """
-    from hexcore.darwin.infrastructure.orms.sqlalchemy.models import IDENTITY_MODELS
+    from hexcore.darwin.infrastructure.orms.sqlalchemy.registry import (
+        resolve_identity_models,
+    )
     from hexcore.infrastructure.repositories.orms.sqlalchemy import Base
 
+    # Los modelos **resueltos**, no `IDENTITY_MODELS`: si el consumidor declaró los suyos, las
+    # tablas a verificar son las de él. Verificar las de `models.py` le avisaría de una tabla
+    # que no existe en su esquema y le taparía la que sí le falta.
+    # `list[t.Any]` y no `list[type]`: `__tablename__` lo agrega el mapeo declarativo en tiempo
+    # de ejecución, así que no está en el tipo estático de una `type` cualquiera. Mismo criterio
+    # que `identity_tables` en `schema.py`.
+    esperados: list[t.Any] = list(resolve_identity_models())
     registradas = set(Base.metadata.tables)
-    faltan = sorted(
-        m.__tablename__ for m in IDENTITY_MODELS if m.__tablename__ not in registradas
+    faltan: list[str] = sorted(
+        m.__tablename__ for m in esperados if m.__tablename__ not in registradas
     )
 
     if not faltan:
         typer.secho(
-            f"Las {len(IDENTITY_MODELS)} tablas de identidad están en Base.metadata.",
+            f"Las {len(esperados)} tablas de identidad están en Base.metadata.",
             fg=typer.colors.BRIGHT_GREEN,
         )
         return

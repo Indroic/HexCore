@@ -50,6 +50,7 @@ from hexcore.darwin.domain.exceptions import (
     TokenExpiredError,
     TokenMalformedError,
     TokenRevokedError,
+    UsernameAlreadyTakenError,
 )
 from hexcore.darwin.application.hooks import run_hooks
 from hexcore.darwin.domain.value_objects import Email, TokenPair, VerificationPurpose
@@ -62,11 +63,13 @@ if t.TYPE_CHECKING:
         AbstractAuditSink,
         AbstractClock,
         AbstractPasswordHasher,
+        AbstractPrincipalResolver,
         AbstractRevocationList,
         AbstractSessionRepository,
         AbstractUserRepository,
         AbstractVerificationRepository,
     )
+    from hexcore.darwin.infrastructure.revocation import GenerationGuard
     from hexcore.darwin.infrastructure.tokens import (
         JoserfcTokenIssuer,
         JoserfcTokenVerifier,
@@ -126,7 +129,11 @@ class SessionService:
         config: "IdentityConfig",
         events: "EventBus | None" = None,
         audit: "AbstractAuditSink | None" = None,
+        principals: "AbstractPrincipalResolver | None" = None,
+        generations: "GenerationGuard | None" = None,
     ) -> None:
+        from hexcore.darwin.domain.ports import NullPrincipalResolver
+
         self._sessions = sessions
         self._users = users
         self._issuer = issuer
@@ -136,6 +143,8 @@ class SessionService:
         self._config = config
         self._events = events
         self._audit = audit
+        self._principals = principals or NullPrincipalResolver()
+        self._generations = generations
 
     # ── Crear ─────────────────────────────────────────────────────────────────
     async def create(
@@ -148,7 +157,8 @@ class SessionService:
         user_agent: str | None = None,
         impersonation_reason: str | None = None,
         impersonation_granted_by: UUID | None = None,
-        scopes: t.Iterable[str] = (),
+        scopes: t.Iterable[str] | None = None,
+        roles: t.Iterable[str] | None = None,
     ) -> tuple[IdentitySession, TokenPair]:
         """
         Crea una sesión y emite su par de tokens.
@@ -156,6 +166,16 @@ class SessionService:
         `subject` distinto de `actor` es una impersonación, y entonces `impersonation_reason` y
         `impersonation_granted_by` son **obligatorios** — el `AuthContext` que se construye acá
         los exige, así que una impersonación no auditable no se puede crear ni por error.
+
+        `scopes` y `roles` en `None` —el default— significan "preguntale al
+        `AbstractPrincipalResolver`". Pasar un iterable, aunque sea vacío, es declarar los
+        permisos a mano y saltea el resolver.
+
+        La distinción entre `None` y `()` **es el arreglo**: antes el parámetro era
+        `scopes: t.Iterable[str] = ()`, así que la ruta HTTP de sign-in —que no lo pasa— creaba
+        todas sus sesiones con el conjunto vacío y no había forma de poblarlo sin llamar al
+        servicio a mano. Con `None` por default, no pasar nada significa preguntar en vez de
+        afirmar que no hay ninguno.
 
         Devuelve la sesión persistida y el par. El **token en claro no vuelve a estar
         disponible**: la fila guarda su hash, así que si lo perdés hay que crear otra sesión.
@@ -166,6 +186,10 @@ class SessionService:
         ahora = self._clock.now()
         es_impersonacion = subject is not None and subject.id != actor.id
         afectado = subject if subject is not None else actor
+
+        roles_finales, scopes_finales = await self._permisos_de(
+            actor, roles=roles, scopes=scopes
+        )
 
         if es_impersonacion and (
             impersonation_reason is None or impersonation_granted_by is None
@@ -183,6 +207,7 @@ class SessionService:
             token_hash=hash_token(token_claro),
             family_id=uuid4(),
             transport=transport,
+            scopes=scopes_finales,
             expires_at=ahora + self._config.tokens.session_ttl,
             ip_address=ip_address,
             user_agent=user_agent,
@@ -205,8 +230,11 @@ class SessionService:
 
         contexto: AuthContext[t.Any] = AuthContext(
             actor=Principal(
-                user_id=actor.id, session_id=sesion.id, email=actor.email,
-                scopes=frozenset(scopes),
+                user_id=actor.id,
+                session_id=sesion.id,
+                email=actor.email,
+                roles=roles_finales,
+                scopes=scopes_finales,
             ),
             subject=Principal(
                 user_id=afectado.id, session_id=sesion.id, email=afectado.email
@@ -227,6 +255,30 @@ class SessionService:
             )
         )
         return sesion, par
+
+    async def _permisos_de(
+        self,
+        actor: User,
+        *,
+        roles: t.Iterable[str] | None,
+        scopes: t.Iterable[str] | None,
+    ) -> tuple[frozenset[str], frozenset[str]]:
+        """
+        Los `(roles, scopes)` a usar: los declarados a mano, o los del resolver.
+
+        Se pregunta al resolver **sólo** por lo que no vino declarado, y no "por ninguno si
+        vino alguno": un llamador que declara scopes explícitos y deja los roles en `None`
+        —el plugin de impersonación, por ejemplo— tiene que seguir recibiendo los roles que le
+        correspondan al actor.
+        """
+        if roles is not None and scopes is not None:
+            return frozenset(roles), frozenset(scopes)
+
+        resueltos_roles, resueltos_scopes = await self._principals.resolve(actor)
+        return (
+            frozenset(roles) if roles is not None else resueltos_roles,
+            frozenset(scopes) if scopes is not None else resueltos_scopes,
+        )
 
     async def _emitir_par(
         self,
@@ -258,13 +310,26 @@ class SessionService:
         Verifica un access token y reconstruye el `AuthContext`.
 
         Es el camino caliente: **no toca la base**. Verifica la firma, la ventana temporal, el
-        `aud` del transporte y el `typ`, y después consulta la denylist en cache. La fila de
-        `session` se lee sólo en `refresh()`, en el worker, y cuando el cache falla con
-        política `deny`.
+        `aud` del transporte y el `typ`, después consulta la denylist en cache y por último la
+        generación del usuario, también en cache. La fila de `session` se lee sólo en
+        `refresh()`, en el worker, y cuando el cache falla con política `deny`.
+
+        Las **tres capas** de revocación que el módulo documenta corren acá:
+
+        1. El `exp` corto, que lo verifica el verificador.
+        2. La denylist de `sid`, para cortar una sesión puntual.
+        3. La generación del usuario, para cortarlas todas de una.
+
+        La tercera faltaba. `GenerationGuard` estaba escrito, documentado con ejemplo de uso y
+        exportado en el facade, pero **nada lo construía**: `SignOutEverywhere` incrementaba el
+        contador y ningún camino lo comparaba, así que "cerrar sesión en todos los dispositivos"
+        no cerraba ninguna hasta que cada token venciera por su cuenta. `refresh()` sí lo
+        comparaba, o sea que el corte llegaba recién en la rotación siguiente.
 
         Raises:
             TokenMalformedError, TokenExpiredError, TokenAudienceMismatchError: del verificador.
-            TokenRevokedError: si el `sid` está en la denylist.
+            TokenRevokedError: si el `sid` está en la denylist, o si el `gen` del token quedó
+                atrás del contador del usuario.
         """
         from hexcore.darwin.domain.context import Impersonation
 
@@ -274,6 +339,16 @@ class SessionService:
 
         if await self._revocations.is_revoked(claims.sid):
             raise TokenRevokedError("La sesión fue revocada.")
+
+        # Sobre `claims.sub` y no `claims.act`: el contador vive en la cuenta afectada, que es
+        # la que se quiere cortar. En una impersonación, revocar al sujeto tiene que cortar
+        # también las sesiones que alguien abrió *sobre* él.
+        if self._generations is not None and await self._generations.is_stale(
+            claims.sub, claims.gen
+        ):
+            raise TokenRevokedError(
+                "Todas las sesiones del usuario fueron revocadas. Volvé a iniciar sesión."
+            )
 
         impersonacion = None
         if claims.imp:
@@ -291,7 +366,10 @@ class SessionService:
 
         return AuthContext(
             actor=Principal(
-                user_id=claims.act, session_id=claims.sid, scopes=claims.scopes
+                user_id=claims.act,
+                session_id=claims.sid,
+                roles=claims.roles,
+                scopes=claims.scopes,
             ),
             subject=Principal(user_id=claims.sub, session_id=claims.sid),
             transport=transport,
@@ -363,6 +441,23 @@ class SessionService:
                 "Todas las sesiones del usuario fueron revocadas. Volvé a iniciar sesión."
             )
 
+        # Estado de la cuenta. Va **acá y no en `authenticate`**: éste es el único camino que ya
+        # lee la fila del usuario, así que chequearlo no cuesta una consulta extra y no rompe la
+        # propiedad de que el camino caliente no toca la base. La contrapartida es que el corte
+        # llega en la rotación siguiente, o sea dentro de un `access_ttl`.
+        #
+        # Sin esto, desactivar o bloquear una cuenta no echaba a quien ya estaba adentro: su
+        # sesión seguía rotando indefinidamente. Para que el corte sea inmediato, la operación
+        # que desactiva tiene que además llamar a `bump_token_generation`.
+        if not actor.is_active:
+            raise TokenRevokedError(
+                "La cuenta está desactivada. La sesión no se puede renovar."
+            )
+        if actor.is_locked_at(ahora):
+            raise TokenRevokedError(
+                "La cuenta está bloqueada. La sesión no se puede renovar."
+            )
+
         return await self._rotar(anterior, actor, ahora, transport)
 
     async def _manejar_reuso(
@@ -417,6 +512,24 @@ class SessionService:
         from hexcore.darwin.domain.context import Impersonation
         from hexcore.darwin.infrastructure.hashing import generate_token, hash_token
 
+        # Se vuelven a resolver en cada rotación, y con la fila anterior como respaldo.
+        #
+        # Acá estaba el bug: el `Principal` de la sesión siguiente se armaba sin `scopes`, así
+        # que el primer refresh devolvía un token con el conjunto vacío. El usuario entraba
+        # bien y a los dos minutos —el `access_ttl`— perdía el acceso, con un 403 que no se
+        # parece en nada a su causa.
+        #
+        # Re-resolver en vez de copiar la fila es deliberado: es lo que hace que quitarle un
+        # rol a alguien tenga efecto sin esperar a que cierre sesión. El corte llega en la
+        # rotación siguiente, o sea dentro de un `access_ttl`. Si hace falta que sea inmediato,
+        # la herramienta es `bump_token_generation`.
+        #
+        # El respaldo importa: con el `NullPrincipalResolver` por defecto el resolver devuelve
+        # vacío, y sin el fallback un llamador que creó la sesión con scopes explícitos los
+        # perdería igual en la primera rotación — o sea el mismo bug con otra forma.
+        roles_resueltos, scopes_resueltos = await self._principals.resolve(actor)
+        scopes_siguientes = scopes_resueltos or anterior.scopes
+
         token_claro = generate_token()
         siguiente = IdentitySession(
             actor_user_id=anterior.actor_user_id,
@@ -425,6 +538,7 @@ class SessionService:
             # Misma familia: es lo que permite revocar el linaje entero ante un reuso.
             family_id=anterior.family_id,
             transport=transport,
+            scopes=scopes_siguientes,
             # El techo **no** se extiende al rotar: si se extendiera, rotar indefinidamente
             # sería una sesión eterna y `session_ttl` no valdría para nada.
             expires_at=anterior.expires_at,
@@ -450,6 +564,8 @@ class SessionService:
                 user_id=anterior.actor_user_id,
                 session_id=siguiente.id,
                 email=actor.email,
+                roles=roles_resueltos,
+                scopes=scopes_siguientes,
             ),
             subject=Principal(
                 user_id=anterior.subject_user_id, session_id=siguiente.id
@@ -517,6 +633,14 @@ class SessionService:
 
         await self._users.bump_token_generation(user_id)
 
+        # Y se descarta la generación cacheada, **en el mismo flujo**. `GenerationGuard` cachea
+        # 60 s, así que sin esto el corte no se ve hasta que la entrada venza: un minuto entero
+        # en el que "cerrá sesión en todos los dispositivos" no cierra nada. `invalidate_cache`
+        # existía desde el principio y su propio docstring decía que se llama acá — faltaba la
+        # llamada.
+        if self._generations is not None:
+            await self._generations.invalidate_cache(user_id)
+
         for sesion in activas:
             await self._sessions.revoke(sesion.id, at=ahora, reason=reason)
             await self._revocations.revoke(
@@ -578,20 +702,33 @@ class IdentityService:
 
     # ── Registro ──────────────────────────────────────────────────────────────
     async def sign_up(
-        self, *, email: str, password: str, name: str | None = None
-    ) -> tuple[User, str]:
+        self,
+        *,
+        email: str | None = None,
+        password: str,
+        name: str | None = None,
+        username: str | None = None,
+    ) -> tuple[User, str | None]:
         """
         Crea un usuario con credencial local y devuelve `(usuario, código_de_verificación)`.
 
         El código vuelve **en claro** porque hay que mandarlo por mail: la fila guarda su hash.
-        Es la única vez que existe.
+        Es la única vez que existe. Es `None` cuando la cuenta se crea sin mail, porque no hay
+        a dónde mandarlo — y devolver un código que nadie va a poder canjear sería peor que no
+        devolver ninguno.
 
-        La política de contraseñas se valida **antes** de tocar la base, así que una contraseña
-        inválida no deja un usuario a medio crear.
+        `email` es opcional desde 10.0. Qué se exige lo decide la configuración:
+        `require_email` y `usernames`. Lo que **siempre** se exige es que haya al menos un
+        identificador, porque una cuenta sin ninguno no se puede buscar ni usar para entrar.
+
+        Las políticas se validan **antes** de tocar la base, así que una entrada inválida no
+        deja un usuario a medio crear.
 
         Raises:
-            ValueError: si la contraseña no cumple la política.
+            ValueError: si la contraseña o el username no cumplen la política, o si falta un
+                identificador que la configuración exige.
             EmailAlreadyRegisteredError: si el mail ya tiene cuenta.
+            UsernameAlreadyTakenError: si el username ya está tomado.
         """
         from hexcore.darwin.infrastructure.hashing import (
             generate_numeric_code,
@@ -599,15 +736,30 @@ class IdentityService:
         )
 
         self._config.passwords.validate_password(password)
-        normalizado = Email(value=email).value
+        normalizado = Email(value=email).value if email is not None else None
+        usuario_normalizado = self._validar_username(username)
+        self._exigir_identificador(normalizado, usuario_normalizado)
 
-        if await self._users.get_by_email(normalizado) is not None:
+        if normalizado is not None and (
+            await self._users.get_by_email(normalizado) is not None
+        ):
             # Nota: en una ruta pública de sign-up esto también es un oráculo de enumeración.
             # La ruta HTTP debería responder igual exista o no la cuenta y diferenciar por el
             # mail que manda; esta excepción es para los flujos administrativos.
             raise EmailAlreadyRegisteredError(f"Ya existe una cuenta para {normalizado}.")
 
-        usuario = await self._users.add(User(email=normalizado, name=name))
+        if usuario_normalizado is not None and (
+            await self._users.get_by_username(usuario_normalizado) is not None
+        ):
+            # Éste **sí** se puede decir sin reparos: un username suele ser público, y un alta
+            # que no avisara que está tomado sería inusable. Ver el docstring de la excepción.
+            raise UsernameAlreadyTakenError(
+                f"El nombre de usuario '{usuario_normalizado}' ya está tomado."
+            )
+
+        usuario = await self._users.add(
+            User(email=normalizado, username=usuario_normalizado, name=name)
+        )
         await self._accounts.add(
             Account(
                 user_id=usuario.id,
@@ -617,25 +769,121 @@ class IdentityService:
             )
         )
 
-        codigo = generate_numeric_code(6)
-        ahora = self._clock.now()
-        await self._verifications.add(
-            Verification(
-                identifier=normalizado,
-                value_hash=hash_token(codigo),
-                purpose="email_verification",
-                expires_at=ahora + timedelta(hours=24),
+        codigo: str | None = None
+        if normalizado is not None:
+            codigo = generate_numeric_code(6)
+            ahora = self._clock.now()
+            await self._verifications.add(
+                Verification(
+                    identifier=normalizado,
+                    value_hash=hash_token(codigo),
+                    purpose="email_verification",
+                    expires_at=ahora + timedelta(hours=24),
+                )
             )
-        )
 
         await self._publicar(
             UserRegisteredEvent(
                 actor_user_id=usuario.id,
                 subject_user_id=usuario.id,
                 email=normalizado,
+                username=usuario_normalizado,
             )
         )
         return usuario, codigo
+
+    def _resolver_alias_de_identificador(
+        self, identifier: str | None, email: str | None
+    ) -> str:
+        """
+        Acepta `email=` como alias deprecado de `identifier=`.
+
+        El parámetro se llamaba `email` hasta 10.0, y renombrarlo sin más rompería en silencio
+        a todo el que llame al servicio por keyword — que es la forma en que el servicio se
+        llama, porque la firma es keyword-only.
+        """
+        if identifier is not None and email is not None:
+            raise ValueError(
+                "Se pasaron `identifier` y `email` a la vez. `email` es el nombre viejo del "
+                "mismo parámetro: usá sólo `identifier`."
+            )
+        if identifier is not None:
+            return identifier
+        if email is not None:
+            from hexcore._deprecation import warn_deprecated
+
+            warn_deprecated(
+                "IdentityService.sign_in(email=...)",
+                "IdentityService.sign_in(identifier=...)",
+                since="10.0",
+            )
+            return email
+        raise ValueError("Falta el identificador: `sign_in(identifier=..., password=...)`.")
+
+    async def _buscar_por_identificador(self, identificador: str) -> User | None:
+        """
+        Busca al usuario por lo que la configuración habilite.
+
+        **Nunca lanza.** Devolver `None` es lo que mantiene a todos los caminos de fracaso en
+        la misma rama —la que hashea el señuelo y responde `InvalidCredentialsError`— así que
+        un identificador con forma no habilitada tarda lo mismo que una contraseña equivocada.
+
+        La forma decide qué índice se consulta: si parsea como mail, se busca por mail; si no,
+        por username. No se consultan los dos, y no hace falta: el `pattern` por defecto de
+        `UsernamePolicy` no admite `@`, así que un valor no puede ser las dos cosas.
+        """
+        habilitados = self._config.sign_in_identifiers
+
+        parece_mail = "@" in identificador
+        if parece_mail:
+            if "email" not in habilitados:
+                return None
+            try:
+                return await self._users.get_by_email(Email(value=identificador).value)
+            except ValueError:
+                # Tiene arroba pero no es un mail válido. No existe, y punto.
+                return None
+
+        if "username" not in habilitados or self._config.usernames is None:
+            return None
+        return await self._users.get_by_username(
+            self._config.usernames.normalize(identificador)
+        )
+
+    def _validar_username(self, username: str | None) -> str | None:
+        """
+        Normaliza y valida el username contra la política, si hay alguno de los dos.
+
+        Rechaza declarar un username cuando la app no los tiene configurados: aceptarlo en
+        silencio guardaría un valor que ninguna política validó y que ningún login puede usar.
+        """
+        if username is None:
+            return None
+        if self._config.usernames is None:
+            raise ValueError(
+                "Se pasó un nombre de usuario pero esta app no los tiene habilitados. "
+                "Declarálos: `IdentityConfig(usernames=UsernamePolicy())`."
+            )
+        return self._config.usernames.validate_username(username)
+
+    def _exigir_identificador(self, email: str | None, username: str | None) -> None:
+        """
+        Exige lo que la configuración pide, y siempre al menos un identificador.
+
+        El segundo chequeo no depende de la config y no se puede desactivar: una cuenta sin
+        mail y sin username no se puede buscar por ningún camino, así que crearla es crear una
+        fila inalcanzable.
+        """
+        if self._config.require_email and email is None:
+            raise ValueError(
+                "Hace falta una dirección de correo. Si tu app admite cuentas sin mail, "
+                "declaralo: `IdentityConfig(require_email=False, usernames=UsernamePolicy())`."
+            )
+        if email is None and username is None:
+            raise ValueError(
+                "Una cuenta necesita al menos un identificador —mail o nombre de usuario—: "
+                "sin ninguno no hay forma de buscarla ni de iniciar sesión con ella."
+            )
 
     async def verify_email(self, *, email: str, code: str) -> User:
         """
@@ -676,15 +924,20 @@ class IdentityService:
     async def sign_in(
         self,
         *,
-        email: str,
+        identifier: str | None = None,
         password: str,
         transport: Transport = "cookie",
         ip_address: str | None = None,
         user_agent: str | None = None,
-        scopes: t.Iterable[str] = (),
+        scopes: t.Iterable[str] | None = None,
+        email: str | None = None,
     ) -> tuple[User, IdentitySession, TokenPair]:
         """
         Autentica con credencial local y crea la sesión.
+
+        `identifier` es el mail o el nombre de usuario, según lo que habilite
+        `IdentityConfig.sign_in_identifiers`. `email=` se acepta como alias deprecado del
+        parámetro viejo, para que el código de 9.x siga compilando.
 
         **El orden de los chequeos es deliberado y es la parte que importa.** Primero se resuelve
         la credencial y se verifica la contraseña —hasheando un señuelo si no hay fila— y sólo
@@ -692,13 +945,19 @@ class IdentityService:
         responder "email no verificado" antes de validar la contraseña le confirma al atacante
         que el mail existe y que la contraseña que probó era correcta.
 
+        Lo mismo vale para el resolvedor de identificador que se agregó en 10.0: un identificador
+        con una forma que la app no habilitó **no retorna antes**, sigue por la rama del señuelo.
+        Cortar ahí haría que "no existe ese usuario" se responda en microsegundos mientras que
+        una contraseña equivocada tarda decenas de milisegundos, y esa diferencia enumera cuentas
+        sin adivinar ni una contraseña.
+
         Raises:
-            InvalidCredentialsError: mail inexistente o contraseña incorrecta. **El mismo error
-                para los dos**, y con el mismo tiempo de respuesta.
+            InvalidCredentialsError: identificador inexistente o contraseña incorrecta. **El
+                mismo error para los dos**, y con el mismo tiempo de respuesta.
             AccountLockedError, EmailNotVerifiedError: sólo tras validar la contraseña.
         """
-        normalizado = Email(value=email).value
-        usuario = await self._users.get_by_email(normalizado)
+        identificador = self._resolver_alias_de_identificador(identifier, email)
+        usuario = await self._buscar_por_identificador(identificador)
 
         credencial = (
             await self._accounts.get_credential(usuario.id) if usuario else None
@@ -733,7 +992,16 @@ class IdentityService:
             raise AccountLockedError(
                 "La cuenta está bloqueada temporalmente. Intentá más tarde."
             )
-        if self._config.require_verified_email and not usuario.email_verified:
+        # `usuario.email is not None` no es una excepción a la política, es su alcance: la
+        # verificación de mail sólo puede aplicarse a una cuenta que tenga mail. Sin esta
+        # condición, una cuenta creada sólo con username nunca podría entrar —nunca va a tener
+        # `email_verified=True`— y el síntoma sería un 403 permanente sin ninguna salida, en un
+        # despliegue que además dejó `require_verified_email` en su valor por defecto.
+        if (
+            self._config.require_verified_email
+            and usuario.email is not None
+            and not usuario.email_verified
+        ):
             raise EmailNotVerifiedError(
                 "Verificá tu dirección de correo antes de iniciar sesión."
             )

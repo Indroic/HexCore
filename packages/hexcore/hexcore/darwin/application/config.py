@@ -17,6 +17,7 @@ sqlalchemy ni joserfc.
 from __future__ import annotations
 
 import os
+import re
 import typing as t
 from datetime import timedelta
 
@@ -26,6 +27,7 @@ __all__ = [
     "CookieConfig",
     "TokenConfig",
     "PasswordPolicy",
+    "UsernamePolicy",
     "IdentityConfig",
     "SECRET_KEY_ENV",
 ]
@@ -157,14 +159,33 @@ class PasswordPolicy(BaseModel):
     #: framework no shippea una, porque mantenerla actualizada no es su trabajo.
     denylist: frozenset[str] = frozenset()
 
+    #: Permite bajar `min_length` por debajo de 8.
+    #:
+    #: El piso existe porque por debajo de 8 caracteres el espacio de búsqueda se agota con
+    #: hardware de consumo, y ningún algoritmo de hash lo compensa. Pero hay casos reales donde
+    #: la decisión no es de quien escribe el código —migrar un padrón viejo, un PIN numérico de
+    #: un segundo factor, una normativa que fija otro mínimo— y en esos casos la alternativa a
+    #: un escape hatch es forkear la política o no usarla.
+    #:
+    #: Es un flag aparte y no simplemente dejar bajar el número **porque tiene que costar
+    #: escribirlo**: así queda grepeable, aparece en el diff, y nadie lo baja sin leer por qué
+    #: estaba el piso.
+    acknowledge_weak_minimum: bool = False
+
     @model_validator(mode="after")
     def _el_minimo_es_razonable(self) -> "PasswordPolicy":
-        if self.min_length < 8:
+        if self.min_length < 8 and not self.acknowledge_weak_minimum:
             raise ValueError(
                 "PasswordPolicy.min_length no puede ser menor que 8. Por debajo de eso el "
                 "espacio de búsqueda se agota con hardware de consumo, sin importar qué "
-                "algoritmo de hash uses."
+                "algoritmo de hash uses.\n\n"
+                "Si tu caso lo exige igual —migrar un padrón viejo, un PIN de segundo factor, "
+                "una normativa que fija otro mínimo— declaralo explícito:\n\n"
+                f"    PasswordPolicy(min_length={self.min_length}, "
+                f"acknowledge_weak_minimum=True)\n"
             )
+        if self.min_length < 1:
+            raise ValueError("PasswordPolicy.min_length tiene que ser al menos 1.")
         if self.max_length <= self.min_length:
             raise ValueError("PasswordPolicy.max_length tiene que ser mayor que min_length.")
         return self
@@ -190,6 +211,103 @@ class PasswordPolicy(BaseModel):
             raise ValueError(
                 "Esa contraseña está en la lista de contraseñas conocidas. Elegí otra."
             )
+
+
+class UsernamePolicy(BaseModel):
+    """
+    Política de nombres de usuario. Hermana de `PasswordPolicy`.
+
+    Los tres parámetros que importan son **largo, forma y reservados**, y los tres son del
+    consumidor: un foro quiere `pepe_1990`, un ERP quiere `APELLIDO.N`, y no hay un default que
+    sirva para los dos. Lo que el framework sí decide es la **normalización**, porque de eso
+    depende que `Ana` y `ana` no sean dos cuentas distintas.
+
+    `pattern` se aplica sobre el valor **ya normalizado**, y su default no admite `@` a
+    propósito: con arrobas permitidas, un username podría tener forma de mail y el resolvedor
+    de identificadores del sign-in tendría que decidir cuál de los dos quiso decir el usuario.
+    Cerrarlo acá hace que esa ambigüedad no exista en vez de resolverla con una heurística.
+
+    Uso::
+
+        UsernamePolicy(min_length=4, reserved=frozenset({"admin", "root", "api"}))
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    min_length: int = 3
+    max_length: int = 32
+
+    #: Sobre el valor ya normalizado. Arranca con alfanumérico para que un username no pueda
+    #: empezar con un punto o un guion — es lo que hace que `.admin` y `admin` no se confundan
+    #: de un vistazo en un listado.
+    pattern: str = r"^[a-z0-9][a-z0-9_.-]*$"
+
+    #: Si `Ana` y `ana` son usuarios distintos. `False` por default, que es lo que espera
+    #: cualquiera que tipea su nombre a mano.
+    #:
+    #: ⚠️ Ponerlo en `True` **no** protege de la suplantación por homoglifos, y además hace que
+    #: la unicidad dependa de cómo lo tipeó cada uno. Sólo tiene sentido si tu padrón ya viene
+    #: con usernames sensibles a mayúsculas y no los podés migrar.
+    case_sensitive: bool = False
+
+    #: Nombres que nadie puede tomar. Se comparan **normalizados**, así que declarar `"admin"`
+    #: también bloquea `Admin` cuando `case_sensitive` es `False`.
+    #:
+    #: El framework no shippea una lista, por lo mismo que `PasswordPolicy.denylist`: qué
+    #: nombres son sensibles depende de las rutas de cada app (`/settings`, `/api`, `/@me`…) y
+    #: mantener esa lista no es trabajo del framework.
+    reserved: frozenset[str] = frozenset()
+
+    @model_validator(mode="after")
+    def _los_largos_son_coherentes(self) -> "UsernamePolicy":
+        if self.min_length < 1:
+            raise ValueError("UsernamePolicy.min_length tiene que ser al menos 1.")
+        if self.max_length < self.min_length:
+            raise ValueError(
+                "UsernamePolicy.max_length tiene que ser mayor o igual que min_length."
+            )
+        try:
+            re.compile(self.pattern)
+        except re.error as exc:
+            raise ValueError(
+                f"UsernamePolicy.pattern no es una expresión regular válida: {exc}"
+            ) from exc
+        return self
+
+    def normalize(self, raw: str) -> str:
+        """
+        El valor canónico: sin espacios alrededor y, salvo `case_sensitive`, en minúsculas.
+
+        Es lo que se guarda y lo que se busca. Normalizar en un solo lugar es lo que impide que
+        el alta use una forma y el login otra — el equivalente de lo que hace `Email`.
+        """
+        limpio = raw.strip()
+        return limpio if self.case_sensitive else limpio.casefold()
+
+    def validate_username(self, raw: str) -> str:
+        """
+        Normaliza y valida. Devuelve el valor a guardar.
+
+        Raises:
+            ValueError: con un mensaje que dice **qué** falta, no la lista de reglas.
+        """
+        valor = self.normalize(raw)
+
+        if len(valor) < self.min_length:
+            raise ValueError(
+                f"El nombre de usuario tiene que tener al menos {self.min_length} caracteres."
+            )
+        if len(valor) > self.max_length:
+            raise ValueError(
+                f"El nombre de usuario no puede exceder {self.max_length} caracteres."
+            )
+        if re.match(self.pattern, valor) is None:
+            raise ValueError(
+                f"'{raw}' tiene caracteres que no se admiten en un nombre de usuario."
+            )
+        if valor in {self.normalize(r) for r in self.reserved}:
+            raise ValueError("Ese nombre de usuario está reservado. Elegí otro.")
+        return valor
 
 
 class IdentityConfig(BaseModel):
@@ -222,10 +340,54 @@ class IdentityConfig(BaseModel):
     cookies: CookieConfig = Field(default_factory=CookieConfig)
     passwords: PasswordPolicy = Field(default_factory=PasswordPolicy)
 
-    #: El modelo de usuario concreto. `None` = el de `models.py`. Se valida al configurar el
-    #: contenedor con `validate_user_model`, que rechaza un `BaseModel[T]` y una clase que no
-    #: componga `UserMixin`.
+    #: La política de nombres de usuario, o `None` si esta app no los usa.
+    #:
+    #: `None` es el default y es el comportamiento de 9.x: sin username, la única credencial de
+    #: identificación es el mail. Declarar una política **habilita el campo**, no el login por
+    #: username — para eso está `sign_in_identifiers`, porque "tengo usernames para mostrar en
+    #: la UI pero se entra por mail" es un caso real.
+    usernames: UsernamePolicy | None = None
+
+    #: Si el alta exige una dirección de correo.
+    #:
+    #: `True` es el default y es 9.x. Ponerlo en `False` permite cuentas sólo con username, que
+    #: es lo que habilita un padrón sin mails —empleados, alumnos, socios de un club— sin tener
+    #: que inventar direcciones falsas.
+    #:
+    #: ⚠️ Una cuenta sin mail **no puede recuperar la contraseña ni verificar nada**: los dos
+    #: flujos se apoyan en mandar un código a alguna parte. Si desactivás esto, tenés que tener
+    #: otro camino de recuperación.
+    require_email: bool = True
+
+    #: Con qué se puede iniciar sesión.
+    #:
+    #: Explícito y no deducido de `usernames is not None`, porque son dos decisiones distintas:
+    #: tener nombres de usuario y aceptarlos como credencial de login. Un foro puede mostrar
+    #: `@pepe` en cada mensaje y aun así exigir el mail para entrar.
+    sign_in_identifiers: tuple[t.Literal["email", "username"], ...] = ("email",)
+
+    #: El modelo de usuario concreto. `None` = resolverlo (ver abajo). Se valida al configurar
+    #: el contenedor con `validate_identity_model`, que rechaza un `BaseModel[T]` y una clase
+    #: que no componga `UserMixin`.
     user_model: t.Any = None
+
+    #: Los otros cinco modelos concretos, por simetría con `user_model`.
+    #:
+    #: Existen porque el modelo concreto **no se puede conseguir importando `models.py`**: ese
+    #: módulo declara las seis clases sobre `Base`, así que importarlo para conseguir una sola
+    #: declara también las otras cinco, y la que choca contra el modelo del consumidor rompe el
+    #: arranque con un `InvalidRequestError` que apunta a la consulta, no al import. El detalle
+    #: está en el docstring de `orms/sqlalchemy/registry.py`.
+    #:
+    #: `None` es lo normal y no hace falta tocarlos: `identity_model` encuentra la clase del
+    #: consumidor buscando cuál compone el mixin. Se declaran explícitos sólo para desempatar
+    #: cuando hay más de una candidata — el caso de quien mapea dos clases sobre el mismo mixin
+    #: en tablas distintas, donde adivinar sería peor que preguntar.
+    session_model: t.Any = None
+    account_model: t.Any = None
+    verification_model: t.Any = None
+    audit_model: t.Any = None
+    jwks_model: t.Any = None
 
     #: Dónde se guarda la identidad: `"sqlalchemy"` o `"beanie"`.
     #:
@@ -336,6 +498,38 @@ class IdentityConfig(BaseModel):
         except Exception:
             # Si la config no se puede resolver, se asume producción: es el lado seguro.
             return False
+
+    @model_validator(mode="after")
+    def _se_puede_identificar_a_alguien(self) -> "IdentityConfig":
+        """
+        Rechaza las combinaciones en las que nadie podría entrar, o entrar sería ambiguo.
+
+        Los tres casos terminan en un despliegue roto que se descubre en el primer login, y los
+        tres son un error de configuración perfectamente detectable al arrancar. Es el mismo
+        criterio que `_hay_clave_de_firma`.
+        """
+        if not self.sign_in_identifiers:
+            raise ValueError(
+                "IdentityConfig.sign_in_identifiers está vacío: nadie podría iniciar sesión. "
+                'Declará al menos uno: `sign_in_identifiers=("email",)`.'
+            )
+
+        if "username" in self.sign_in_identifiers and self.usernames is None:
+            raise ValueError(
+                "sign_in_identifiers incluye 'username' pero no hay `usernames` declarado, "
+                "así que el endpoint aceptaría un identificador que ninguna política valida.\n\n"
+                "    IdentityConfig(usernames=UsernamePolicy(), "
+                'sign_in_identifiers=("email", "username"))\n'
+            )
+
+        if not self.require_email and self.usernames is None:
+            raise ValueError(
+                "require_email=False sin `usernames` declarado deja cuentas sin ningún "
+                "identificador: no habría con qué darlas de alta ni con qué buscarlas.\n\n"
+                "Declará la política de nombres de usuario, o dejá require_email=True."
+            )
+
+        return self
 
     @model_validator(mode="after")
     def _el_csrf_no_acepta_comodin(self) -> "IdentityConfig":

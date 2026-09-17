@@ -44,6 +44,7 @@ export const ERROR_CODES = {
   TwoFactorNotEnrolledError: 409,
   TwoFactorRequiredError: 401,
   UnauthenticatedError: 401,
+  UsernameAlreadyTakenError: 409,
   WorkerContextIntegrityError: 500,
 } as const;
 

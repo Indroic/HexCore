@@ -46,10 +46,32 @@ class User(BaseEntity):
     La contraseña **no está acá**: vive en `Account` con `provider_id="credential"`. Es el
     diseño de Better Auth y es el correcto — un usuario puede tener cero contraseñas (entra
     sólo con Google) o cambiar de método sin tocar su fila.
+
+    `email` y `username` son los dos **opcionales**, y al menos uno tiene que estar. Quién lo
+    exige es `IdentityService`, no esta clase: ver el comentario de `email`.
     """
 
-    email: str
+    #: La dirección de correo. **Opcional desde 10.0.**
+    #:
+    #: Lo era `str` obligatorio, y dejó de serlo porque no todo padrón tiene mails: empleados,
+    #: alumnos, socios de un club. La alternativa era inventar direcciones falsas, que es peor —
+    #: se terminan mandando mails a `nadie+1234@ejemplo.invalid`.
+    #:
+    #: Que sea opcional en la entidad **no** significa que tu app acepte cuentas sin mail: eso
+    #: lo decide `IdentityConfig.require_email`, que sigue en `True` por default. El invariante
+    #: "al menos un identificador" lo aplica `IdentityService`, no esta clase: una entidad se
+    #: construye también al leer una fila vieja, y un validador acá volvería irrecuperable una
+    #: fila que se escribió bajo otra política.
+    email: str | None = None
     email_verified: bool = False
+
+    #: El nombre de usuario, si esta app los usa (`IdentityConfig.usernames`).
+    #:
+    #: Va acá y no en `Account` —donde vive la contraseña— porque no es una credencial: es un
+    #: identificador público de la cuenta, como el mail. Se guarda ya normalizado por
+    #: `UsernamePolicy.normalize`, así que la unicidad no depende de un índice funcional.
+    username: str | None = None
+
     name: str | None = None
     image: str | None = None
 
@@ -112,6 +134,15 @@ class IdentitySession(BaseEntity):
 
     #: Atado al `aud` del token: impide replayear una cookie como Bearer y esquivar CSRF.
     transport: str = "cookie"
+
+    #: Los permisos con los que se abrió la sesión.
+    #:
+    #: Se persisten porque **la rotación no tenía de dónde recuperarlos**. Vivían sólo en el
+    #: claim `scopes` del token, así que `_rotar` armaba el `Principal` de la sesión siguiente
+    #: sin ellos y el refresh devolvía un token sin permisos: el usuario entraba bien y a los
+    #: dos minutos —el `access_ttl`— perdía el acceso, con un 403 que no se parece en nada a
+    #: su causa. Leerlos del token viejo tampoco servía: el refresh token no los lleva.
+    scopes: frozenset[str] = frozenset()
 
     ip_address: str | None = None
     user_agent: str | None = None

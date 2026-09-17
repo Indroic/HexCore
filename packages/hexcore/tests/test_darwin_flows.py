@@ -131,7 +131,7 @@ async def test_sign_up_verify_sign_in_refresh_sign_out(identidad, sesiones, cont
 
     # Sign-in
     entrado, sesion, par = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga y memorable"
+        identifier="ana@ejemplo.com", password="una frase larga y memorable"
     )
     assert entrado.id == usuario.id
     assert par.access_token and par.refresh_token
@@ -167,10 +167,10 @@ async def test_un_mail_inexistente_y_una_clave_mala_dan_el_mismo_error(identidad
     await _usuario_verificado(identidad)
 
     with pytest.raises(InvalidCredentialsError) as inexistente:
-        await identidad.sign_in(email="nadie@ejemplo.com", password="cualquiera")
+        await identidad.sign_in(identifier="nadie@ejemplo.com", password="cualquiera")
 
     with pytest.raises(InvalidCredentialsError) as clave_mala:
-        await identidad.sign_in(email="ana@ejemplo.com", password="incorrecta")
+        await identidad.sign_in(identifier="ana@ejemplo.com", password="incorrecta")
 
     assert str(inexistente.value) == str(clave_mala.value)
 
@@ -193,7 +193,7 @@ async def test_un_mail_inexistente_igual_paga_el_costo_del_hash(identidad, monke
     )
 
     with pytest.raises(InvalidCredentialsError):
-        await identidad.sign_in(email="nadie@ejemplo.com", password="x")
+        await identidad.sign_in(identifier="nadie@ejemplo.com", password="x")
 
     assert len(llamadas) == 1
 
@@ -212,10 +212,10 @@ async def test_el_email_sin_verificar_se_reporta_despues_de_validar_la_clave(ide
     await identidad.sign_up(email="sin@verificar.com", password="una frase larga")
 
     with pytest.raises(InvalidCredentialsError):
-        await identidad.sign_in(email="sin@verificar.com", password="incorrecta")
+        await identidad.sign_in(identifier="sin@verificar.com", password="incorrecta")
 
     with pytest.raises(EmailNotVerifiedError):
-        await identidad.sign_in(email="sin@verificar.com", password="una frase larga")
+        await identidad.sign_in(identifier="sin@verificar.com", password="una frase larga")
 
 
 @pytest.mark.anyio
@@ -230,10 +230,10 @@ async def test_una_cuenta_bloqueada_se_reporta_despues_de_validar_la_clave(
     )
 
     with pytest.raises(InvalidCredentialsError):
-        await identidad.sign_in(email="ana@ejemplo.com", password="incorrecta")
+        await identidad.sign_in(identifier="ana@ejemplo.com", password="incorrecta")
 
     with pytest.raises(AccountLockedError):
-        await identidad.sign_in(email="ana@ejemplo.com", password="una frase larga")
+        await identidad.sign_in(identifier="ana@ejemplo.com", password="una frase larga")
 
 
 # ── Registro ──────────────────────────────────────────────────────────────────
@@ -304,7 +304,7 @@ async def test_la_sesion_anterior_muere_al_rotar(identidad, sesiones, reloj):
     """
     await _usuario_verificado(identidad)
     _, _, par = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga"
+        identifier="ana@ejemplo.com", password="una frase larga"
     )
 
     await sesiones.refresh(par.refresh_token, transport="cookie")
@@ -323,7 +323,7 @@ async def test_reusar_un_refresh_revoca_la_familia_entera(identidad, sesiones, r
     """
     await _usuario_verificado(identidad)
     _, _, par = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga"
+        identifier="ana@ejemplo.com", password="una frase larga"
     )
 
     nueva, par2 = await sesiones.refresh(par.refresh_token, transport="cookie")
@@ -348,7 +348,7 @@ async def test_la_ventana_de_gracia_no_dispara_la_deteccion(identidad, sesiones)
     """
     await _usuario_verificado(identidad)
     _, _, par = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga"
+        identifier="ana@ejemplo.com", password="una frase larga"
     )
     _, par2 = await sesiones.refresh(par.refresh_token, transport="cookie")
 
@@ -368,7 +368,7 @@ async def test_rotar_no_extiende_el_techo_de_la_sesion(identidad, sesiones, relo
     """
     await _usuario_verificado(identidad)
     _, sesion, par = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga"
+        identifier="ana@ejemplo.com", password="una frase larga"
     )
 
     nueva, _ = await sesiones.refresh(par.refresh_token, transport="cookie")
@@ -380,7 +380,7 @@ async def test_rotar_no_extiende_el_techo_de_la_sesion(identidad, sesiones, relo
 async def test_una_sesion_vencida_no_se_puede_rotar(identidad, sesiones, reloj):
     await _usuario_verificado(identidad)
     _, _, par = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga"
+        identifier="ana@ejemplo.com", password="una frase larga"
     )
 
     reloj.advance(days=91)  # más allá de session_ttl
@@ -393,7 +393,7 @@ async def test_una_sesion_vencida_no_se_puede_rotar(identidad, sesiones, reloj):
 async def test_una_sesion_revocada_no_se_puede_rotar(identidad, sesiones):
     await _usuario_verificado(identidad)
     _, sesion, par = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga"
+        identifier="ana@ejemplo.com", password="una frase larga"
     )
     await sesiones.revoke(sesion.id)
 
@@ -414,10 +414,10 @@ async def test_cambiar_la_contrasena_revoca_todas_las_sesiones(
     """
     usuario = await _usuario_verificado(identidad)
     _, _, par_a = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga", transport="cookie"
+        identifier="ana@ejemplo.com", password="una frase larga", transport="cookie"
     )
     _, _, par_b = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga", transport="bearer"
+        identifier="ana@ejemplo.com", password="una frase larga", transport="bearer"
     )
 
     await identidad.change_password(
@@ -432,7 +432,7 @@ async def test_cambiar_la_contrasena_revoca_todas_las_sesiones(
 
     # Y la contraseña nueva funciona.
     await identidad.sign_in(
-        email="ana@ejemplo.com", password="otra frase distinta y larga"
+        identifier="ana@ejemplo.com", password="otra frase distinta y larga"
     )
 
 
@@ -465,7 +465,7 @@ async def test_revoke_all_incrementa_la_generacion(identidad, sesiones, contened
     importar cuántas sesiones tenga.
     """
     usuario = await _usuario_verificado(identidad)
-    await identidad.sign_in(email="ana@ejemplo.com", password="una frase larga")
+    await identidad.sign_in(identifier="ana@ejemplo.com", password="una frase larga")
 
     revocadas = await sesiones.revoke_all_for(usuario.id, reason="test")
 
@@ -483,7 +483,7 @@ async def test_un_token_de_generacion_vieja_no_rota(identidad, sesiones, contene
     """
     usuario = await _usuario_verificado(identidad)
     _, _, par = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga"
+        identifier="ana@ejemplo.com", password="una frase larga"
     )
 
     await contenedor.users().bump_token_generation(usuario.id)
@@ -500,7 +500,7 @@ async def test_un_token_de_cookie_no_sirve_como_bearer(identidad, sesiones):
 
     await _usuario_verificado(identidad)
     _, _, par = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga", transport="cookie"
+        identifier="ana@ejemplo.com", password="una frase larga", transport="cookie"
     )
 
     with pytest.raises(TokenAudienceMismatchError):
@@ -511,7 +511,7 @@ async def test_un_token_de_cookie_no_sirve_como_bearer(identidad, sesiones):
 async def test_el_access_token_vence(identidad, sesiones, reloj):
     await _usuario_verificado(identidad)
     _, _, par = await identidad.sign_in(
-        email="ana@ejemplo.com", password="una frase larga"
+        identifier="ana@ejemplo.com", password="una frase larga"
     )
 
     reloj.advance(seconds=121 + 31)  # TTL + leeway

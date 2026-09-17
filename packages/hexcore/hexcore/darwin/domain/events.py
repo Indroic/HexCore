@@ -68,9 +68,18 @@ class _IdentityEventFields(DomainEvent):
 
 # ── Usuario ──────────────────────────────────────────────────────────────────
 class UserRegisteredEvent(_IdentityEventFields):
-    """Se creó una cuenta. `email` va acá para que un handler de bienvenida no consulte."""
+    """
+    Se creó una cuenta. `email` va acá para que un handler de bienvenida no consulte.
 
-    email: str
+    **Opcional desde 10.0**, porque el alta puede ser sólo con nombre de usuario. Un handler
+    que manda el mail de bienvenida tiene que chequearlo: con `None` no hay a dónde mandarlo, y
+    esa es justamente la información que necesita para no intentarlo.
+    """
+
+    email: str | None = None
+    #: El nombre de usuario, si la cuenta se creó con uno. Va por el mismo motivo que el mail:
+    #: para que un handler no tenga que volver a consultar la fila que se acaba de crear.
+    username: str | None = None
 
 
 class UserEmailVerifiedEvent(_IdentityEventFields):
