@@ -186,16 +186,26 @@ def identity_exception_payload(exc: Exception) -> t.Mapping[str, t.Any]:
 
     A diferencia de los headers —genéricos para toda `AuthenticationError`—, qué payload
     corresponde es específico de cada plugin (el `challenge` de `TwoFactorRequiredError`, por
-    ejemplo), así que esta función delega en `PluginRegistry.exception_payload()` del
-    despliegue en curso en vez de chequear un tipo fijo.
+    ejemplo) o del núcleo (`required` de `AccessDeniedError`), así que esta función chequea el
+    tipo fijo del núcleo y **además** delega en `PluginRegistry.exception_payload()` del
+    despliegue en curso.
 
     Sin un despliegue configurado (`create_app` corrido antes de `configure_identity`, o sin
-    Darwin) devuelve vacío en vez de lanzar — mismo trato que `_mapa_de_plugins()` en `app.py`.
+    Darwin) devuelve sólo lo del núcleo en vez de lanzar — mismo trato que `_mapa_de_plugins()`
+    en `app.py`.
     """
+    from hexcore.darwin.domain.exceptions import AccessDeniedError
+
+    base: dict[str, t.Any] = {}
+    if isinstance(exc, AccessDeniedError):
+        # Sólo `required`: `Decision.reason` es interno y nunca llega al cliente. Ver el
+        # docstring de `AccessDeniedError`.
+        base["required"] = exc.required
+
     from hexcore.darwin.application.container import get_identity_container
 
     try:
         contenedor = get_identity_container()
     except Exception:
-        return {}
-    return contenedor.plugins.exception_payload(exc)
+        return base
+    return {**base, **contenedor.plugins.exception_payload(exc)}

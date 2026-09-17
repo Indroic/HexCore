@@ -41,6 +41,9 @@ import abc
 import fnmatch
 import typing as t
 
+if t.TYPE_CHECKING:
+    from hexcore.darwin.domain.authorization import AuthorizationProvider
+
 __all__ = [
     "HookPhase",
     "ShortCircuit",
@@ -205,6 +208,22 @@ class DarwinPlugin(abc.ABC):
 
     def middlewares(self) -> t.Sequence[t.Any]:
         """Middlewares de CQRS (`AbstractMiddleware`) para el pipeline."""
+        return ()
+
+    def authorization_providers(self) -> t.Sequence["AuthorizationProvider"]:
+        """
+        Los `AuthorizationProvider` que el plugin aporta a `AuthorizationEngine`.
+
+        Concreto y vacío por default, igual que el resto de los puntos de extensión: un plugin
+        que no decide autorización (`two_factor`, `magic_link`) no tiene por qué declarar
+        nada acá.
+
+        `IdentityContainer.authorizer()` los agrega en orden de plugin y pone
+        `ScopeAuthorizationProvider` **al final** — nunca antes que los de un plugin. Es lo que
+        permite que RBAC o DRBAC **restrinjan** lo que el scope retrocompatible concedería
+        (deny-overrides: un `deny` de un plugin le gana a un `allow` del scope) sin que el
+        scope quede corriendo primero y ya decidiendo por su cuenta.
+        """
         return ()
 
     def http_middlewares(self) -> t.Sequence[tuple[type, t.Mapping[str, t.Any]]]:

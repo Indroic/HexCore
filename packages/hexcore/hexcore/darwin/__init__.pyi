@@ -9,10 +9,15 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 200 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 213 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
+from hexcore.darwin.application.authorization import AuthorizationEngine as AuthorizationEngine
+from hexcore.darwin.application.authorization import ScopeAuthorizationProvider as ScopeAuthorizationProvider
+from hexcore.darwin.application.authorization import authorize as authorize
+from hexcore.darwin.application.authz_middleware import AuthorizationMiddleware as AuthorizationMiddleware
+from hexcore.darwin.application.authz_middleware import authorize_command as authorize_command
 from hexcore.darwin.application.commands import AuthenticateToken as AuthenticateToken
 from hexcore.darwin.application.commands import ChangePassword as ChangePassword
 from hexcore.darwin.application.commands import IssueVerificationCode as IssueVerificationCode
@@ -47,6 +52,12 @@ from hexcore.darwin.application.plugins import PluginRegistry as PluginRegistry
 from hexcore.darwin.application.services import IdentityService as IdentityService
 from hexcore.darwin.application.services import SIGN_IN_AUTHENTICATED as SIGN_IN_AUTHENTICATED
 from hexcore.darwin.application.services import SessionService as SessionService
+from hexcore.darwin.domain.authorization import AccessRequest as AccessRequest
+from hexcore.darwin.domain.authorization import AuthorizationProvider as AuthorizationProvider
+from hexcore.darwin.domain.authorization import Decision as Decision
+from hexcore.darwin.domain.authorization import Effect as Effect
+from hexcore.darwin.domain.authorization import PermissionSnapshot as PermissionSnapshot
+from hexcore.darwin.domain.authorization import ResourceRef as ResourceRef
 from hexcore.darwin.domain.context import AUTH_CONTEXT as AUTH_CONTEXT
 from hexcore.darwin.domain.context import AuthContext as AuthContext
 from hexcore.darwin.domain.context import Impersonation as Impersonation
@@ -76,6 +87,7 @@ from hexcore.darwin.domain.events import UserPasswordChangedEvent as UserPasswor
 from hexcore.darwin.domain.events import UserRegisteredEvent as UserRegisteredEvent
 from hexcore.darwin.domain.events import UserSignInFailedEvent as UserSignInFailedEvent
 from hexcore.darwin.domain.events import UserSignedInEvent as UserSignedInEvent
+from hexcore.darwin.domain.exceptions import AccessDeniedError as AccessDeniedError
 from hexcore.darwin.domain.exceptions import AccountLockedError as AccountLockedError
 from hexcore.darwin.domain.exceptions import AuthenticationError as AuthenticationError
 from hexcore.darwin.domain.exceptions import AuthorizationError as AuthorizationError
@@ -124,6 +136,7 @@ from hexcore.darwin.domain.value_objects import TokenPair as TokenPair
 from hexcore.darwin.domain.value_objects import TokenType as TokenType
 from hexcore.darwin.domain.value_objects import Username as Username
 from hexcore.darwin.domain.value_objects import VerificationPurpose as VerificationPurpose
+from hexcore.darwin.infrastructure.api.authorization import require_permission as require_permission
 from hexcore.darwin.infrastructure.api.dependencies import WWW_AUTHENTICATE as WWW_AUTHENTICATE
 from hexcore.darwin.infrastructure.api.dependencies import identity_exception_headers as identity_exception_headers
 from hexcore.darwin.infrastructure.api.dependencies import provide_auth as provide_auth
@@ -227,6 +240,8 @@ __all__ = [
     "AbstractTransport",
     "AbstractUserRepository",
     "AbstractVerificationRepository",
+    "AccessDeniedError",
+    "AccessRequest",
     "AccessTokenClaims",
     "Account",
     "AccountLinkedEvent",
@@ -244,7 +259,10 @@ __all__ = [
     "AuthEnvelopeRestorer",
     "AuthenticateToken",
     "AuthenticationError",
+    "AuthorizationEngine",
     "AuthorizationError",
+    "AuthorizationMiddleware",
+    "AuthorizationProvider",
     "BearerTransport",
     "CREDENTIAL_PROVIDER",
     "CSRF_HEADER",
@@ -261,8 +279,10 @@ __all__ = [
     "DEFAULT_USER_TABLE",
     "DEFAULT_VERIFICATION_TABLE",
     "DarwinPlugin",
+    "Decision",
     "ENVELOPE_KEY",
     "ENVELOPE_VERSION",
+    "Effect",
     "Email",
     "EmailAlreadyRegisteredError",
     "EmailNotVerifiedError",
@@ -298,16 +318,19 @@ __all__ = [
     "PasswordPolicy",
     "Permission",
     "PermissionCycleError",
+    "PermissionSnapshot",
     "PluginError",
     "PluginRegistry",
     "Principal",
     "RefreshResult",
     "RefreshSession",
+    "ResourceRef",
     "RetiredKeyError",
     "Role",
     "RoleRegistry",
     "SECRET_KEY_ENV",
     "SIGN_IN_AUTHENTICATED",
+    "ScopeAuthorizationProvider",
     "SessionCreatedEvent",
     "SessionMixin",
     "SessionModel",
@@ -374,6 +397,8 @@ __all__ = [
     "auth_envelope_provider",
     "auth_from_request",
     "auth_scope",
+    "authorize",
+    "authorize_command",
     "build_identity_router",
     "compare_hashes",
     "configure_identity",
@@ -404,6 +429,7 @@ __all__ = [
     "require_auth",
     "require_authenticated",
     "require_not_impersonated",
+    "require_permission",
     "require_roles",
     "require_scopes",
     "reset_default_registry",

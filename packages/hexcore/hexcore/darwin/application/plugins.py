@@ -25,6 +25,9 @@ import typing as t
 
 from hexcore.darwin.domain.plugins import DarwinPlugin, HookBinding, hook_matches
 
+if t.TYPE_CHECKING:
+    from hexcore.darwin.domain.authorization import AuthorizationProvider
+
 __all__ = ["PluginError", "PluginRegistry"]
 
 
@@ -314,6 +317,16 @@ class PluginRegistry:
 
     def middlewares(self) -> list[t.Any]:
         return [m for plugin in self.plugins for m in plugin.middlewares()]
+
+    def authorization_providers(self) -> list["AuthorizationProvider"]:
+        """
+        Los `AuthorizationProvider` de todos los plugins, en orden de plugin.
+
+        **Sin** el `ScopeAuthorizationProvider` retrocompatible: ese lo agrega
+        `IdentityContainer.authorizer()` al final, porque es un default del contenedor y no
+        un aporte de ningún plugin — el registro sólo conoce lo que los plugins declaran.
+        """
+        return [p for plugin in self.plugins for p in plugin.authorization_providers()]
 
     def http_middlewares(self) -> list[tuple[type, t.Mapping[str, t.Any]]]:
         return [m for plugin in self.plugins for m in plugin.http_middlewares()]
