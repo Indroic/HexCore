@@ -3,6 +3,7 @@
 
 /** Los códigos de error de Darwin y su status HTTP, tal como los emite el servidor. */
 export const ERROR_CODES = {
+  AccessDeniedError: 403,
   AccountLockedError: 423,
   AlreadyAMemberError: 409,
   CsrfValidationError: 403,

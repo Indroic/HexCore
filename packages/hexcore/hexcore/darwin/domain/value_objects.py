@@ -214,6 +214,14 @@ class AccessTokenClaims(BaseModel):
     #: Si esta sesión es impersonada. Explícito en vez de deducirlo comparando `act` y
     #: `sub`, para que la auditoría no dependa de una inferencia.
     imp: bool = False
+    #: Versión de permisos del actor al momento de emitir el token ("permission version").
+    #: `0` por defecto y **sin consumidor todavía**: el núcleo no la lee. Existe acá porque
+    #: `AccessTokenClaims` viaja hasta el próximo refresh (hasta 120 s por defecto) sin volver
+    #: a tocar la base, así que un provider de autorización que necesite invalidar más rápido
+    #: que eso —RBAC comparando contra `darwin_authz_version`, Fase 2— necesita un número que
+    #: viva en el token para poder decir "esto es viejo, releé del store" sin esperar a que el
+    #: token venza solo.
+    pv: int = 0
 
     @model_validator(mode="after")
     def _la_ventana_temporal_es_coherente(self) -> "AccessTokenClaims":

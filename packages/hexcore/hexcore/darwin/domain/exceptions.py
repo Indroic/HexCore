@@ -32,6 +32,7 @@ __all__ = [
     # ── Autorización (403) ──
     "AuthorizationError",
     "InsufficientScopeError",
+    "AccessDeniedError",
     "EmailNotVerifiedError",
     "ImpersonationNotPermittedError",
     "CsrfValidationError",
@@ -130,6 +131,25 @@ class InsufficientScopeError(AuthorizationError):
         super().__init__(message)
 
 
+class AccessDeniedError(AuthorizationError):
+    """
+    `AuthorizationEngine` denegó la acción.
+
+    Deliberadamente angosta: el body lleva `required` (la acción pedida) y nada más —ni
+    `policy_id`, ni por qué perdió, ni qué provider decidió—. `Decision.reason` es interno a
+    propósito (ver su docstring): un 403 que explicara la política le regala a quien está
+    sondeando el sistema un mapa de lo que existe adentro. Es la hermana de
+    `InsufficientScopeError` para el motor de autorización nuevo; ésta sigue siendo la que
+    lanzan `require_scopes`/`require_roles`, que no pasan por el motor.
+    """
+
+    def __init__(self, required: str, message: str | None = None) -> None:
+        self.required = required
+        if message is None:
+            message = f"Acceso denegado. Requerido: {required}."
+        super().__init__(message)
+
+
 class EmailNotVerifiedError(AuthorizationError):
     """La cuenta existe y la contraseña es correcta, pero el mail no está verificado."""
 
@@ -212,6 +232,7 @@ IDENTITY_EXCEPTION_STATUS_MAP: dict[type[Exception], int] = {
     TokenRevokedError: 401,
     TokenAudienceMismatchError: 401,
     InsufficientScopeError: 403,
+    AccessDeniedError: 403,
     EmailNotVerifiedError: 403,
     ImpersonationNotPermittedError: 403,
     CsrfValidationError: 403,

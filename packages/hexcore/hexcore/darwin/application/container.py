@@ -27,6 +27,7 @@ if t.TYPE_CHECKING:
     from hexcore.darwin.application.plugins import PluginRegistry
     from hexcore.darwin.application.services import IdentityService, SessionService
     from hexcore.darwin.domain.plugins import DarwinPlugin
+    from hexcore.darwin.application.authorization import AuthorizationEngine
     from hexcore.darwin.domain.ports import (
         AbstractAccountRepository,
         AbstractAuditSink,
@@ -103,6 +104,7 @@ class IdentityContainer:
         audit: "AbstractAuditSink | None" = None,
         events: "EventBus | None" = None,
         principals: "AbstractPrincipalResolver | None" = None,
+        authorizer: "AuthorizationEngine | None" = None,
         plugins: "PluginRegistry | list[DarwinPlugin] | tuple[DarwinPlugin, ...] | None" = None,
     ) -> None:
         self._config = config
@@ -120,6 +122,7 @@ class IdentityContainer:
         self._audit = audit
         self._events = events
         self._principals = principals
+        self._authorizer = authorizer
         if plugins is not None:
             from hexcore.darwin.application.plugins import PluginRegistry
 
@@ -266,6 +269,36 @@ class IdentityContainer:
 
                 self._principals = NullPrincipalResolver()
             return self._principals
+
+    def authorizer(self) -> "AuthorizationEngine":
+        """
+        El motor de autorización: los providers de los plugins + `ScopeAuthorizationProvider`
+        al final.
+
+        `ScopeAuthorizationProvider` va **al final** y no primero: es lo que permite que un
+        plugin (RBAC, DRBAC) restrinja con un `deny` lo que el scope retrocompatible
+        concedería, en vez de que el scope ya haya decidido `allow` antes de que el plugin
+        tuviera la oportunidad de opinar. Bajo deny-overrides el orden de evaluación no cambia
+        el resultado final, pero si el motor corta apenas encuentra el primer `deny` —que es
+        la implementación más barata— sí importa quién corre antes.
+
+        Sin ningún plugin cableado, este motor es exactamente `ScopeAuthorizationProvider`
+        solo: la app se comporta igual que si `authorize`/`require_permission` no existieran y
+        el único camino fuera `require_scopes`.
+        """
+        with self._lock:
+            if self._authorizer is None:
+                from hexcore.darwin.application.authorization import (
+                    AuthorizationEngine,
+                    ScopeAuthorizationProvider,
+                )
+
+                providers = [
+                    *self.plugins.authorization_providers(),
+                    ScopeAuthorizationProvider(),
+                ]
+                self._authorizer = AuthorizationEngine(providers, audit=self._audit)
+            return self._authorizer
 
     # ── El backend de almacenamiento ──────────────────────────────────────────
     @property

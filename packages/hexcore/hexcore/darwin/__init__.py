@@ -126,6 +126,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "hexcore.darwin.domain.exceptions",
         "InsufficientScopeError",
     ),
+    "AccessDeniedError": ("hexcore.darwin.domain.exceptions", "AccessDeniedError"),
     "EmailNotVerifiedError": (
         "hexcore.darwin.domain.exceptions",
         "EmailNotVerifiedError",
@@ -330,6 +331,37 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "auth_envelope_provider": (
         "hexcore.darwin.infrastructure.envelope",
         "auth_envelope_provider",
+    ),
+    # ── Autorización (Fase 0 del plan rbac/drbac) ────────────────────────────
+    "Effect": ("hexcore.darwin.domain.authorization", "Effect"),
+    "ResourceRef": ("hexcore.darwin.domain.authorization", "ResourceRef"),
+    "AccessRequest": ("hexcore.darwin.domain.authorization", "AccessRequest"),
+    "Decision": ("hexcore.darwin.domain.authorization", "Decision"),
+    "PermissionSnapshot": ("hexcore.darwin.domain.authorization", "PermissionSnapshot"),
+    "AuthorizationProvider": (
+        "hexcore.darwin.domain.authorization",
+        "AuthorizationProvider",
+    ),
+    "AuthorizationEngine": (
+        "hexcore.darwin.application.authorization",
+        "AuthorizationEngine",
+    ),
+    "ScopeAuthorizationProvider": (
+        "hexcore.darwin.application.authorization",
+        "ScopeAuthorizationProvider",
+    ),
+    "authorize": ("hexcore.darwin.application.authorization", "authorize"),
+    "AuthorizationMiddleware": (
+        "hexcore.darwin.application.authz_middleware",
+        "AuthorizationMiddleware",
+    ),
+    "authorize_command": (
+        "hexcore.darwin.application.authz_middleware",
+        "authorize_command",
+    ),
+    "require_permission": (
+        "hexcore.darwin.infrastructure.api.authorization",
+        "require_permission",
     ),
     # ── Sistema de plugins (Fase 8) ──────────────────────────────────────────
     "DarwinPlugin": ("hexcore.darwin.domain.plugins", "DarwinPlugin"),
