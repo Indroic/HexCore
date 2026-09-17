@@ -359,8 +359,8 @@ Its prose is under the same CI gate as `docs/`, so a rename in either package tu
 
 | Series | Status | |
 | :-- | :-- | :-- |
-| **9.x** | ✅ **Active** | The only supported series. Adds the event store and Event Sourcing. |
-| **8.x** and earlier | ⛔ Deprecated | Migrate to 9.x. 6.x and earlier additionally carry the CORS and rate-limiting defects fixed in 7.0. |
+| **10.x** | ✅ **Active** | The only supported series. Darwin gains username sign-in and an optional email. |
+| **9.x** and earlier | ⛔ Deprecated | Migrate to 10.x. 6.x and earlier additionally carry the CORS and rate-limiting defects fixed in 7.0. |
 
 Full table, the silent 2.x bugs and step-by-step migration guides in
 [versions and migration](./docs/hexcore/en/versions-and-migration.md) ·
