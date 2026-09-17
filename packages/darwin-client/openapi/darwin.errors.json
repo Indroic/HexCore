@@ -1,4 +1,5 @@
 {
+  "AccessDeniedError": 403,
   "AccountLockedError": 423,
   "AlreadyAMemberError": 409,
   "CsrfValidationError": 403,
