@@ -4609,7 +4609,7 @@
     },
     "/auth/rbac/me/permissions": {
       "get": {
-        "description": "Roles y permisos efectivos del actor en `scope`. **Optimista para UI.**\n\nLa autoridad es `AuthorizationEngine.decide()` en cada acción real; esto es un\nresumen para que el cliente no tenga que adivinar qué mostrar.",
+        "description": "Roles y permisos efectivos del actor en `scope`, **y en todos sus ancestros**\n(HC-18) — un rol asignado en `\"org:1\"` cuenta para `\"org:1/proj:2\"`, igual que ya\npasa en `AuthorizationEngine.decide()`. **Optimista para UI.**\n\nLa autoridad es `AuthorizationEngine.decide()` en cada acción real; esto es un\nresumen para que el cliente no tenga que adivinar qué mostrar.",
         "operationId": "mis_permisos_auth_rbac_me_permissions_get",
         "parameters": [
           {

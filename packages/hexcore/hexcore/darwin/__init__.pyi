@@ -9,7 +9,7 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 214 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
+# los 215 símbolos de `hexcore.darwin` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
@@ -128,6 +128,7 @@ from hexcore.darwin.domain.ports import AbstractRevocationList as AbstractRevoca
 from hexcore.darwin.domain.ports import AbstractSessionRepository as AbstractSessionRepository
 from hexcore.darwin.domain.ports import AbstractUserRepository as AbstractUserRepository
 from hexcore.darwin.domain.ports import AbstractVerificationRepository as AbstractVerificationRepository
+from hexcore.darwin.domain.ports import CompositePrincipalResolver as CompositePrincipalResolver
 from hexcore.darwin.domain.ports import NullPrincipalResolver as NullPrincipalResolver
 from hexcore.darwin.domain.ports import ResolvedPrincipal as ResolvedPrincipal
 from hexcore.darwin.domain.value_objects import AccessTokenClaims as AccessTokenClaims
@@ -270,6 +271,7 @@ __all__ = [
     "CacheErrorPolicy",
     "CacheRevocationList",
     "ChangePassword",
+    "CompositePrincipalResolver",
     "CookieConfig",
     "CookieTransport",
     "CoreVerificationPurpose",

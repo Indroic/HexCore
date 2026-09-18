@@ -24,7 +24,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
-from hexcore.darwin.plugins.rbac.domain import GLOBAL_SCOPE
+from hexcore.darwin.plugins.rbac.domain import GLOBAL_SCOPE, scope_chain
 
 #: Vencimiento optimista de `/me/permissions` — ver el docstring de `MePermissionsOut.expires_at`.
 _ME_PERMISSIONS_HINT_TTL = timedelta(seconds=60)
@@ -130,7 +130,9 @@ def build_rbac_router(
         scope: str = GLOBAL_SCOPE, auth: t.Any = Depends(provide_auth)
     ) -> MePermissionsOut:
         """
-        Roles y permisos efectivos del actor en `scope`. **Optimista para UI.**
+        Roles y permisos efectivos del actor en `scope`, **y en todos sus ancestros**
+        (HC-18) — un rol asignado en `"org:1"` cuenta para `"org:1/proj:2"`, igual que ya
+        pasa en `AuthorizationEngine.decide()`. **Optimista para UI.**
 
         La autoridad es `AuthorizationEngine.decide()` en cada acción real; esto es un
         resumen para que el cliente no tenga que adivinar qué mostrar.
@@ -140,15 +142,25 @@ def build_rbac_router(
 
         servicio = get_rbac_service()
         ahora = SystemClock().now()
-        ids_de_rol = await servicio.active_role_ids(auth.actor_id, scope, at=ahora)
-        roles = await servicio.roles_by_ids(ids_de_rol)
-        permisos = await servicio.effective_permission_keys(auth.actor_id, scope, at=ahora)
-        version = await servicio.authz_version(scope)
+
+        nombres_de_rol: set[str] = set()
+        permisos: set[str] = set()
+        version = 0
+        for scope_key in scope_chain(scope):
+            ids_de_rol = await servicio.active_role_ids(auth.actor_id, scope_key, at=ahora)
+            roles = await servicio.roles_by_ids(ids_de_rol)
+            nombres_de_rol.update(r.name for r in roles)
+            permisos.update(await servicio.effective_permission_keys(auth.actor_id, scope_key, at=ahora))
+            # La versión que importa para el vencimiento optimista del cliente es la del scope
+            # exacto pedido — es el nivel que más rota — pero se toma la máxima de la cadena
+            # por si el cliente decide invalidar contra cualquier cambio en un ancestro.
+            version = max(version, await servicio.authz_version(scope_key))
+
         return MePermissionsOut(
             scope=scope,
             version=version,
             expires_at=(ahora + _ME_PERMISSIONS_HINT_TTL).isoformat(),
-            roles=sorted(r.name for r in roles),
+            roles=sorted(nombres_de_rol),
             permissions=sorted(permisos),
         )
 

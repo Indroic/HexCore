@@ -95,6 +95,7 @@ __all__ = [
     "DrbacAuthzVersionMixin",
     "DrbacPlugin",
     "get_drbac_service",
+    "get_drbac_plugin",
 ]
 
 _MIXINS = (
@@ -220,6 +221,17 @@ class DrbacPlugin(DarwinPlugin):
                 )
             return self._pdp
 
+    def resolved_resource_types(self) -> frozenset[str]:
+        """Los `resource.type` con un `ResourceAttributeResolver` propio.
+
+        Lo usa el router para rechazar `attributes` en `/check` y `/simulate` para estos tipos
+        — si el servidor ya sabe resolverlos, un `attributes` del cliente sólo podría pisar lo
+        que el resolver calcula, y eso es exactamente lo que `PolicyInformationPoint` ya no
+        deja pasar (HC-14). Rechazarlo acá, antes de evaluar, es más claro que dejar que se
+        ignore en silencio.
+        """
+        return frozenset(self._resolvers or {})
+
     def reset(self) -> None:
         """Descarta lo cacheado. Para los tests."""
         with self._lock:
@@ -262,6 +274,26 @@ class DrbacPlugin(DarwinPlugin):
         from hexcore.darwin.plugins.drbac.router import build_drbac_router
 
         return [build_drbac_router()]
+
+
+def get_drbac_plugin() -> "DrbacPlugin":
+    """
+    El plugin `drbac` registrado en este despliegue.
+
+    Raises:
+        RuntimeError: el plugin no está registrado, con la remediación copiable.
+    """
+    from hexcore.darwin.application.container import get_identity_container
+
+    plugin = get_identity_container().plugins.get(DrbacPlugin.name)
+    if not isinstance(plugin, DrbacPlugin):
+        raise RuntimeError(
+            "El plugin 'drbac' no está registrado en este despliegue.\n\n"
+            "    from hexcore.darwin import PluginRegistry, configure_identity\n"
+            "    from hexcore.darwin.plugins.drbac import DrbacPlugin\n\n"
+            "    configure_identity(config, plugins=PluginRegistry([RbacPlugin(), DrbacPlugin()]))"
+        )
+    return plugin
 
 
 def get_drbac_service() -> "DrbacService":

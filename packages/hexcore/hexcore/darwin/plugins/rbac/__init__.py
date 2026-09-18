@@ -259,13 +259,21 @@ class RbacPlugin(DarwinPlugin):
         No es automático —el plugin no tiene forma de instalarse a sí mismo como resolver de
         principales, ese punto de extensión es del contenedor y no de `DarwinPlugin`— así que
         hace falta cablearlo a mano una vez.
+
+        El uso documentado es ``principals=rbac.principal_resolver()`` como argumento de
+        ``configure_identity(...)`` — Python evalúa ese argumento **antes** de entrar a
+        `configure_identity`, así que este método no puede llamar a `self.service()` acá: eso
+        exige `get_identity_container()`, y el contenedor todavía no existe en ese punto
+        (HC-15). En cambio, se le pasa `self.service` —el método, sin llamar— a
+        `RbacPrincipalResolver`, que lo resuelve recién en el primer `resolve()` real, después
+        de que `configure_identity` ya corrió.
         """
         with self._lock:
             if self._resolver is None:
                 from hexcore.darwin.plugins.rbac.resolver import RbacPrincipalResolver
 
                 self._resolver = RbacPrincipalResolver(
-                    service=self.service(),
+                    service=self.service,
                     scope_of=self._scope_of,
                     embed_in_token=self._embed_in_token,
                 )

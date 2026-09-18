@@ -322,8 +322,9 @@ runtime state.
 ### `ConditionTooComplexError` / `InvalidVarPathError` on a policy save that looks fine
 
 **Cause.** `enforce_condition_limits` runs at save time, not at evaluation time — max node
-count, max depth, and the set of `Var` roots (`resource.*`, `actor.*`, `context.*`) are all
-checked before the policy is ever persisted.
+count, max depth, and the set of `Var` roots (`subject.*`, `resource.*`, `env.*` — see
+`plugins/drbac/conditions.py`'s `_NAMESPACES`) are all checked before the policy is ever
+persisted.
 
 **Fix.** Flatten the condition tree, or split it into more, simpler rules. This is a save-time
 gate, not a bug: it exists so an oversized tree never reaches the evaluator, where it would
@@ -363,13 +364,14 @@ same Python. `evaluate()` is sync and optimistic against whatever rules it *did*
 
 ### `WithinScope` seems to match a tenant it should not
 
-**Cause.** A `scope_key` that does not follow the `segment:segment` convention (for example,
+**Cause.** A `scope_path` that does not follow the `segment/segment` convention (for example,
 concatenating IDs without a separator) makes segment-based comparison meaningless — two
-different tenants can produce the same leading characters. `WithinScope` compares parsed
-segments precisely to avoid the string-prefix version of this bug, but it cannot fix a
-scope that was never segmented in the first place.
+different tenants can produce the same leading characters. `scope_chain` (`plugins/drbac/domain.py`,
+duplicated with the same algorithm in `plugins/rbac/domain.py` since HC-18) splits on `/`, and
+`WithinScope` compares those parsed segments precisely to avoid the string-prefix version of
+this bug — but it cannot fix a scope that was never segmented in the first place.
 
-**Fix.** Always build `scope_key` as colon-separated segments (`org:42`, `org:42:team:7`).
+**Fix.** Always build `scope_path` as slash-separated segments (`org:42`, `org:42/team:7`).
 Never derive it by string concatenation.
 
 ---

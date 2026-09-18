@@ -226,6 +226,49 @@ class AuthContext(BaseModel, t.Generic[TUser]):
 
         return self
 
+    # ── Callers externos a Darwin ─────────────────────────────────────────────
+    @classmethod
+    def external(
+        cls,
+        user_id: UUID,
+        *,
+        roles: t.Iterable[str] = (),
+        scopes: t.Iterable[str] = (),
+        status: str | None = None,
+        transport: Transport = "bearer",
+    ) -> "AuthContext[t.Any]":
+        """
+        Un `AuthContext` para un caller externo a Darwin (HC-21).
+
+        `AccessRequest.context` exige un `AuthContext`, y hasta acá la única forma de tener uno
+        era un `Principal` de Darwin real —con su `session_id`, resuelto por
+        `AbstractPrincipalResolver`—. Un token de **otro** sistema de identidad —el caso que
+        motiva esto es la APK de redv2, que se queda en Better Auth mientras la web migra a
+        Darwin— no tiene nada de eso, y no había forma de que ese caller pasara por
+        `AuthorizationEngine.decide()` sin fabricar una sesión Darwin que no existe.
+
+        `actor` y `subject` son el mismo `Principal`, sin `session_id` (no hay sesión Darwin
+        que revocar) y sin `impersonation` (un caller externo no tiene cómo impersonar *dentro*
+        de Darwin — esa noción no existe para él). `transport` queda auditado como lo que
+        realmente es: por defecto `"bearer"`, pasable si el caller usa otro transporte.
+
+        Uso::
+
+            contexto = AuthContext.external(
+                UUID(claims["sub"]), roles=claims["roles"], scopes=claims["permissions"]
+            )
+            decision = await engine.decide(
+                AccessRequest(context=contexto, action="invoice.approve", resource=recurso)
+            )
+        """
+        principal = Principal(
+            user_id=user_id,
+            roles=frozenset(roles),
+            scopes=frozenset(scopes),
+            status=status,
+        )
+        return cls(actor=principal, subject=principal, transport=transport)
+
     # ── Identidades ───────────────────────────────────────────────────────────
     @property
     def actor_id(self) -> UUID | str:

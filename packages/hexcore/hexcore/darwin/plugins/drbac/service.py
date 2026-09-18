@@ -18,12 +18,15 @@ que un alta o una revocación de binding pueda dejar vieja, así que subir la ve
 invalidaría nada — sólo confundiría a quien lee `DrbacAuthorizationChangedEvent` esperando que
 cada evento se corresponda con un cambio de versión real.
 
-**Sin anti-escalada.** A diferencia de `RbacService.set_role_permissions`/`assign_role`, este
-servicio no verifica que quien crea una política no esté otorgando más de lo que él mismo tiene.
-Es una decisión de alcance de la Fase F5 y no del plan original —que no especifica esa
-verificación para DRBAC— y queda como un endurecimiento pendiente: hoy `authz.manage` en un
-scope alcanza para escribir cualquier regla `allow` en ese scope, igual que ya alcanza para
-crear roles de `rbac` con cualquier permiso listado en el catálogo.
+**Sin anti-escalada a nivel de servicio** (HC-20). A diferencia de
+`RbacService.set_role_permissions`/`assign_role`, este servicio no verifica que quien crea una
+política no esté otorgando más de lo que él mismo tiene — una regla `allow` de DRBAC no es un
+permiso del catálogo de `rbac`, así que no hay con qué comparar sin acoplar este plugin a
+`rbac`, que es instalable solo. En vez de esa comparación, el endurecimiento es un permiso más
+fino: escribir políticas (`POST/PATCH/DELETE /policies`) exige `authz.policy.write`, separado
+de `authz.manage` —que sigue alcanzando para roles y bindings—, así que un despliegue puede
+darle a alguien `authz.manage` sin darle además la capacidad de escribir reglas `allow`
+arbitrarias.
 """
 from __future__ import annotations
 
@@ -242,6 +245,13 @@ class DrbacService:
                 created_at=at or self._clock.now(),
             )
         )
+
+    async def get_binding(self, binding_id: UUID) -> RoleBinding:
+        """Para autorizar contra `binding.scope_path` antes de revocar (HC-20)."""
+        ligadura = await self._bindings.get(binding_id)
+        if ligadura is None:
+            raise RoleBindingNotFoundError(f"No existe el binding {binding_id}.")
+        return ligadura
 
     async def revoke_binding(self, binding_id: UUID) -> bool:
         borrado = await self._bindings.delete(binding_id)

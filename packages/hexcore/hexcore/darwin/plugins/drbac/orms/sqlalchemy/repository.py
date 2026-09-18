@@ -20,6 +20,9 @@ from uuid import UUID
 
 from sqlalchemy import delete, or_, select, update
 
+from hexcore.infrastructure.repositories.orms.sqlalchemy.id_types import (
+    coerce_id_for_column,
+)
 from hexcore.darwin.plugins.drbac.conditions import parse_condition
 from hexcore.darwin.plugins.drbac.domain import (
     AbstractDrbacAuthzVersionRepository,
@@ -89,7 +92,7 @@ class SqlAlchemyDrbacPolicyRepository(AbstractDrbacPolicyRepository):
     async def add(self, policy: Policy) -> Policy:
         async with self._session_scope() as session:
             fila = self._model(
-                id=policy.id,
+                id=coerce_id_for_column(self._model, "id", policy.id),
                 scope_key=policy.scope_key,
                 name=policy.name,
                 description=policy.description,
@@ -105,7 +108,9 @@ class SqlAlchemyDrbacPolicyRepository(AbstractDrbacPolicyRepository):
 
     async def get(self, policy_id: UUID) -> Policy | None:
         async with self._session_scope() as session:
-            fila = await session.get(self._model, policy_id)
+            fila = await session.get(
+                self._model, coerce_id_for_column(self._model, "id", policy_id)
+            )
             return await self._ensamblar(session, fila) if fila is not None else None
 
     async def get_by_name(self, scope_key: str, name: str) -> Policy | None:
@@ -140,10 +145,11 @@ class SqlAlchemyDrbacPolicyRepository(AbstractDrbacPolicyRepository):
             return [await self._ensamblar(session, f) for f in resultado.scalars().all()]
 
     async def update(self, policy: Policy) -> Policy:
+        policy_id_coercido = coerce_id_for_column(self._model, "id", policy.id)
         async with self._session_scope() as session:
             resultado = await session.execute(
                 update(self._model)
-                .where(self._model.id == policy.id)
+                .where(self._model.id == policy_id_coercido)
                 .values(
                     name=policy.name,
                     description=policy.description,
@@ -157,7 +163,10 @@ class SqlAlchemyDrbacPolicyRepository(AbstractDrbacPolicyRepository):
                 raise PolicyNotFoundError(f"No existe la política {policy.id}.")
 
             await session.execute(
-                delete(self._rule_model).where(self._rule_model.policy_id == policy.id)
+                delete(self._rule_model).where(
+                    self._rule_model.policy_id
+                    == coerce_id_for_column(self._rule_model, "policy_id", policy.id)
+                )
             )
             session.add_all(self._filas_de_reglas(policy.id, policy.rules))
             await session.commit()
@@ -167,17 +176,20 @@ class SqlAlchemyDrbacPolicyRepository(AbstractDrbacPolicyRepository):
     async def delete(self, policy_id: UUID) -> bool:
         async with self._session_scope() as session:
             resultado = await session.execute(
-                delete(self._model).where(self._model.id == policy_id).returning(self._model.id)
+                delete(self._model)
+                .where(self._model.id == coerce_id_for_column(self._model, "id", policy_id))
+                .returning(self._model.id)
             )
             borro = resultado.scalar_one_or_none() is not None
             await session.commit()
             return borro
 
     def _filas_de_reglas(self, policy_id: UUID, rules: t.Iterable[Rule]) -> list[t.Any]:
+        policy_id_coercido = coerce_id_for_column(self._rule_model, "policy_id", policy_id)
         return [
             self._rule_model(
-                id=regla.id,
-                policy_id=policy_id,
+                id=coerce_id_for_column(self._rule_model, "id", regla.id),
+                policy_id=policy_id_coercido,
                 position=regla.position,
                 effect=regla.effect,
                 actions=list(regla.actions),
@@ -193,7 +205,10 @@ class SqlAlchemyDrbacPolicyRepository(AbstractDrbacPolicyRepository):
     async def _ensamblar(self, session: t.Any, fila: t.Any) -> Policy:
         resultado = await session.execute(
             select(self._rule_model)
-            .where(self._rule_model.policy_id == fila.id)
+            .where(
+                self._rule_model.policy_id
+                == coerce_id_for_column(self._rule_model, "policy_id", fila.id)
+            )
             .order_by(self._rule_model.position)
         )
         reglas = [_a_regla(f) for f in resultado.scalars().all()]
@@ -219,8 +234,8 @@ class SqlAlchemyDrbacRoleBindingRepository(AbstractDrbacRoleBindingRepository):
     async def add(self, binding: RoleBinding) -> RoleBinding:
         async with self._session_scope() as session:
             fila = self._model(
-                id=binding.id,
-                subject_id=binding.subject_id,
+                id=coerce_id_for_column(self._model, "id", binding.id),
+                subject_id=coerce_id_for_column(self._model, "subject_id", binding.subject_id),
                 role_name=binding.role_name,
                 scope_path=binding.scope_path,
                 condition=(
@@ -239,14 +254,16 @@ class SqlAlchemyDrbacRoleBindingRepository(AbstractDrbacRoleBindingRepository):
 
     async def get(self, binding_id: UUID) -> RoleBinding | None:
         async with self._session_scope() as session:
-            fila = await session.get(self._model, binding_id)
+            fila = await session.get(
+                self._model, coerce_id_for_column(self._model, "id", binding_id)
+            )
             return _a_binding(fila) if fila is not None else None
 
     async def delete(self, binding_id: UUID) -> bool:
         async with self._session_scope() as session:
             resultado = await session.execute(
                 delete(self._model)
-                .where(self._model.id == binding_id)
+                .where(self._model.id == coerce_id_for_column(self._model, "id", binding_id))
                 .returning(self._model.id)
             )
             borro = resultado.scalar_one_or_none() is not None
@@ -257,7 +274,10 @@ class SqlAlchemyDrbacRoleBindingRepository(AbstractDrbacRoleBindingRepository):
         async with self._session_scope() as session:
             resultado = await session.execute(
                 select(self._model)
-                .where(self._model.subject_id == subject_id)
+                .where(
+                    self._model.subject_id
+                    == coerce_id_for_column(self._model, "subject_id", subject_id)
+                )
                 .order_by(self._model.created_at)
             )
             return [_a_binding(f) for f in resultado.scalars().all()]
@@ -271,7 +291,8 @@ class SqlAlchemyDrbacRoleBindingRepository(AbstractDrbacRoleBindingRepository):
         async with self._session_scope() as session:
             resultado = await session.execute(
                 select(self._model).where(
-                    self._model.subject_id == subject_id,
+                    self._model.subject_id
+                    == coerce_id_for_column(self._model, "subject_id", subject_id),
                     self._model.scope_path.in_(claves),
                     or_(self._model.expires_at.is_(None), self._model.expires_at > at),
                 )

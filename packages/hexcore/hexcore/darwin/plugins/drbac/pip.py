@@ -9,22 +9,37 @@ de las condiciones no lo necesitan. Cuando sí hace falta —``resource.status``
 tu propia factura salvo que siga en borrador"— un `ResourceAttributeResolver` registrado por
 `resource.type` completa lo que falte, bajo demanda.
 
-**Perezoso y memoizado por lote.** Un `PolicyInformationPoint` se construye una vez por
-lote de decisiones (el `POST /auth/drbac/check` de la Fase F5 evalúa hasta 50 de una), y
-memoiza por `(type, id)`: dos ítems del mismo lote sobre el mismo recurso no disparan el
-resolver dos veces.
+**Memoizado, con límite y vencimiento.** El `DrbacPlugin` cachea un único `PolicyDecisionPoint`
+—y con él, un único `PolicyInformationPoint`— para toda la vida del proceso, no por lote de
+decisiones: un `POST /auth/drbac/check` no es el único llamador, y nada resetea el PIP entre
+peticiones. Por eso la memoización tiene que ser segura para vivir todo el proceso: acotada en
+tamaño (LRU) y con vencimiento (TTL), no un `dict` que sólo crece.
 """
 from __future__ import annotations
 
 import abc
 import logging
+import time
 import typing as t
+from collections import OrderedDict
 
 from hexcore.darwin.domain.authorization import ResourceRef
 
 __all__ = ["ResourceAttributeResolver", "PolicyInformationPoint"]
 
 logger = logging.getLogger("hexcore.darwin.drbac")
+
+#: Sentinela para el `id` de un recurso sin id — distinto de `""`, que sí podría ser un id real
+#: en un backend que no valida el formato. Colapsar `None` a `""` mezclaba en la misma entrada
+#: de caché todo recurso sin id de un mismo `type`, así que un resolver typeless-pero-variable
+#: (poco común, pero legal) devolvía siempre el primer resultado que calculó.
+_SIN_ID = object()
+
+#: Tamaño y vencimiento por defecto del caché — generosos para un lote de `/check` (50 ítems,
+#: Fase F5) y cortos para no acumular memoria entre lotes ni servir un atributo resuelto hace
+#: rato como si fuera fresco.
+_MAXSIZE_POR_DEFECTO = 512
+_TTL_POR_DEFECTO_S = 30.0
 
 
 class ResourceAttributeResolver(abc.ABC):
@@ -65,10 +80,21 @@ class PolicyInformationPoint:
     """
 
     def __init__(
-        self, *, resolvers: t.Mapping[str, ResourceAttributeResolver] | None = None
+        self,
+        *,
+        resolvers: t.Mapping[str, ResourceAttributeResolver] | None = None,
+        maxsize: int = _MAXSIZE_POR_DEFECTO,
+        ttl_seconds: float = _TTL_POR_DEFECTO_S,
     ) -> None:
         self._resolvers = dict(resolvers or {})
-        self._cache: dict[tuple[str, str], dict[str, t.Any]] = {}
+        self._maxsize = maxsize
+        self._ttl_seconds = ttl_seconds
+        #: `OrderedDict` para poder desalojar por LRU (`move_to_end` en cada hit,
+        #: `popitem(last=False)` cuando se pasa de `maxsize`). El valor lleva el timestamp de
+        #: cuándo se calculó, para el vencimiento por TTL.
+        self._cache: OrderedDict[tuple[str, t.Any], tuple[float, dict[str, t.Any]]] = (
+            OrderedDict()
+        )
 
     async def attributes_for(self, resource: ResourceRef | None) -> dict[str, t.Any]:
         """
@@ -83,19 +109,28 @@ class PolicyInformationPoint:
         if resource is None:
             return {}
 
-        clave = (resource.type, resource.id or "")
+        clave = (resource.type, resource.id if resource.id is not None else _SIN_ID)
         en_cache = self._cache.get(clave)
         if en_cache is not None:
-            return en_cache
+            calculado_en, valor = en_cache
+            if time.monotonic() - calculado_en <= self._ttl_seconds:
+                self._cache.move_to_end(clave)
+                return valor
+            del self._cache[clave]
 
         completados: dict[str, t.Any] = dict(resource.attributes)
         resolver = self._resolvers.get(resource.type)
         if resolver is not None:
             try:
                 extra = await resolver.resolve(resource)
-                # Los que ya venían en `resource.attributes` ganan: son los que el llamador
-                # tenía a mano y pueden ser más frescos que lo que el resolver recalcula.
-                completados = {**extra, **completados}
+                # El resolver gana: es lo que el servidor recalculó a propósito para esta
+                # decisión. `resource.attributes` es lo que trajo el llamador —potencialmente
+                # el cliente del `/check`— y dejar que pise el atributo resuelto abría la
+                # puerta a que cualquiera spoofeara `resource.status`, `resource.owner_id`, lo
+                # que sea, con tal de mandarlo en el body. Lo que el llamador aporta y el
+                # resolver no conoce sigue pasando: sólo se pisan las claves que el resolver sí
+                # calculó.
+                completados = {**completados, **extra}
             except Exception:
                 logger.warning(
                     "drbac: el PIP de '%s' falló resolviendo atributos para %r; se sigue "
@@ -105,5 +140,8 @@ class PolicyInformationPoint:
                     exc_info=True,
                 )
 
-        self._cache[clave] = completados
+        self._cache[clave] = (time.monotonic(), completados)
+        self._cache.move_to_end(clave)
+        while len(self._cache) > self._maxsize:
+            self._cache.popitem(last=False)
         return completados

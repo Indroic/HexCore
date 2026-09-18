@@ -27,7 +27,7 @@ import typing as t
 from datetime import timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from hexcore.darwin.plugins.drbac.conditions import Condition
@@ -154,6 +154,27 @@ class SimulateOut(BaseModel):
     explain: list[dict[str, t.Any]]
 
 
+def _rechazar_atributos_resueltos(item: "CheckItem") -> None:
+    """
+    422 si `item.attributes` trae algo para un `resource_type` que ya tiene un
+    `ResourceAttributeResolver` registrado — el PIP hace ganar al resolver sobre lo que venga
+    del cliente (HC-14), así que dejar pasar `attributes` ahí es una ilusión de control que el
+    cliente no tiene: mejor decirlo en el 422 que ignorarlo en silencio.
+    """
+    if not item.attributes:
+        return
+    from hexcore.darwin.plugins.drbac import get_drbac_plugin
+
+    if item.resource_type in get_drbac_plugin().resolved_resource_types():
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"'{item.resource_type}' ya tiene un resolver de atributos registrado; "
+                "'attributes' no se acepta del cliente para este resource_type."
+            ),
+        )
+
+
 def _clave_del_item(item: CheckItem) -> str:
     """Para deduplicar ítems idénticos del lote sin depender de que sus campos sean hasheables."""
     return json.dumps(item.model_dump(), sort_keys=True, default=str)
@@ -186,6 +207,26 @@ def build_drbac_router(
         politica = await get_drbac_service().get_policy(policy_id)
         return ResourceRef(type="drbac_policy", id=str(policy_id), scope_path=politica.scope_key)
 
+    async def _cargar_binding_como_recurso(request: Request) -> t.Any:
+        """
+        Autoriza contra el scope **real** del binding, no contra `?scope=` (HC-20).
+
+        `DELETE /bindings/{id}` autorizaba contra lo que el caller pusiera en la query —
+        default `GLOBAL_SCOPE` si no ponía nada—, nunca contra `binding.scope_path`. Con eso,
+        alguien con `authz.manage` en un scope que **no** es el del binding podía, con sólo
+        omitir `?scope=`, operar sobre un binding de un tenant ajeno; y al revés, alguien con
+        `authz.manage` sólo en su propio scope podía pasar un `?scope=` que sí controla para
+        operar sobre un `binding_id` que en realidad vive en otro. Cargar el binding primero —
+        mismo patrón que `_cargar_policy_como_recurso`— cierra las dos direcciones.
+        """
+        from hexcore.darwin.plugins.drbac import get_drbac_service
+
+        binding_id = UUID(request.path_params["binding_id"])
+        ligadura = await get_drbac_service().get_binding(binding_id)
+        return ResourceRef(
+            type="drbac_binding", id=str(binding_id), scope_path=ligadura.scope_path
+        )
+
     # ── check / snapshot ──────────────────────────────────────────────────────
     @router.post("/check")
     async def check(payload: CheckBody, auth: t.Any = Depends(provide_auth)) -> list[CheckResultOut]:
@@ -199,6 +240,7 @@ def build_drbac_router(
         resueltos: dict[str, bool] = {}
 
         for item in payload.items:
+            _rechazar_atributos_resueltos(item)
             clave = _clave_del_item(item)
             if clave in resueltos:
                 continue
@@ -272,7 +314,9 @@ def build_drbac_router(
     @router.post(
         "/policies",
         status_code=201,
-        dependencies=[Depends(require_permission("authz.manage", resource=_scope_de_la_query))],
+        dependencies=[
+            Depends(require_permission("authz.policy.write", resource=_scope_de_la_query))
+        ],
     )
     async def crear_politica(
         payload: CreatePolicyBody, scope: str = GLOBAL_SCOPE
@@ -301,7 +345,11 @@ def build_drbac_router(
 
     @router.patch(
         "/policies/{policy_id}",
-        dependencies=[Depends(require_permission("authz.manage", resource=_cargar_policy_como_recurso))],
+        dependencies=[
+            Depends(
+                require_permission("authz.policy.write", resource=_cargar_policy_como_recurso)
+            )
+        ],
     )
     async def actualizar_politica(policy_id: UUID, payload: UpdatePolicyBody) -> PolicyOut:
         from hexcore.darwin.plugins.drbac import get_drbac_service
@@ -318,7 +366,11 @@ def build_drbac_router(
 
     @router.delete(
         "/policies/{policy_id}",
-        dependencies=[Depends(require_permission("authz.manage", resource=_cargar_policy_como_recurso))],
+        dependencies=[
+            Depends(
+                require_permission("authz.policy.write", resource=_cargar_policy_como_recurso)
+            )
+        ],
     )
     async def borrar_politica(policy_id: UUID) -> dict[str, bool]:
         from hexcore.darwin.plugins.drbac import get_drbac_service
@@ -354,9 +406,25 @@ def build_drbac_router(
         )
         return _binding_out(ligadura)
 
+    async def _recurso_global_de_bindings(request: Request) -> t.Any:
+        """
+        `GET /bindings?subject_id=` lista bindings de **cualquier** scope para ese sujeto — no
+        hay un único scope contra el cual autorizar antes de saber qué va a devolver la
+        consulta. Antes autorizaba contra `?scope=` (`GLOBAL_SCOPE` si se omitía), que el
+        propio caller elegía: alguien con `authz.manage` sólo en un scope propio podía, mandando
+        ese `?scope=`, listar bindings de un sujeto que en realidad tiene ligaduras en scopes
+        ajenos, porque la respuesta nunca se filtraba por lo que pedía la query (HC-20). En vez
+        de autorizar por scope, este endpoint pasa a exigir `authz.manage` **global** —fijo, no
+        el que declare el caller— para ver los bindings de cualquier sujeto.
+        """
+        del request
+        return ResourceRef(type="drbac_binding", scope_path=GLOBAL_SCOPE)
+
     @router.get(
         "/bindings",
-        dependencies=[Depends(require_permission("authz.manage", resource=_scope_de_la_query))],
+        dependencies=[
+            Depends(require_permission("authz.manage", resource=_recurso_global_de_bindings))
+        ],
     )
     async def listar_bindings(subject_id: UUID) -> list[BindingOut]:
         from hexcore.darwin.plugins.drbac import get_drbac_service
@@ -366,7 +434,9 @@ def build_drbac_router(
 
     @router.delete(
         "/bindings/{binding_id}",
-        dependencies=[Depends(require_permission("authz.manage", resource=_scope_de_la_query))],
+        dependencies=[
+            Depends(require_permission("authz.manage", resource=_cargar_binding_como_recurso))
+        ],
     )
     async def revocar_binding(binding_id: UUID) -> dict[str, bool]:
         from hexcore.darwin.plugins.drbac import get_drbac_service
@@ -384,6 +454,7 @@ def build_drbac_router(
         from hexcore.darwin.application.container import get_identity_container
         from hexcore.darwin.plugins.drbac.domain import scope_chain
 
+        _rechazar_atributos_resueltos(payload)
         resource = ResourceRef(
             type=payload.resource_type,
             id=payload.resource_id,

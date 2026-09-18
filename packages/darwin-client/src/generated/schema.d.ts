@@ -696,7 +696,9 @@ export interface paths {
         };
         /**
          * Mis Permisos
-         * @description Roles y permisos efectivos del actor en `scope`. **Optimista para UI.**
+         * @description Roles y permisos efectivos del actor en `scope`, **y en todos sus ancestros**
+         *     (HC-18) — un rol asignado en `"org:1"` cuenta para `"org:1/proj:2"`, igual que ya
+         *     pasa en `AuthorizationEngine.decide()`. **Optimista para UI.**
          *
          *     La autoridad es `AuthorizationEngine.decide()` en cada acción real; esto es un
          *     resumen para que el cliente no tenga que adivinar qué mostrar.

@@ -21,6 +21,7 @@ if t.TYPE_CHECKING:
 from hexcore.types import FieldResolversType, RelationsType
 
 from . import BaseModel
+from .id_types import coerce_id_for_column, coerce_ids_for_model
 
 from hexcore.domain.base import BaseEntity
 
@@ -47,6 +48,7 @@ def to_model(
                 entity_data[dest_field] = serializer(entity)
                 if field != dest_field and field in entity_data:
                     del entity_data[field]
+    entity_data = coerce_ids_for_model(model_cls, entity_data)
     model = model_cls(**entity_data)
     if set_domain and hasattr(model, "set_domain_entity"):
         model.set_domain_entity(entity)
@@ -77,6 +79,7 @@ def load_relations(model: t.Type[T]) -> t.Any:
 async def db_get(
     session: AsyncSession, model: t.Type[T], id: UUID, exc_none: Exception
 ) -> T:
+    id = coerce_id_for_column(model, "id", id)
     stmt = select(model).where(model.id == id)
     result = await session.execute(stmt)
     get_entity = result.scalar_one_or_none()
@@ -428,7 +431,7 @@ async def save_entity(
 async def logical_delete(
     session: AsyncSession, entity: BaseEntity, model_cls: type[T]
 ) -> None:
-    model = await session.get(model_cls, entity.id)
+    model = await session.get(model_cls, coerce_id_for_column(model_cls, "id", entity.id))
     if model:
         await entity.deactivate()
         await save_entity(session, entity, model_cls)

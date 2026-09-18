@@ -49,6 +49,7 @@ __all__ = [
     "AbstractAuditSink",
     "AbstractPrincipalResolver",
     "NullPrincipalResolver",
+    "CompositePrincipalResolver",
     "ResolvedPrincipal",
 ]
 
@@ -466,3 +467,51 @@ class NullPrincipalResolver(AbstractPrincipalResolver):
     async def resolve(self, user: "User") -> "ResolvedPrincipal":
         del user
         return ResolvedPrincipal()
+
+
+class CompositePrincipalResolver(AbstractPrincipalResolver):
+    """
+    Combina varios `AbstractPrincipalResolver` en uno solo.
+
+    `configure_identity(principals=...)` sólo tiene **un** slot (HC-16): no hay forma de
+    cablear a la vez, por ejemplo, `RbacPrincipalResolver` —que resuelve roles/scopes y nunca
+    toca `status`— con un resolver propio de la app que sólo sabe de `status` ("pending",
+    "banned", lo que sea). Sin este puente, quien necesitara ambos tenía que reimplementar a
+    mano lo que `RbacPrincipalResolver` ya hace, sólo para poder agregarle un `status`.
+
+    Corre los resolvers en orden y los combina:
+
+    - `roles` y `scopes`: unión de todos.
+    - `status`: el primer resolver de la lista que devuelva algo distinto de `None` — no una
+      unión, porque el estado de una cuenta no es un conjunto, es un valor. El orden importa:
+      poné primero el resolver cuyo `status` tiene que ganar.
+
+    Uso::
+
+        configure_identity(
+            IdentityConfig(),
+            principals=CompositePrincipalResolver([
+                rbac.principal_resolver(),      # roles y scopes
+                EstadoDeCuentaResolver(uow),     # status
+            ]),
+        )
+    """
+
+    def __init__(self, resolvers: t.Sequence[AbstractPrincipalResolver]) -> None:
+        self._resolvers = list(resolvers)
+
+    async def resolve(self, user: "User") -> "ResolvedPrincipal":
+        roles: set[str] = set()
+        scopes: set[str] = set()
+        status: str | None = None
+
+        for resolver in self._resolvers:
+            resuelto = await resolver.resolve(user)
+            roles.update(resuelto.roles)
+            scopes.update(resuelto.scopes)
+            if status is None and resuelto.status is not None:
+                status = resuelto.status
+
+        return ResolvedPrincipal(
+            roles=frozenset(roles), scopes=frozenset(scopes), status=status
+        )
