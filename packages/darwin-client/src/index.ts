@@ -9,6 +9,32 @@
  * sub-fase posterior.
  */
 
+export type {
+  And,
+  Condition,
+  ConditionEvaluator,
+  ConditionResult,
+  Const,
+  ConstScalar,
+  Contains,
+  Eq,
+  EvaluationContext,
+  Gt,
+  Gte,
+  In,
+  Lt,
+  Lte,
+  Ne,
+  Not,
+  Or,
+  Predicate,
+  StartsWith,
+  TimeBetween,
+  Value,
+  Var,
+  WithinScope,
+} from "./authz/conditions";
+export { compileCondition, evaluateCondition } from "./authz/conditions";
 export type { CompiledPermissionSet } from "./authz/matcher";
 export { compilePermissions, grantsPermission } from "./authz/matcher";
 export type {
@@ -56,6 +82,15 @@ export type {
   PluginsApi,
 } from "./plugins";
 export { definePlugin, validatePlugins } from "./plugins";
+export type {
+  DrbacApi,
+  DrbacCheckOptions,
+  DrbacEvaluation,
+  DrbacOptions,
+  DrbacSnapshotState,
+  DrbacSnapshotStatus,
+} from "./plugins/drbac";
+export { drbac } from "./plugins/drbac";
 export type { ImpersonateApi, ImpersonationStatus } from "./plugins/impersonate";
 export { impersonate } from "./plugins/impersonate";
 export type { MagicLinkApi, MagicLinkRequested } from "./plugins/magic-link";
