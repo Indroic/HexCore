@@ -25,7 +25,7 @@ Three entry points, separate on purpose:
 
 | Subpath | Contains | Needs a browser |
 | :-- | :-- | :-- |
-| `.` | Core, the two transports, the six plugins, the error type | No |
+| `.` | Core, the two transports, the eight plugins, the error type | No |
 | `./webauthn` | The `navigator.credentials` flow | Yes, **when called** |
 | `./store` | The Svelte adapter | No |
 
@@ -145,6 +145,8 @@ server-side plugin: the calls answer 404.
 | `[darwin-passkey]` | `passkey` | `passkey()` | `./webauthn` |
 | `[darwin-impersonate]` | `impersonate` | `impersonate()` | — |
 | `[darwin-organization]` | `organization` | `organization()` | — |
+| `[darwin-rbac]` | `rbac` | `rbac({ ac })` | — |
+| `[darwin-drbac]` | `drbac` | `drbac({ ac })` | — |
 
 `hexcore identity plugins <module>` prints what the server side actually contributes. That is
 the list the client's plugin array has to be a subset of.
@@ -357,6 +359,15 @@ Third-party plugins go through `definePlugin`, or TypeScript cannot infer `Id` a
   you can **build** the link, not so you can render it: displaying it puts a single-use
   credential into the page, the logs and the browser history of whoever is already signed in,
   who is not the person it was issued for.
+- **`rbac`** — needs a schema (`defineAccessControl`). `can()`/`hasRole()` are synchronous,
+  against a cached snapshot from `GET /me/permissions`. ⚠️ Fails **closed**: never guesses
+  `true` before the snapshot loads, and a network error keeps the last known snapshot instead of
+  wiping it — the same criterion as the session store's `"stale"` status.
+- **`drbac`** — `requires: ["rbac"]`, sharing the same `ac`. `evaluate()` is synchronous and
+  optimistic against `GET /me/snapshot`'s rules, returning `"allow" | "deny" | "unknown"`;
+  `check()`/`checkMany()` are the authoritative, batched `POST /check`. ⚠️ `evaluate()` can only
+  see `client_evaluable` rules — a condition using a server-only `Predicate` is never sent, so
+  `"unknown"` there is expected, not a bug. Gate a real mutation on `check()`, never `evaluate()`.
 
 ```ts
 import {
@@ -372,4 +383,5 @@ import {
 
 `docs/darwin-client/en/` in this repository — `installation`, `quickstart`, `transports`,
 `session-and-store`, `plugins`, `errors`, `development` — with a Spanish mirror in `es/`. The
-server side is `references/darwin.md` and `docs/hexcore/en/darwin/`.
+server side is `references/darwin.md` and `docs/hexcore/en/darwin/authorization.md` for the
+`rbac`/`drbac` threat model.

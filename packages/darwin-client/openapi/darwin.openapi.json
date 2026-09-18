@@ -14,6 +14,127 @@
         "title": "AcceptInvitationBody",
         "type": "object"
       },
+      "And": {
+        "description": "Todas las condiciones tienen que dar `True` — lógica de Kleene, ver el docstring del módulo.",
+        "properties": {
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "and": "#/components/schemas/And",
+                  "contains": "#/components/schemas/Contains",
+                  "eq": "#/components/schemas/Eq",
+                  "gt": "#/components/schemas/Gt",
+                  "gte": "#/components/schemas/Gte",
+                  "in": "#/components/schemas/In",
+                  "lt": "#/components/schemas/Lt",
+                  "lte": "#/components/schemas/Lte",
+                  "ne": "#/components/schemas/Ne",
+                  "not": "#/components/schemas/Not",
+                  "or": "#/components/schemas/Or",
+                  "predicate": "#/components/schemas/Predicate",
+                  "starts_with": "#/components/schemas/StartsWith",
+                  "time_between": "#/components/schemas/TimeBetween",
+                  "within_scope": "#/components/schemas/WithinScope"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Eq"
+                },
+                {
+                  "$ref": "#/components/schemas/Ne"
+                },
+                {
+                  "$ref": "#/components/schemas/Gt"
+                },
+                {
+                  "$ref": "#/components/schemas/Gte"
+                },
+                {
+                  "$ref": "#/components/schemas/Lt"
+                },
+                {
+                  "$ref": "#/components/schemas/Lte"
+                },
+                {
+                  "$ref": "#/components/schemas/In"
+                },
+                {
+                  "$ref": "#/components/schemas/Contains"
+                },
+                {
+                  "$ref": "#/components/schemas/StartsWith"
+                },
+                {
+                  "$ref": "#/components/schemas/WithinScope"
+                },
+                {
+                  "$ref": "#/components/schemas/TimeBetween"
+                },
+                {
+                  "$ref": "#/components/schemas/And"
+                },
+                {
+                  "$ref": "#/components/schemas/Or"
+                },
+                {
+                  "$ref": "#/components/schemas/Not"
+                },
+                {
+                  "$ref": "#/components/schemas/Predicate"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "type": {
+            "const": "and",
+            "default": "and",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "And",
+        "type": "object"
+      },
+      "AssignRoleBody": {
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "role_id": {
+            "format": "uuid",
+            "title": "Role Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "role_id"
+        ],
+        "title": "AssignRoleBody",
+        "type": "object"
+      },
       "AuthenticationOptionsBody": {
         "description": "El cuerpo de `POST /auth/passkey/authenticate/options`.\n\n`email` es opcional: sin él, el flujo es con credenciales descubribles y el navegador ofrece\nlo que tenga. Con él, se limita a las credenciales de esa cuenta — y **no se revela si la\ncuenta existe**: un mail desconocido devuelve opciones sin `allowCredentials`, exactamente\nigual que el flujo sin mail.",
         "properties": {
@@ -51,6 +172,46 @@
         "title": "AuthorizationResponse",
         "type": "object"
       },
+      "BindingOut": {
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role_name": {
+            "title": "Role Name",
+            "type": "string"
+          },
+          "scope_path": {
+            "title": "Scope Path",
+            "type": "string"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "subject_id",
+          "role_name",
+          "scope_path",
+          "expires_at"
+        ],
+        "title": "BindingOut",
+        "type": "object"
+      },
       "ChallengeBody": {
         "properties": {
           "challenge": {
@@ -69,6 +230,110 @@
         "title": "ChallengeBody",
         "type": "object"
       },
+      "CheckBody": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CheckItem"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CheckBody",
+        "type": "object"
+      },
+      "CheckItem": {
+        "properties": {
+          "action": {
+            "minLength": 1,
+            "title": "Action",
+            "type": "string"
+          },
+          "attributes": {
+            "additionalProperties": true,
+            "title": "Attributes",
+            "type": "object"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "resource_type": {
+            "default": "",
+            "title": "Resource Type",
+            "type": "string"
+          },
+          "scope_path": {
+            "default": "",
+            "title": "Scope Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "CheckItem",
+        "type": "object"
+      },
+      "CheckResultOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "resource_type": {
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "resource_type",
+          "resource_id",
+          "allowed"
+        ],
+        "title": "CheckResultOut",
+        "type": "object"
+      },
       "ConfirmBody": {
         "properties": {
           "code": {
@@ -80,6 +345,61 @@
           "code"
         ],
         "title": "ConfirmBody",
+        "type": "object"
+      },
+      "Const": {
+        "description": "Un literal: ``Const(\"draft\")``, ``Const(5)``, ``Const([\"draft\", \"sent\"])``.\n\nUna lista se guarda como tupla (`ConstScalar` es inmutable) — es la forma que usan `In`/\n`Contains` para el lado de \"estos son los valores posibles\".",
+        "properties": {
+          "type": {
+            "const": "const",
+            "default": "const",
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "title": "Const",
         "type": "object"
       },
       "ConsumeMagicLinkBody": {
@@ -98,6 +418,168 @@
           "token"
         ],
         "title": "ConsumeMagicLinkBody",
+        "type": "object"
+      },
+      "Contains": {
+        "description": "``right`` está adentro de ``left`` (una lista o un string) — el espejo de `In`.",
+        "properties": {
+          "left": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Right"
+          },
+          "type": {
+            "const": "contains",
+            "default": "contains",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right"
+        ],
+        "title": "Contains",
+        "type": "object"
+      },
+      "CreateBindingBody": {
+        "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "and": "#/components/schemas/And",
+                    "contains": "#/components/schemas/Contains",
+                    "eq": "#/components/schemas/Eq",
+                    "gt": "#/components/schemas/Gt",
+                    "gte": "#/components/schemas/Gte",
+                    "in": "#/components/schemas/In",
+                    "lt": "#/components/schemas/Lt",
+                    "lte": "#/components/schemas/Lte",
+                    "ne": "#/components/schemas/Ne",
+                    "not": "#/components/schemas/Not",
+                    "or": "#/components/schemas/Or",
+                    "predicate": "#/components/schemas/Predicate",
+                    "starts_with": "#/components/schemas/StartsWith",
+                    "time_between": "#/components/schemas/TimeBetween",
+                    "within_scope": "#/components/schemas/WithinScope"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Eq"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Ne"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Gt"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Gte"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Lt"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Lte"
+                  },
+                  {
+                    "$ref": "#/components/schemas/In"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Contains"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StartsWith"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WithinScope"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TimeBetween"
+                  },
+                  {
+                    "$ref": "#/components/schemas/And"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Or"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Not"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Predicate"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "role_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Role Name",
+            "type": "string"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject_id",
+          "role_name"
+        ],
+        "title": "CreateBindingBody",
         "type": "object"
       },
       "CreateOrganizationBody": {
@@ -130,6 +612,63 @@
           "name"
         ],
         "title": "CreateOrganizationBody",
+        "type": "object"
+      },
+      "CreatePolicyBody": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "priority": {
+            "default": 100,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleIn"
+            },
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreatePolicyBody",
+        "type": "object"
+      },
+      "CreateRoleBody": {
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateRoleBody",
         "type": "object"
       },
       "DisableBody": {
@@ -167,6 +706,59 @@
           "confirmed"
         ],
         "title": "EnrollmentResponse",
+        "type": "object"
+      },
+      "Eq": {
+        "description": "``left == right``.",
+        "properties": {
+          "left": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Right"
+          },
+          "type": {
+            "const": "eq",
+            "default": "eq",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right"
+        ],
+        "title": "Eq",
         "type": "object"
       },
       "FinishAuthenticationBody": {
@@ -208,6 +800,112 @@
           "credential"
         ],
         "title": "FinishRegistrationBody",
+        "type": "object"
+      },
+      "Gt": {
+        "description": "``left > right``. Indeterminado si los tipos no son comparables entre sí.",
+        "properties": {
+          "left": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Right"
+          },
+          "type": {
+            "const": "gt",
+            "default": "gt",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right"
+        ],
+        "title": "Gt",
+        "type": "object"
+      },
+      "Gte": {
+        "description": "``left >= right``.",
+        "properties": {
+          "left": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Right"
+          },
+          "type": {
+            "const": "gte",
+            "default": "gte",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right"
+        ],
+        "title": "Gte",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -361,6 +1059,59 @@
         "title": "ImpersonationStoppedResponse",
         "type": "object"
       },
+      "In": {
+        "description": "``left`` está entre los valores de ``right`` (que suele resolver a una lista de `Const`).",
+        "properties": {
+          "left": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Right"
+          },
+          "type": {
+            "const": "in",
+            "default": "in",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right"
+        ],
+        "title": "In",
+        "type": "object"
+      },
       "InvitationIssued": {
         "description": "La respuesta de `POST /organizations/{organization_id}/invitations`.",
         "properties": {
@@ -440,6 +1191,112 @@
         "title": "LinkedProviders",
         "type": "object"
       },
+      "Lt": {
+        "description": "``left < right``.",
+        "properties": {
+          "left": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Right"
+          },
+          "type": {
+            "const": "lt",
+            "default": "lt",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right"
+        ],
+        "title": "Lt",
+        "type": "object"
+      },
+      "Lte": {
+        "description": "``left <= right``.",
+        "properties": {
+          "left": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Right"
+          },
+          "type": {
+            "const": "lte",
+            "default": "lte",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right"
+        ],
+        "title": "Lte",
+        "type": "object"
+      },
       "MagicLinkRequested": {
         "description": "La respuesta de `POST /auth/magic-link/request`.\n\n`token` sólo viaja en un despliegue que no manda mails de verdad — ver la advertencia del\ndocstring de la ruta: en producción no se devuelve, y el campo queda `None`.",
         "properties": {
@@ -463,6 +1320,45 @@
           "sent"
         ],
         "title": "MagicLinkRequested",
+        "type": "object"
+      },
+      "MePermissionsOut": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "roles",
+          "permissions",
+          "version",
+          "expires_at"
+        ],
+        "title": "MePermissionsOut",
         "type": "object"
       },
       "MeResponse": {
@@ -564,6 +1460,145 @@
         "title": "MemberOut",
         "type": "object"
       },
+      "Ne": {
+        "description": "``left != right``.",
+        "properties": {
+          "left": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Right"
+          },
+          "type": {
+            "const": "ne",
+            "default": "ne",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right"
+        ],
+        "title": "Ne",
+        "type": "object"
+      },
+      "Not": {
+        "description": "Invierte el resultado. Un indeterminado sigue indeterminado: `not None` no es `True`.",
+        "properties": {
+          "item": {
+            "discriminator": {
+              "mapping": {
+                "and": "#/components/schemas/And",
+                "contains": "#/components/schemas/Contains",
+                "eq": "#/components/schemas/Eq",
+                "gt": "#/components/schemas/Gt",
+                "gte": "#/components/schemas/Gte",
+                "in": "#/components/schemas/In",
+                "lt": "#/components/schemas/Lt",
+                "lte": "#/components/schemas/Lte",
+                "ne": "#/components/schemas/Ne",
+                "not": "#/components/schemas/Not",
+                "or": "#/components/schemas/Or",
+                "predicate": "#/components/schemas/Predicate",
+                "starts_with": "#/components/schemas/StartsWith",
+                "time_between": "#/components/schemas/TimeBetween",
+                "within_scope": "#/components/schemas/WithinScope"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Eq"
+              },
+              {
+                "$ref": "#/components/schemas/Ne"
+              },
+              {
+                "$ref": "#/components/schemas/Gt"
+              },
+              {
+                "$ref": "#/components/schemas/Gte"
+              },
+              {
+                "$ref": "#/components/schemas/Lt"
+              },
+              {
+                "$ref": "#/components/schemas/Lte"
+              },
+              {
+                "$ref": "#/components/schemas/In"
+              },
+              {
+                "$ref": "#/components/schemas/Contains"
+              },
+              {
+                "$ref": "#/components/schemas/StartsWith"
+              },
+              {
+                "$ref": "#/components/schemas/WithinScope"
+              },
+              {
+                "$ref": "#/components/schemas/TimeBetween"
+              },
+              {
+                "$ref": "#/components/schemas/And"
+              },
+              {
+                "$ref": "#/components/schemas/Or"
+              },
+              {
+                "$ref": "#/components/schemas/Not"
+              },
+              {
+                "$ref": "#/components/schemas/Predicate"
+              }
+            ],
+            "title": "Item"
+          },
+          "type": {
+            "const": "not",
+            "default": "not",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "Not",
+        "type": "object"
+      },
       "OAuthCallbackResponse": {
         "description": "La respuesta de `GET /auth/oauth/{provider}/callback`.\n\n`created` distingue un signup implícito de un login: es lo que el cliente necesita para\nmandar a un usuario nuevo a onboarding en vez de al home.",
         "properties": {
@@ -613,6 +1648,96 @@
           "created"
         ],
         "title": "OAuthCallbackResponse",
+        "type": "object"
+      },
+      "Or": {
+        "description": "Alguna condición tiene que dar `True` — lógica de Kleene, ver el docstring del módulo.",
+        "properties": {
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "and": "#/components/schemas/And",
+                  "contains": "#/components/schemas/Contains",
+                  "eq": "#/components/schemas/Eq",
+                  "gt": "#/components/schemas/Gt",
+                  "gte": "#/components/schemas/Gte",
+                  "in": "#/components/schemas/In",
+                  "lt": "#/components/schemas/Lt",
+                  "lte": "#/components/schemas/Lte",
+                  "ne": "#/components/schemas/Ne",
+                  "not": "#/components/schemas/Not",
+                  "or": "#/components/schemas/Or",
+                  "predicate": "#/components/schemas/Predicate",
+                  "starts_with": "#/components/schemas/StartsWith",
+                  "time_between": "#/components/schemas/TimeBetween",
+                  "within_scope": "#/components/schemas/WithinScope"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Eq"
+                },
+                {
+                  "$ref": "#/components/schemas/Ne"
+                },
+                {
+                  "$ref": "#/components/schemas/Gt"
+                },
+                {
+                  "$ref": "#/components/schemas/Gte"
+                },
+                {
+                  "$ref": "#/components/schemas/Lt"
+                },
+                {
+                  "$ref": "#/components/schemas/Lte"
+                },
+                {
+                  "$ref": "#/components/schemas/In"
+                },
+                {
+                  "$ref": "#/components/schemas/Contains"
+                },
+                {
+                  "$ref": "#/components/schemas/StartsWith"
+                },
+                {
+                  "$ref": "#/components/schemas/WithinScope"
+                },
+                {
+                  "$ref": "#/components/schemas/TimeBetween"
+                },
+                {
+                  "$ref": "#/components/schemas/And"
+                },
+                {
+                  "$ref": "#/components/schemas/Or"
+                },
+                {
+                  "$ref": "#/components/schemas/Not"
+                },
+                {
+                  "$ref": "#/components/schemas/Predicate"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "type": {
+            "const": "or",
+            "default": "or",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "Or",
         "type": "object"
       },
       "OrgRole": {
@@ -721,6 +1846,95 @@
         "title": "PasskeySummary",
         "type": "object"
       },
+      "PolicyOut": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleOut"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "scope_key": {
+            "title": "Scope Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scope_key",
+          "name",
+          "description",
+          "enabled",
+          "priority",
+          "rules"
+        ],
+        "title": "PolicyOut",
+        "type": "object"
+      },
+      "Predicate": {
+        "description": "Un predicado con nombre, para lo que este AST no cubre — ver `predicates.py`.\n\nSólo se evalúa del lado del servidor: una regla que use `Predicate` en su condición no es\n``client_evaluable`` (Fase F5), porque el cliente no tiene forma de saber qué hace el\npredicado sin ejecutar código Python arbitrario, que es justo lo que este módulo evita.\n\nUso::\n\n    Predicate(\"business_hours\")\n    Predicate(\"min_amount\", Var(\"resource.amount\"), Const(1000))",
+        "properties": {
+          "args": {
+            "default": [],
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "const": "#/components/schemas/Const",
+                  "var": "#/components/schemas/Var"
+                },
+                "propertyName": "type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/Var"
+                },
+                {
+                  "$ref": "#/components/schemas/Const"
+                }
+              ]
+            },
+            "title": "Args",
+            "type": "array"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "const": "predicate",
+            "default": "predicate",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "Predicate",
+        "type": "object"
+      },
       "RequestMagicLinkBody": {
         "properties": {
           "email": {
@@ -746,6 +1960,207 @@
           "revoked"
         ],
         "title": "RevokedResponse",
+        "type": "object"
+      },
+      "RoleOut": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "is_system": {
+            "title": "Is System",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scope_key": {
+            "title": "Scope Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scope_key",
+          "name",
+          "description",
+          "is_system"
+        ],
+        "title": "RoleOut",
+        "type": "object"
+      },
+      "RuleIn": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Actions",
+            "type": "array"
+          },
+          "client_evaluable": {
+            "default": false,
+            "title": "Client Evaluable",
+            "type": "boolean"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "and": "#/components/schemas/And",
+                    "contains": "#/components/schemas/Contains",
+                    "eq": "#/components/schemas/Eq",
+                    "gt": "#/components/schemas/Gt",
+                    "gte": "#/components/schemas/Gte",
+                    "in": "#/components/schemas/In",
+                    "lt": "#/components/schemas/Lt",
+                    "lte": "#/components/schemas/Lte",
+                    "ne": "#/components/schemas/Ne",
+                    "not": "#/components/schemas/Not",
+                    "or": "#/components/schemas/Or",
+                    "predicate": "#/components/schemas/Predicate",
+                    "starts_with": "#/components/schemas/StartsWith",
+                    "time_between": "#/components/schemas/TimeBetween",
+                    "within_scope": "#/components/schemas/WithinScope"
+                  },
+                  "propertyName": "type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/Eq"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Ne"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Gt"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Gte"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Lt"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Lte"
+                  },
+                  {
+                    "$ref": "#/components/schemas/In"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Contains"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StartsWith"
+                  },
+                  {
+                    "$ref": "#/components/schemas/WithinScope"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TimeBetween"
+                  },
+                  {
+                    "$ref": "#/components/schemas/And"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Or"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Not"
+                  },
+                  {
+                    "$ref": "#/components/schemas/Predicate"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "effect": {
+            "enum": [
+              "allow",
+              "deny"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "resource_type": {
+            "minLength": 1,
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "effect",
+          "actions",
+          "resource_type"
+        ],
+        "title": "RuleIn",
+        "type": "object"
+      },
+      "RuleOut": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "client_evaluable": {
+            "title": "Client Evaluable",
+            "type": "boolean"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "effect": {
+            "title": "Effect",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "resource_type": {
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "effect",
+          "actions",
+          "resource_type",
+          "condition",
+          "client_evaluable"
+        ],
+        "title": "RuleOut",
         "type": "object"
       },
       "SessionInfo": {
@@ -855,6 +2270,33 @@
           "expires_in"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "SetParentsBody": {
+        "properties": {
+          "parent_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Parent Ids",
+            "type": "array"
+          }
+        },
+        "title": "SetParentsBody",
+        "type": "object"
+      },
+      "SetPermissionsBody": {
+        "properties": {
+          "permission_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Permission Keys",
+            "type": "array"
+          }
+        },
+        "title": "SetPermissionsBody",
         "type": "object"
       },
       "SetRoleBody": {
@@ -977,6 +2419,98 @@
         "title": "SignedOutResponse",
         "type": "object"
       },
+      "SimulateOut": {
+        "properties": {
+          "allowed": {
+            "title": "Allowed",
+            "type": "boolean"
+          },
+          "explain": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Explain",
+            "type": "array"
+          }
+        },
+        "required": [
+          "allowed",
+          "explain"
+        ],
+        "title": "SimulateOut",
+        "type": "object"
+      },
+      "SnapshotOut": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotRuleOut"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "version",
+          "expires_at",
+          "rules"
+        ],
+        "title": "SnapshotOut",
+        "type": "object"
+      },
+      "SnapshotRuleOut": {
+        "properties": {
+          "actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "condition": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "effect": {
+            "title": "Effect",
+            "type": "string"
+          },
+          "resource_type": {
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "effect",
+          "actions",
+          "resource_type",
+          "condition"
+        ],
+        "title": "SnapshotRuleOut",
+        "type": "object"
+      },
       "StartImpersonationBody": {
         "description": "El cuerpo de `POST /auth/impersonate/{user_id}`.\n\n`reason` con `min_length=1` para que el 422 salga del borde y no del modelo de dominio: el\nerror de validación de FastAPI dice qué campo falta, y el `ValueError` del servicio no.",
         "properties": {
@@ -991,6 +2525,131 @@
           "reason"
         ],
         "title": "StartImpersonationBody",
+        "type": "object"
+      },
+      "StartsWith": {
+        "description": "``left`` (un string) empieza con ``right`` (un string).",
+        "properties": {
+          "left": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Right"
+          },
+          "type": {
+            "const": "starts_with",
+            "default": "starts_with",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right"
+        ],
+        "title": "StartsWith",
+        "type": "object"
+      },
+      "TimeBetween": {
+        "description": "``start <= value <= end``, con los tres operandos resueltos a `datetime`.",
+        "properties": {
+          "end": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "End"
+          },
+          "start": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Start"
+          },
+          "type": {
+            "const": "time_between",
+            "default": "time_between",
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "start",
+          "end"
+        ],
+        "title": "TimeBetween",
         "type": "object"
       },
       "TwoFactorStatus": {
@@ -1032,6 +2691,102 @@
         "title": "UpdateOrganizationBody",
         "type": "object"
       },
+      "UpdatePolicyBody": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "rules": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RuleIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rules"
+          }
+        },
+        "title": "UpdatePolicyBody",
+        "type": "object"
+      },
+      "UpdateRoleBody": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "UpdateRoleBody",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -1065,6 +2820,27 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "Var": {
+        "description": "Una lectura del contexto de evaluación: ``\"subject.id\"``, ``\"resource.owner_id\"``,\n``\"env.now\"``.\n\nLa ruta se valida **al construirse**, no al evaluar: `subject.*`/`resource.*`/`env.*` son\nlos únicos namespaces permitidos, y ninguna otra rama es alcanzable ni siquiera por una\npolítica que ya está guardada, porque la construcción es el único camino para tener una\ninstancia (incluida la que sale de deserializar JSON).\n\nUso::\n\n    Var(\"resource.owner_id\")",
+        "properties": {
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "type": {
+            "const": "var",
+            "default": "var",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "Var",
+        "type": "object"
+      },
       "VerifyEmailRequest": {
         "properties": {
           "code": {
@@ -1081,6 +2857,59 @@
           "code"
         ],
         "title": "VerifyEmailRequest",
+        "type": "object"
+      },
+      "WithinScope": {
+        "description": "``left`` (un `scope_path` como ``\"org:42/project:7\"``) está en o debajo de ``right`` (el\nancestro, ``\"org:42\"``).\n\nLa comparación es **por segmentos** separados por ``/``, nunca `str.startswith` crudo:\n``\"org:4\"`` no puede ser ancestro de ``\"org:42/...\"`` sólo porque el string es un prefijo\n—ésa es exactamente la escalada cross-tenant que el plan de rbac/drbac marca como riesgo—,\ntiene que coincidir segmento por segmento.",
+        "properties": {
+          "left": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Left"
+          },
+          "right": {
+            "discriminator": {
+              "mapping": {
+                "const": "#/components/schemas/Const",
+                "var": "#/components/schemas/Var"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Var"
+              },
+              {
+                "$ref": "#/components/schemas/Const"
+              }
+            ],
+            "title": "Right"
+          },
+          "type": {
+            "const": "within_scope",
+            "default": "within_scope",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "left",
+          "right"
+        ],
+        "title": "WithinScope",
         "type": "object"
       }
     },
@@ -1314,6 +3143,511 @@
         "tags": [
           "auth",
           "2fa"
+        ]
+      }
+    },
+    "/auth/drbac/bindings": {
+      "get": {
+        "operationId": "listar_bindings_auth_drbac_bindings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "subject_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Subject Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BindingOut"
+                  },
+                  "title": "Response Listar Bindings Auth Drbac Bindings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Listar Bindings",
+        "tags": [
+          "drbac"
+        ]
+      },
+      "post": {
+        "operationId": "crear_binding_auth_drbac_bindings_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBindingBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BindingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Crear Binding",
+        "tags": [
+          "drbac"
+        ]
+      }
+    },
+    "/auth/drbac/bindings/{binding_id}": {
+      "delete": {
+        "operationId": "revocar_binding_auth_drbac_bindings__binding_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "binding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Binding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Revocar Binding Auth Drbac Bindings  Binding Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revocar Binding",
+        "tags": [
+          "drbac"
+        ]
+      }
+    },
+    "/auth/drbac/check": {
+      "post": {
+        "description": "La decisión real de `AuthorizationEngine` para cada ítem, en el mismo orden que llegó.\nDeduplica ítems idénticos: se evalúan una sola vez.",
+        "operationId": "check_auth_drbac_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CheckResultOut"
+                  },
+                  "title": "Response Check Auth Drbac Check Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Check",
+        "tags": [
+          "drbac"
+        ]
+      }
+    },
+    "/auth/drbac/me/snapshot": {
+      "get": {
+        "description": "Las reglas `client_evaluable` de `scope` y sus ancestros. **Optimista para UI, y sin\nnada sensible**: ni bindings, ni políticas deshabilitadas, ni reglas con `Predicate`\n(nunca son `client_evaluable` — ver `DrbacService._preparar_reglas`).",
+        "operationId": "mi_snapshot_auth_drbac_me_snapshot_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Mi Snapshot",
+        "tags": [
+          "drbac"
+        ]
+      }
+    },
+    "/auth/drbac/policies": {
+      "get": {
+        "operationId": "listar_politicas_auth_drbac_policies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PolicyOut"
+                  },
+                  "title": "Response Listar Politicas Auth Drbac Policies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Listar Politicas",
+        "tags": [
+          "drbac"
+        ]
+      },
+      "post": {
+        "operationId": "crear_politica_auth_drbac_policies_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePolicyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Crear Politica",
+        "tags": [
+          "drbac"
+        ]
+      }
+    },
+    "/auth/drbac/policies/{policy_id}": {
+      "delete": {
+        "operationId": "borrar_politica_auth_drbac_policies__policy_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Borrar Politica Auth Drbac Policies  Policy Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Borrar Politica",
+        "tags": [
+          "drbac"
+        ]
+      },
+      "patch": {
+        "operationId": "actualizar_politica_auth_drbac_policies__policy_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "policy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Policy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePolicyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Actualizar Politica",
+        "tags": [
+          "drbac"
+        ]
+      }
+    },
+    "/auth/drbac/simulate": {
+      "post": {
+        "description": "Como un ítem de `check`, pero con el detalle de qué reglas se evaluaron y cómo.",
+        "operationId": "simular_auth_drbac_simulate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckItem"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Simular",
+        "tags": [
+          "drbac"
         ]
       }
     },
@@ -2139,6 +4473,517 @@
         "tags": [
           "auth",
           "passkey"
+        ]
+      }
+    },
+    "/auth/rbac/assignments": {
+      "delete": {
+        "operationId": "revocar_auth_rbac_assignments_delete",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Revocar Auth Rbac Assignments Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revocar",
+        "tags": [
+          "rbac"
+        ]
+      },
+      "post": {
+        "description": "**Anti-escalada**: 403 si el rol otorga más de lo que el actor tiene en `scope`.",
+        "operationId": "asignar_auth_rbac_assignments_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRoleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Asignar Auth Rbac Assignments Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Asignar",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/auth/rbac/me/permissions": {
+      "get": {
+        "description": "Roles y permisos efectivos del actor en `scope`. **Optimista para UI.**\n\nLa autoridad es `AuthorizationEngine.decide()` en cada acción real; esto es un\nresumen para que el cliente no tenga que adivinar qué mostrar.",
+        "operationId": "mis_permisos_auth_rbac_me_permissions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MePermissionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Mis Permisos",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/auth/rbac/roles": {
+      "get": {
+        "operationId": "listar_roles_auth_rbac_roles_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoleOut"
+                  },
+                  "title": "Response Listar Roles Auth Rbac Roles Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Listar Roles",
+        "tags": [
+          "rbac"
+        ]
+      },
+      "post": {
+        "operationId": "crear_rol_auth_rbac_roles_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Crear Rol",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/auth/rbac/roles/{role_id}": {
+      "delete": {
+        "operationId": "borrar_rol_auth_rbac_roles__role_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Borrar Rol Auth Rbac Roles  Role Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Borrar Rol",
+        "tags": [
+          "rbac"
+        ]
+      },
+      "patch": {
+        "operationId": "actualizar_rol_auth_rbac_roles__role_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRoleBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Actualizar Rol",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/auth/rbac/roles/{role_id}/parents": {
+      "put": {
+        "description": "**Ciclos y anti-escalada**: 409 si forma un ciclo, 403 si excede al actor.",
+        "operationId": "establecer_padres_auth_rbac_roles__role_id__parents_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetParentsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Establecer Padres Auth Rbac Roles  Role Id  Parents Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Establecer Padres",
+        "tags": [
+          "rbac"
+        ]
+      }
+    },
+    "/auth/rbac/roles/{role_id}/permissions": {
+      "put": {
+        "description": "**Anti-escalada**: 403 si `permission_keys` excede lo que el actor ya tiene.",
+        "operationId": "establecer_permisos_auth_rbac_roles__role_id__permissions_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPermissionsBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Establecer Permisos Auth Rbac Roles  Role Id  Permissions Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Establecer Permisos",
+        "tags": [
+          "rbac"
         ]
       }
     },

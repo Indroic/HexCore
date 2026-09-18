@@ -732,6 +732,11 @@ darwin-beanie = [
     { name = "fastapi" },
     { name = "joserfc" },
 ]
+darwin-drbac = [
+    { name = "argon2-cffi" },
+    { name = "fastapi" },
+    { name = "joserfc" },
+]
 darwin-impersonate = [
     { name = "argon2-cffi" },
     { name = "fastapi" },
@@ -758,6 +763,11 @@ darwin-passkey = [
     { name = "fastapi" },
     { name = "joserfc" },
     { name = "webauthn" },
+]
+darwin-rbac = [
+    { name = "argon2-cffi" },
+    { name = "fastapi" },
+    { name = "joserfc" },
 ]
 darwin-sqlalchemy = [
     { name = "aiosqlite" },
@@ -831,11 +841,13 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.116.1" },
     { name = "fastapi", marker = "extra == 'darwin'", specifier = ">=0.116.1" },
     { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-beanie'" },
+    { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-drbac'" },
     { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-impersonate'" },
     { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-magic-link'" },
     { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-oauth'" },
     { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-organization'" },
     { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-passkey'" },
+    { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-rbac'" },
     { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-sqlalchemy'" },
     { name = "hexcore", extras = ["darwin"], marker = "extra == 'darwin-two-factor'" },
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27.0" },
@@ -856,7 +868,7 @@ requires-dist = [
     { name = "webauthn", marker = "extra == 'all'", specifier = ">=2.0.0" },
     { name = "webauthn", marker = "extra == 'darwin-passkey'", specifier = ">=2.0.0" },
 ]
-provides-extras = ["api", "redis", "mongo", "sql", "rabbitmq", "procrastinate", "celery", "darwin", "darwin-sqlalchemy", "darwin-beanie", "darwin-magic-link", "darwin-two-factor", "darwin-oauth", "darwin-impersonate", "darwin-passkey", "darwin-organization", "all"]
+provides-extras = ["api", "redis", "mongo", "sql", "rabbitmq", "procrastinate", "celery", "darwin", "darwin-sqlalchemy", "darwin-beanie", "darwin-magic-link", "darwin-two-factor", "darwin-oauth", "darwin-impersonate", "darwin-passkey", "darwin-organization", "darwin-rbac", "darwin-drbac", "all"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -91,6 +91,8 @@ celery = ["celery>=5.4.0"]
 #   [darwin-impersonate]  "entrar como" otro usuario, auditado y con techo de vida.
 #   [darwin-passkey]      WebAuthn.
 #   [darwin-organization] organizaciones, miembros e invitaciones.
+#   [darwin-rbac]         roles y permisos persistidos y asignables, con scope y expiracion.
+#   [darwin-drbac]        autorizacion contextual sobre rbac: condiciones, no solo membresia.
 #
 # Por que el almacenamiento va separado y no un solo extra con los dos: un despliegue elige UN
 # backend, y el que elige Mongo no tiene por que instalar SQLAlchemy, Alembic y asyncpg — son
@@ -166,6 +168,15 @@ darwin-passkey = ["hexcore[darwin]", "webauthn>=2.0.0"]
 # las da el backend de almacenamiento (`EXISTS` correlacionado en el `WHERE` para SQL, miembros
 # embebidos para Mongo).
 darwin-organization = ["hexcore[darwin]"]
+# Sin dependencias nuevas: los mixins son SQLAlchemy puro y los documentos son Beanie puro,
+# igual que el resto de los plugins con tabla propia. El contrato de autorización que consume
+# (`AuthorizationProvider`) es del nucleo desde la Fase F0 y no agrega nada tampoco.
+darwin-rbac = ["hexcore[darwin]"]
+# Sin dependencias nuevas: el lenguaje de condiciones (Fase F4) es un AST de pydantic que
+# compila a closures Python puras, sin `eval` ni ningun parser de terceros. Depende de `rbac`
+# en tiempo de registro (`DrbacPlugin.requires = ("rbac",)`, Fase F5), no en tiempo de
+# instalacion: ese `requires` lo valida `PluginRegistry`, no `pip`.
+darwin-drbac = ["hexcore[darwin]"]
 all = [
     "fastapi>=0.116.1",
     "redis>=6.4.0",

@@ -87,6 +87,25 @@ export function isSessionDead(err: unknown): err is DarwinError {
   return err instanceof DarwinError && err.code === "TokenRevokedError";
 }
 
+/**
+ * Si el motor de autorización (`AuthorizationEngine`, Fase F0 de rbac/drbac) denegó la
+ * acción. Angosta `payload` a `{ required: string }` — la acción pedida, sin la razón de la
+ * política (ver el docstring de `AccessDeniedError` del lado Python).
+ *
+ * Un consumidor que atrapa esto es el disparador de `client.rbac.notifyAccessDenied()`: el
+ * store no puede interceptar el `$fetch` del cliente entero por su cuenta, porque la mayoría
+ * de las peticiones no tienen nada que ver con `rbac`.
+ */
+export function isAccessDenied(
+  err: unknown,
+): err is DarwinError & { payload: { required: string } } {
+  return (
+    err instanceof DarwinError &&
+    err.code === "AccessDeniedError" &&
+    typeof err.payload.required === "string"
+  );
+}
+
 /** Si hace falta el segundo factor. Angosta `payload` a `{ challenge: string }` cuando es cierto. */
 export function isTwoFactorRequired(
   err: unknown,

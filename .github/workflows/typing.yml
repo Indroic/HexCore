@@ -321,7 +321,7 @@ jobs:
     # todo puesto, un extra al que le falta una dependencia declarada anda igual, porque se la
     # presta otro. El consumidor que instala uno solo es el que se come el ImportError.
     #
-    # Son 18 patas: `none`, los 16 extras y `all`. Nueve son de Darwin, y las seis de plugin
+    # Son 20 patas: `none`, los 18 extras y `all`. Once son de Darwin, y las ocho de plugin
     # verifican la promesa que el `pyproject` hace explícita — que
     # `pip install 'hexcore[darwin-two-factor]'` trae el núcleo por la autorreferencia a
     # `hexcore[darwin]`. Sin la autorreferencia ese comando instalaba un plugin sin núcleo.
@@ -346,6 +346,8 @@ jobs:
           - darwin-impersonate
           - darwin-passkey
           - darwin-organization
+          - darwin-rbac
+          - darwin-drbac
           - all
 
     steps:

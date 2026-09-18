@@ -13,12 +13,23 @@ import {
   passkey,
   impersonate,
   organization,
+  defineAccessControl,
+  rbac,
+  drbac,
 } from "@hexcore-js/darwin-client";
+
+const ac = defineAccessControl({
+  resources: { invoice: ["read", "create", "approve"] },
+  roles: ["viewer", "accountant", "admin"],
+});
 
 const client = createDarwinClient({
   baseUrl,
   transport,
-  plugins: [twoFactor(), magicLink(), oauth(), passkey(), impersonate(), organization()],
+  plugins: [
+    twoFactor(), magicLink(), oauth(), passkey(), impersonate(), organization(),
+    rbac({ ac }), drbac({ ac }),
+  ],
 });
 ```
 
@@ -178,6 +189,71 @@ await client.organization.acceptInvitation(token);
 ⚠️ **`invite()` returns the token so that you can build the link**, not so that you can show it.
 Rendering it puts a single-use credential into the page, the logs and the browser history of
 whoever is already signed in — which is not the person it was issued for.
+
+## `rbac()`
+
+Persisted, assignable roles and permissions. Needs a schema —
+[`defineAccessControl`](../../hexcore/en/darwin/authorization.md) declares the resources,
+actions and roles once, and every method below is typed against it.
+
+```ts
+const ac = defineAccessControl({
+  resources: { invoice: ["read", "approve"] },
+  roles: ["viewer", "accountant"],
+});
+const client = createDarwinClient({ baseUrl, transport, plugins: [rbac({ ac })] });
+
+client.rbac.can("invoice", "approve");             // boolean, synchronous, no await
+client.rbac.hasRole("accountant", { scope: "org:42" });
+```
+
+| Method | Purpose |
+| :-- | :-- |
+| `can(resource, action, opts?)` / `hasPermission(permission, opts?)` | Synchronous, against the loaded snapshot |
+| `hasRole(role, opts?)` | Same, for role membership |
+| `snapshot(opts?)` | The full state — for a list of roles, not just a boolean |
+| `subscribe(listener)` | Fires on any change, in any loaded scope |
+| `revalidate(opts?)` | Awaits a fresh fetch of a scope |
+| `notifyAccessDenied(opts?)` | Tell the store you caught a server 403 for this scope, so it revalidates |
+| `dehydrate()` / `hydrate(data)` | Carry state across an SSR render — never persisted to `localStorage` by default |
+
+⚠️ **Everything here is optimistic for the UI.** The authority is always the server's
+`AuthorizationEngine.decide()`, run on every real action — `can()` only avoids showing or hiding
+a button while that real decision has not been asked yet. It fails **closed**: it never guesses
+toward `true` without data, and a network error keeps the last known snapshot rather than
+wiping it to empty.
+
+## `drbac()`
+
+Conditional policies and contextual role bindings on top of `rbac`. `requires: ["rbac"]` — the
+two plugins do not import from each other, but `drbac()` needs `rbac()` registered alongside it.
+
+```ts
+const client = createDarwinClient({ baseUrl, transport, plugins: [rbac({ ac }), drbac({ ac })] });
+
+client.drbac.evaluate("invoice", "approve", { attributes: { owner_id } });
+// "allow" | "deny" | "unknown" — synchronous, never awaits anything
+
+await client.drbac.check("invoice", "approve", { resourceId: invoiceId });
+// boolean — authoritative, against the server
+```
+
+| Method | Purpose |
+| :-- | :-- |
+| `evaluate(resource, action, opts?)` | Synchronous and optimistic, against `GET /me/snapshot`'s `client_evaluable` rules |
+| `check(resource, action, opts?)` | Authoritative `POST /check`, batched with any other `check()` from the same microtask |
+| `checkMany(items)` | Same, for several items in one explicit request |
+| `snapshot(opts?)` / `subscribe(listener)` / `revalidate(opts?)` | Same shape as `rbac()`'s |
+
+Two deliberately different paths, same split as the server-side docstrings: `evaluate()` never
+touches the network and answers `"unknown"` — never `"allow"` — for anything it cannot resolve
+with the data already loaded; `check()`/`checkMany()` are the real
+`AuthorizationEngine.decide()`, and are what should gate an actual mutation.
+
+⚠️ **`evaluate()` can only see `client_evaluable` rules.** A rule whose condition uses a
+`Predicate` is never sent to the client — the server forces it out, because the browser has no
+way to run the same Python — so `evaluate()` answering `"unknown"` for something the server
+would resolve is expected, not a bug. Gate the real action on `check()`, always.
 
 ---
 

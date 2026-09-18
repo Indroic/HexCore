@@ -54,7 +54,8 @@ which validates configuration, resolves the storage backend and brings up the si
 | Document | Covers |
 | :-- | :-- |
 | [Storage](./storage.md) | Backends, schema, Alembic, `init_beanie`, your own user model |
-| [Bundled plugins](./bundled-plugins.md) | All six, with their routes and warnings |
+| [Bundled plugins](./bundled-plugins.md) | All eight, with their routes and warnings |
+| [Authorization](./authorization.md) | `AuthorizationEngine`, `rbac`, `drbac`, and the threat model |
 | [Writing your own plugin](./writing-plugins.md) | The extension points, hooks, and the traps |
 
 ← Back to the [documentation index](../).
@@ -268,6 +269,11 @@ that user at once.
 
 All three travel inside the token, not in the database: `authenticate` is the hot path and does
 not query.
+
+> This is the retrocompatible path: a flat, code-owned resolver. If you need roles and
+> permissions that an admin can create and assign through an API, with anti-escalation and
+> per-tenant scoping, see [Authorization](./authorization.md) for `rbac` and `drbac` — the two
+> compose with this section rather than replace it.
 
 ### Account status
 

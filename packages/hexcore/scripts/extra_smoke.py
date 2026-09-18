@@ -74,6 +74,17 @@ PROMESAS: dict[str, tuple[tuple[str, str], ...]] = {
     "darwin-organization": (
         ("hexcore.darwin.plugins.organization", "OrganizationPlugin"),
     ),
+    # Todavía sin `RbacPlugin` (Fase F1 del plan rbac/drbac: sólo dominio y persistencia, el
+    # plugin llega en la Fase F2). `CompiledPermissionSet` es lo que ya existe y ejercita el
+    # paquete resolviendo de verdad.
+    "darwin-rbac": (
+        ("hexcore.darwin.plugins.rbac", "RbacRole"),
+        ("hexcore.darwin.plugins.rbac.matcher", "CompiledPermissionSet"),
+    ),
+    "darwin-drbac": (
+        ("hexcore.darwin.plugins.drbac", "DrbacPlugin"),
+        ("hexcore.darwin.plugins.drbac.pdp", "PolicyDecisionPoint"),
+    ),
 }
 
 
