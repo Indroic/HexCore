@@ -56,11 +56,12 @@ class IdentityStep:
         self._config = config
         self._components = dict(components or {})
         self._verify_schema = verify_schema
+        self._plugin_steps: list[t.Any] = []
 
     async def start(self) -> None:
         from hexcore.darwin.application.container import configure_identity
 
-        configure_identity(self._config, **self._components)
+        contenedor = configure_identity(self._config, **self._components)
         logger.info("Darwin configurado.")
 
         self._verificar_defaults_de_produccion()
@@ -68,14 +69,29 @@ class IdentityStep:
         if self._verify_schema:
             self._verificar_esquema()
 
+        # `PluginRegistry.startup_steps()` existe hace varias versiones, pero nada lo llamaba
+        # acá — `RbacSeedStep` (y cualquier otro paso de plugin, como el reaper de passkeys)
+        # sólo corría si el consumidor lo descubría y lo agregaba a mano a su propio
+        # `build_lifespan(...)` (HC-17). Se corren en el orden en que los plugins fueron
+        # registrados, después de que el contenedor ya existe.
+        self._plugin_steps = list(contenedor.plugins.startup_steps())
+        for paso in self._plugin_steps:
+            await paso.start()
+
     async def stop(self) -> None:
         """
-        Descarta el contenedor y deregistra el sobre.
+        Para los pasos de los plugins y descarta el contenedor.
 
         Importa en un worker de vida larga que reconfigura, y en los tests: sin esto el
         registro del sobre queda apuntando a un contenedor que ya no existe.
         """
         from hexcore.darwin.application.container import reset_identity
+
+        for paso in reversed(self._plugin_steps):
+            detener = getattr(paso, "stop", None)
+            if detener is not None:
+                await detener()
+        self._plugin_steps = []
 
         reset_identity()
 

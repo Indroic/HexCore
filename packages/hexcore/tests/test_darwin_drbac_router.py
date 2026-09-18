@@ -278,19 +278,30 @@ def test_crear_politica_sin_authz_manage_es_403(client: TestClient):
     assert respuesta.status_code == 403
 
 
-def test_crear_y_listar_politica_con_authz_manage(client: TestClient):
-    headers = {"X-Test-User": "a@test.com", "X-Test-Scopes": "authz.manage"}
-    creada = client.post("/auth/drbac/policies", json={"name": "p"}, headers=headers)
+def test_crear_politica_con_authz_manage_pero_sin_policy_write_es_403(client: TestClient):
+    """HC-20: escribir políticas exige `authz.policy.write`, no alcanza `authz.manage`."""
+    respuesta = client.post(
+        "/auth/drbac/policies",
+        json={"name": "p"},
+        headers={"X-Test-User": "a@test.com", "X-Test-Scopes": "authz.manage"},
+    )
+    assert respuesta.status_code == 403
+
+
+def test_crear_y_listar_politica_con_authz_policy_write(client: TestClient):
+    headers_write = {"X-Test-User": "a@test.com", "X-Test-Scopes": "authz.policy.write"}
+    headers_manage = {"X-Test-User": "a@test.com", "X-Test-Scopes": "authz.manage"}
+    creada = client.post("/auth/drbac/policies", json={"name": "p"}, headers=headers_write)
     assert creada.status_code == 201
     assert creada.json()["name"] == "p"
 
-    listado = client.get("/auth/drbac/policies", headers=headers)
+    listado = client.get("/auth/drbac/policies", headers=headers_manage)
     assert listado.status_code == 200
     assert any(p["name"] == "p" for p in listado.json())
 
 
 def test_actualizar_y_borrar_politica(client: TestClient):
-    headers = {"X-Test-User": "a@test.com", "X-Test-Scopes": "authz.manage"}
+    headers = {"X-Test-User": "a@test.com", "X-Test-Scopes": "authz.policy.write"}
     creada = client.post("/auth/drbac/policies", json={"name": "p"}, headers=headers).json()
 
     actualizada = client.patch(

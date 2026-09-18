@@ -31,6 +31,7 @@ from hexcore.domain.events import DomainEvent
 
 __all__ = [
     "GLOBAL_SCOPE",
+    "scope_chain",
     "RbacRole",
     "RbacPermission",
     "RoleAssignment",
@@ -50,6 +51,30 @@ __all__ = [
 
 #: El scope global. Nunca `NULL` — ver el docstring del módulo.
 GLOBAL_SCOPE = ""
+
+
+def scope_chain(scope_key: str) -> tuple[str, ...]:
+    """
+    Los ancestros de `scope_key`, de más general a más específico, `GLOBAL_SCOPE` incluido.
+
+    Hasta HC-18, `rbac` comparaba `scope_key` como clave exacta: un rol asignado en
+    ``"org:42"`` no aplicaba en ``"org:42/team:7"``, aunque `drbac`'s `scope_chain`
+    (`plugins/drbac/domain.py`, mismo algoritmo, mismo separador `/`) sí trata esa jerarquía
+    como tal — el resultado era que un rol global (o de organización) se quedaba sin efecto en
+    cualquier scope hijo. Esta es la misma función, duplicada a propósito acá: `rbac` no
+    depende de `drbac` — cada plugin es instalable solo — así que comparten el algoritmo, no el
+    código.
+
+    ``scope_chain("org:42/project:7")`` → ``("", "org:42", "org:42/project:7")``.
+    """
+    if scope_key == GLOBAL_SCOPE:
+        return (GLOBAL_SCOPE,)
+    cadena = [GLOBAL_SCOPE]
+    acumulado: list[str] = []
+    for segmento in scope_key.split("/"):
+        acumulado.append(segmento)
+        cadena.append("/".join(acumulado))
+    return tuple(cadena)
 
 
 # ── Las entidades ─────────────────────────────────────────────────────────────

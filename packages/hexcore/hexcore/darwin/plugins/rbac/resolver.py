@@ -45,22 +45,36 @@ class RbacPrincipalResolver(AbstractPrincipalResolver):
 
         configure_identity(
             IdentityConfig(),
-            principals=RbacPrincipalResolver(service=rbac_plugin.service()),
+            principals=RbacPrincipalResolver(service=rbac_plugin.service),
         )
+
+    `service` acepta un `RbacService` ya resuelto **o** un `Callable[[], RbacService]` sin
+    argumentos — pasar `rbac_plugin.service` (el método, sin llamar) en vez de
+    `rbac_plugin.service()` es lo que permite construir el resolver *antes* de
+    `configure_identity()`, que es como lo arma `RbacPlugin.principal_resolver()` (HC-15):
+    `rbac_plugin.service()` necesita el contenedor de identidad ya configurado, y
+    `principal_resolver()` se evalúa como argumento de `configure_identity(...)`, es decir
+    antes de que exista. Con el método sin llamar, la resolución del servicio se difiere hasta
+    el primer `resolve()`, que corre en un sign-in real, después de que el contenedor ya existe.
     """
 
     def __init__(
         self,
         *,
-        service: "RbacService",
+        service: "RbacService | t.Callable[[], RbacService]",
         scope_of: ScopeOf | None = None,
         embed_in_token: EmbedMode = "roles",
         clock: "AbstractClock | None" = None,
     ) -> None:
-        self._service = service
+        self._service_o_provider = service
         self._scope_of = scope_of
         self._embed = embed_in_token
         self._clock = clock
+
+    def _servicio(self) -> "RbacService":
+        if callable(self._service_o_provider):
+            return self._service_o_provider()
+        return self._service_o_provider
 
     def _reloj(self) -> "AbstractClock":
         if self._clock is not None:
@@ -70,17 +84,16 @@ class RbacPrincipalResolver(AbstractPrincipalResolver):
         return SystemClock()
 
     async def resolve(self, user: "User") -> ResolvedPrincipal:
+        servicio = self._servicio()
         scope_key = self._scope_of(user) if self._scope_of is not None else GLOBAL_SCOPE
         ahora = self._reloj().now()
 
-        ids_de_rol = await self._service.active_role_ids(user.id, scope_key, at=ahora)
-        roles = frozenset(rol.name for rol in await self._service.roles_by_ids(ids_de_rol))
+        ids_de_rol = await servicio.active_role_ids(user.id, scope_key, at=ahora)
+        roles = frozenset(rol.name for rol in await servicio.roles_by_ids(ids_de_rol))
 
         scopes: frozenset[str] = frozenset()
         if self._embed == "roles_and_permissions":
-            claves = await self._service.effective_permission_keys(
-                user.id, scope_key, at=ahora
-            )
+            claves = await servicio.effective_permission_keys(user.id, scope_key, at=ahora)
             scopes = frozenset(claves)
 
         return ResolvedPrincipal(roles=roles, scopes=scopes)

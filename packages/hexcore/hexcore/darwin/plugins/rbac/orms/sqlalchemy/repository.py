@@ -18,6 +18,10 @@ from uuid import UUID
 
 from sqlalchemy import delete, or_, select, update
 
+from hexcore.infrastructure.repositories.orms.sqlalchemy.id_types import (
+    coerce_id_for_column,
+    coerce_ids_for_model,
+)
 from hexcore.darwin.plugins.rbac.domain import (
     AbstractAuthzVersionRepository,
     AbstractRbacPermissionRepository,
@@ -54,6 +58,18 @@ def _aware(valor: datetime | None) -> datetime | None:
     if valor is None:
         return None
     return valor if valor.tzinfo is not None else valor.replace(tzinfo=UTC)
+
+
+def _como_uuid_frozenset(valores: t.Iterable[t.Any]) -> frozenset[UUID]:
+    """
+    `frozenset[UUID]` a partir de una columna que puede ser `as_uuid=False` (HC-8).
+
+    `select(Modelo.columna)` devuelve el valor Python **crudo** de esa columna — `str` para una
+    columna `as_uuid=False`, `UUID` para el default —, sin pasar por ningún modelo de dominio
+    pydantic que lo coaccione. Los puertos de este archivo prometen `frozenset[UUID]`; esto es
+    lo que cumple la promesa sin importar cómo esté tipada la columna del consumidor.
+    """
+    return frozenset(v if isinstance(v, UUID) else UUID(str(v)) for v in valores)
 
 
 class _Base:
@@ -126,7 +142,7 @@ class SqlAlchemyRbacRoleRepository(_Base, AbstractRbacRoleRepository):
     async def add(self, role: RbacRole) -> RbacRole:
         async with self._session_scope() as session:
             fila = self._model(
-                id=role.id,
+                id=coerce_id_for_column(self._model, "id", role.id),
                 scope_key=role.scope_key,
                 name=role.name,
                 description=role.description,
@@ -139,7 +155,9 @@ class SqlAlchemyRbacRoleRepository(_Base, AbstractRbacRoleRepository):
 
     async def get(self, role_id: UUID) -> RbacRole | None:
         async with self._session_scope() as session:
-            fila = await session.get(self._model, role_id)
+            fila = await session.get(
+                self._model, coerce_id_for_column(self._model, "id", role_id)
+            )
             return _a_rol(fila) if fila is not None else None
 
     async def get_by_name(self, scope_key: str, name: str) -> RbacRole | None:
@@ -165,7 +183,7 @@ class SqlAlchemyRbacRoleRepository(_Base, AbstractRbacRoleRepository):
         async with self._session_scope() as session:
             resultado = await session.execute(
                 update(self._model)
-                .where(self._model.id == role.id)
+                .where(self._model.id == coerce_id_for_column(self._model, "id", role.id))
                 .values(name=role.name, description=role.description)
                 .returning(self._model)
             )
@@ -179,7 +197,7 @@ class SqlAlchemyRbacRoleRepository(_Base, AbstractRbacRoleRepository):
         async with self._session_scope() as session:
             resultado = await session.execute(
                 delete(self._model)
-                .where(self._model.id == role_id)
+                .where(self._model.id == coerce_id_for_column(self._model, "id", role_id))
                 .returning(self._model.id)
             )
             borro = resultado.scalar_one_or_none() is not None
@@ -199,10 +217,13 @@ class SqlAlchemyRbacRoleRepository(_Base, AbstractRbacRoleRepository):
         )
 
         claves = list(permission_keys)
+        role_id_coercido = coerce_id_for_column(
+            self._role_permission_model, "role_id", role_id
+        )
         async with self._session_scope() as session:
             await session.execute(
                 delete(self._role_permission_model).where(
-                    self._role_permission_model.role_id == role_id
+                    self._role_permission_model.role_id == role_id_coercido
                 )
             )
             if claves:
@@ -213,7 +234,12 @@ class SqlAlchemyRbacRoleRepository(_Base, AbstractRbacRoleRepository):
                 )
                 ids = [fila.id for fila in resultado.all()]
                 session.add_all(
-                    self._role_permission_model(role_id=role_id, permission_id=pid)
+                    self._role_permission_model(
+                        role_id=role_id_coercido,
+                        permission_id=coerce_id_for_column(
+                            self._role_permission_model, "permission_id", pid
+                        ),
+                    )
                     for pid in ids
                 )
             await session.commit()
@@ -230,19 +256,26 @@ class SqlAlchemyRbacRoleRepository(_Base, AbstractRbacRoleRepository):
                     self._role_permission_model,
                     self._role_permission_model.permission_id == RbacPermissionModel.id,
                 )
-                .where(self._role_permission_model.role_id == role_id)
+                .where(
+                    self._role_permission_model.role_id
+                    == coerce_id_for_column(self._role_permission_model, "role_id", role_id)
+                )
             )
             return frozenset(resultado.scalars().all())
 
     async def set_parents(self, role_id: UUID, parent_ids: t.Iterable[UUID]) -> None:
+        role_id_coercido = coerce_id_for_column(self._role_parent_model, "role_id", role_id)
         async with self._session_scope() as session:
             await session.execute(
                 delete(self._role_parent_model).where(
-                    self._role_parent_model.role_id == role_id
+                    self._role_parent_model.role_id == role_id_coercido
                 )
             )
             session.add_all(
-                self._role_parent_model(role_id=role_id, parent_id=pid)
+                self._role_parent_model(
+                    role_id=role_id_coercido,
+                    parent_id=coerce_id_for_column(self._role_parent_model, "parent_id", pid),
+                )
                 for pid in parent_ids
             )
             await session.commit()
@@ -251,10 +284,11 @@ class SqlAlchemyRbacRoleRepository(_Base, AbstractRbacRoleRepository):
         async with self._session_scope() as session:
             resultado = await session.execute(
                 select(self._role_parent_model.parent_id).where(
-                    self._role_parent_model.role_id == role_id
+                    self._role_parent_model.role_id
+                    == coerce_id_for_column(self._role_parent_model, "role_id", role_id)
                 )
             )
-            return frozenset(resultado.scalars().all())
+            return _como_uuid_frozenset(resultado.scalars().all())
 
 
 # ── Catálogo de permisos ────────────────────────────────────────────────────
@@ -272,7 +306,7 @@ class SqlAlchemyRbacPermissionRepository(_Base, AbstractRbacPermissionRepository
     async def add(self, permission: RbacPermission) -> RbacPermission:
         async with self._session_scope() as session:
             fila = self._model(
-                id=permission.id,
+                id=coerce_id_for_column(self._model, "id", permission.id),
                 key=permission.key,
                 description=permission.description,
             )
@@ -315,7 +349,13 @@ class SqlAlchemyRbacPermissionRepository(_Base, AbstractRbacPermissionRepository
             existentes = frozenset(resultado.scalars().all())
             faltantes = pedidas - existentes
             for clave in faltantes:
-                session.add(self._model(id=uuid4(), key=clave, description=""))
+                session.add(
+                    self._model(
+                        id=coerce_id_for_column(self._model, "id", uuid4()),
+                        key=clave,
+                        description="",
+                    )
+                )
             await session.commit()
 
 
@@ -334,9 +374,14 @@ class SqlAlchemyRbacUserRoleRepository(_Base, AbstractRbacUserRoleRepository):
     async def assign(self, assignment: RoleAssignment) -> RoleAssignment:
         async with self._session_scope() as session:
             fila = self._model(
-                id=assignment.id,
-                user_id=assignment.user_id,
-                role_id=assignment.role_id,
+                **coerce_ids_for_model(
+                    self._model,
+                    {
+                        "id": assignment.id,
+                        "user_id": assignment.user_id,
+                        "role_id": assignment.role_id,
+                    },
+                ),
                 scope_key=assignment.scope_key,
                 granted_by=assignment.granted_by,
                 expires_at=assignment.expires_at,
@@ -352,8 +397,8 @@ class SqlAlchemyRbacUserRoleRepository(_Base, AbstractRbacUserRoleRepository):
             resultado = await session.execute(
                 delete(self._model)
                 .where(
-                    self._model.user_id == user_id,
-                    self._model.role_id == role_id,
+                    self._model.user_id == coerce_id_for_column(self._model, "user_id", user_id),
+                    self._model.role_id == coerce_id_for_column(self._model, "role_id", role_id),
                     self._model.scope_key == scope_key,
                 )
                 .returning(self._model.id)
@@ -367,7 +412,8 @@ class SqlAlchemyRbacUserRoleRepository(_Base, AbstractRbacUserRoleRepository):
             resultado = await session.execute(
                 select(self._model)
                 .where(
-                    self._model.user_id == user_id, self._model.scope_key == scope_key
+                    self._model.user_id == coerce_id_for_column(self._model, "user_id", user_id),
+                    self._model.scope_key == scope_key,
                 )
                 .order_by(self._model.created_at)
             )
@@ -379,7 +425,7 @@ class SqlAlchemyRbacUserRoleRepository(_Base, AbstractRbacUserRoleRepository):
         async with self._session_scope() as session:
             resultado = await session.execute(
                 select(self._model.role_id).where(
-                    self._model.user_id == user_id,
+                    self._model.user_id == coerce_id_for_column(self._model, "user_id", user_id),
                     self._model.scope_key == scope_key,
                     or_(
                         self._model.expires_at.is_(None),
@@ -387,7 +433,7 @@ class SqlAlchemyRbacUserRoleRepository(_Base, AbstractRbacUserRoleRepository):
                     ),
                 )
             )
-            return frozenset(resultado.scalars().all())
+            return _como_uuid_frozenset(resultado.scalars().all())
 
 
 # ── Versión de autorización ────────────────────────────────────────────────

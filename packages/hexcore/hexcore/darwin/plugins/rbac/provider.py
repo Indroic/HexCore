@@ -8,8 +8,10 @@ pedido y `not_applicable` en cualquier otro caso, incluido "el actor no es un `P
 `deny` explícito es trabajo de DRBAC (Fase F5): éste sólo da el piso de lo que RBAC concede.
 
 El scope de la decisión sale de `request.resource.scope_path`, o `GLOBAL_SCOPE` si no hay
-recurso. **No hay herencia de scope acá** — `"org:1/proj:2"` se trata como una clave exacta,
-no como un prefijo que también mire `"org:1"`. La herencia jerárquica de scope es de DRBAC.
+recurso. **Hay herencia de scope** (HC-18): un rol asignado en `"org:1"` también aplica en
+`"org:1/proj:2"` — se evalúa a lo largo de `scope_chain(scope_path)`, de global al scope exacto,
+y se unen los permisos de cada nivel. Antes de HC-18, `"org:1/proj:2"` se trataba como clave
+exacta y un rol global (o de organización) no tenía efecto en ningún scope hijo.
 """
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ import typing as t
 
 from hexcore.darwin.domain.authorization import AccessRequest, AuthorizationProvider, Decision
 from hexcore.darwin.domain.context import Principal
-from hexcore.darwin.plugins.rbac.domain import GLOBAL_SCOPE
+from hexcore.darwin.plugins.rbac.domain import GLOBAL_SCOPE, scope_chain
 from hexcore.darwin.plugins.rbac.matcher import CompiledPermissionSet
 
 if t.TYPE_CHECKING:
@@ -72,27 +74,45 @@ class RbacAuthorizationProvider(AuthorizationProvider):
         if not isinstance(actor, Principal):
             return Decision(effect="not_applicable", provider=self.name)
 
-        scope_key = (
+        scope_path = (
             request.resource.scope_path if request.resource is not None else GLOBAL_SCOPE
         )
         ahora = self._reloj().now()
-        version = await self._versions.get(scope_key)
-
-        compilado = await self._cache.get_or_compute(
-            actor.user_id,
-            scope_key,
-            version,
-            compute=lambda: self._service.effective_permissions(
-                actor.user_id, scope_key, at=ahora
-            ),
-        )
+        compilado = await self._compilado_para_cadena(actor.user_id, scope_path, ahora)
 
         if not compilado.grants(request.action) and self._org_role_mapping:
-            compilado = await self._con_rol_de_organizacion(actor, scope_key, compilado)
+            compilado = await self._con_rol_de_organizacion(actor, scope_path, compilado)
 
         if compilado.grants(request.action):
             return Decision(effect="allow", provider=self.name)
         return Decision(effect="not_applicable", provider=self.name)
+
+    async def _compilado_para_cadena(
+        self, user_id: t.Any, scope_path: str, ahora: t.Any
+    ) -> CompiledPermissionSet:
+        """
+        Une los permisos efectivos de cada scope de `scope_chain(scope_path)`.
+
+        Cada nivel se cachea y se versiona por separado —`PermissionMatrixCache` sigue siendo
+        por `(user_id, scope_key, version)`, uno por nivel—, así que revocar un rol en
+        `"org:1"` invalida sólo esa entrada, no las de sus scopes hijos.
+        """
+        claves: set[str] = set()
+        for scope_key in scope_chain(scope_path):
+            version = await self._versions.get(scope_key)
+            compilado_del_nivel = await self._cache.get_or_compute(
+                user_id,
+                scope_key,
+                version,
+                compute=lambda sk=scope_key: self._service.effective_permissions(
+                    user_id, sk, at=ahora
+                ),
+            )
+            if compilado_del_nivel.has_global_wildcard:
+                return compilado_del_nivel
+            claves |= compilado_del_nivel.exact
+            claves |= {f"{p}.*" for p in compilado_del_nivel.wildcard_prefixes}
+        return CompiledPermissionSet.compile(claves)
 
     async def _con_rol_de_organizacion(
         self, actor: Principal, scope_key: str, base: CompiledPermissionSet

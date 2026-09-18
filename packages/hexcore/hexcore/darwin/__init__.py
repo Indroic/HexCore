@@ -90,6 +90,10 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "hexcore.darwin.domain.ports",
         "NullPrincipalResolver",
     ),
+    "CompositePrincipalResolver": (
+        "hexcore.darwin.domain.ports",
+        "CompositePrincipalResolver",
+    ),
     "ResolvedPrincipal": ("hexcore.darwin.domain.ports", "ResolvedPrincipal"),
     "AbstractSessionRepository": (
         "hexcore.darwin.domain.ports",

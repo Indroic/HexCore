@@ -449,6 +449,14 @@ class RbacService:
                 role_id, (ids_por_nombre[p] for p in rol_de_codigo.inherits if p in ids_por_nombre)
             )
 
+        # HC-19: sin este `_bump`, un seed que cambia los permisos de un rol de código no
+        # invalidaba `PermissionMatrixCache` — el cache versionado de `scope_key` seguía
+        # sirviendo la matriz vieja hasta que algo *distinto* (asignar/revocar un rol) subiera
+        # la versión, lo que en un despliegue con seed-al-arrancar y sin otra actividad en ese
+        # scope podía tardar mucho en pasar.
+        if ids_por_nombre:
+            await self._bump(scope_key, reason="system_roles_synced")
+
     # ── Interno ───────────────────────────────────────────────────────────────
     async def _bump(self, scope_key: str, *, reason: str) -> None:
         nueva_version = await self._versions.bump(scope_key)
