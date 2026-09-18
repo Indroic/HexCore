@@ -21,14 +21,18 @@ Flujo de `decide()`, resumido (el detalle está en cada método):
    `RolePermissionsResolver` — ver su docstring: es la única forma en que DRBAC "expande" un
    rol, y no importa nada de `rbac` para hacerlo.
 
-**Presupuesto.** Compilar las capas y evaluar las reglas corren bajo `asyncio.wait_for` con
-`EvaluationLimits.timeout_ms`: excederlo es indistinguible de una política maliciosa
-(`ConditionTooComplexError` ya frena el tamaño al guardar, Fase F4) y se resuelve igual —
-denegar, sin tumbar el request.
+**Presupuesto.** `EvaluationLimits.timeout_ms` mide cuánto tarda **evaluar** las reglas ya
+compiladas —una llamada sincrónica, sin I/O— y lo loguea si se excede; no cancela nada, porque
+no hay nada async ahí que `asyncio.wait_for` pueda interrumpir de verdad. La protección real
+contra un árbol de condición enorme es `ConditionLimits` (Fase F4), aplicada al **guardar** una
+política y de nuevo al compilar cada capa. Deliberadamente **no** hay ningún timeout sobre la
+consulta al repositorio (`_reglas_candidatas`): su latencia depende del backend de
+almacenamiento, no del tamaño de ninguna política, así que acotarla con el mismo presupuesto
+confundiría "la base tardó" con "la política es maliciosa" — y bajo carga real (CI, un pool de
+conexiones frío) esa confusión es un `deny` intermitente sobre un request perfectamente sano.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 import typing as t
@@ -72,9 +76,10 @@ class EvaluationLimits:
     `max_nodes`/`max_depth` son los mismos límites estructurales que `ConditionLimits` (Fase
     F4) — acá viven de nuevo porque el PDP los aplica de nuevo, defensivamente, al compilar cada
     capa (una política pudo haber llegado a la base por otro camino que el de guardado normal:
-    una migración, una carga masiva). `timeout_ms` es el presupuesto de **tiempo real**, que
-    `ConditionLimits` no puede expresar por sí solo: un árbol chico pero con muchas reglas en el
-    mismo scope igual puede sumar.
+    una migración, una carga masiva). `timeout_ms` sólo mide cuánto tarda **evaluar** las reglas
+    ya compiladas —sin cancelar nada, ver el docstring del módulo—, así que es una señal para
+    los logs y no una defensa por sí sola: la defensa real contra "muchas reglas en el mismo
+    scope" sigue siendo el tamaño de cada árbol, acotado por `max_nodes`/`max_depth`.
     """
 
     max_nodes: int = 256
@@ -177,20 +182,14 @@ class PolicyDecisionPoint:
         resource_type = request.resource.type if request.resource is not None else ""
         cadena = scope_chain(scope_path)
         ahora = self._reloj().now()
-        presupuesto = self._limits.timeout_ms / 1000
 
-        try:
-            candidatas = await asyncio.wait_for(
-                self._reglas_candidatas(cadena, request.action, resource_type), presupuesto
-            )
-        except TimeoutError:
-            logger.warning(
-                "drbac: se excedió el presupuesto de %sms compilando políticas para el scope "
-                "%r; se deniega.",
-                self._limits.timeout_ms,
-                scope_path,
-            )
-            return Decision(effect="deny", provider="drbac", reason="budget exceeded (compile)")
+        # Sin `asyncio.wait_for` acá: esta llamada es I/O de verdad (una consulta al
+        # repositorio en cada scope todavía no cacheado), y su latencia depende del backend de
+        # almacenamiento, no del tamaño de ninguna política — cortarla con el mismo presupuesto
+        # que protege contra un árbol de condición enorme confundiría "la base tardó" con "la
+        # política es maliciosa". Lo que sí acota el tamaño de lo que se compila acá es
+        # `ConditionLimits` (Fase F4), aplicado en `_compilar_capa`.
+        candidatas = await self._reglas_candidatas(cadena, request.action, resource_type)
 
         permiso_contextual = await self._permiso_via_rol_contextual(
             actor, cadena, request.action, at=ahora
