@@ -25,7 +25,7 @@ tipados. Nada de esto hay que encenderlo.
 | :-- | :-- | :-- |
 | 3 | **[Transportes](./transportes.md)** | `BearerTransport` vs `CookieTransport`, storages, cookie jars |
 | 4 | **[Sesión y store](./sesion-y-store.md)** | El contrato de `useSyncExternalStore`, Svelte, SSR |
-| 5 | **[Plugins](./plugins.md)** | Registro explícito y los seis plugins incluidos |
+| 5 | **[Plugins](./plugins.md)** | Registro explícito y los ocho plugins incluidos |
 | 6 | **[Errores](./errores.md)** | El único `DarwinError`, sus códigos y los predicados |
 
 ## Referencia
@@ -78,7 +78,7 @@ una app de React Native que nunca toca passkeys nunca lo empaqueta.
 | Cookies `HttpOnly` | `new CookieTransport()` |
 | Binding de React | `useSyncExternalStore(client.session.subscribe, …)` |
 | Binding de Svelte | `toSvelteStore(client.session)` |
-| TOTP, magic links, OAuth, passkeys, impersonación, organizaciones | Los seis [plugins](./plugins.md) |
+| TOTP, magic links, OAuth, passkeys, impersonación, organizaciones, RBAC, DRBAC | Los ocho [plugins](./plugins.md) |
 | Distinguir un fallo de otro | `err.code`, `isRefreshable`, `isSessionDead`, `isTwoFactorRequired` |
 
 ---

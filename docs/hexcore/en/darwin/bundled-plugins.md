@@ -1,4 +1,4 @@
-# The six bundled plugins
+# The eight bundled plugins
 
 Each one has its own extra. You install the ones you use:
 
@@ -10,7 +10,7 @@ Every plugin extra pulls in `hexcore[darwin]`, so that command brings the core i
 does **not** bring is a storage backend: you choose that, and it is covered in
 [Storage](./storage.md).
 
-Four of the six add no dependencies at all — they run on stdlib plus the core — and still have
+Six of the eight add no dependencies at all — they run on stdlib plus the core — and still have
 their own extra: it is the stable name where a future dependency lands without changing your
 install command, and it is the only place anyone reads before installing.
 
@@ -215,6 +215,89 @@ makes removing the last owner unable to win a race condition.
 
 ---
 
+## `rbac` — persisted, assignable roles and permissions
+
+```python
+from hexcore.darwin.plugins.rbac import RbacPlugin
+from hexcore.darwin.domain.permissions import RoleRegistry
+
+roles = (RoleRegistry()
+    .register_role("viewer", permissions={"invoice.read"})
+    .register_role("accountant", permissions={"invoice.approve"}, inherits={"viewer"}))
+
+rbac = RbacPlugin(registry=roles)
+configure_identity(IdentityConfig(), plugins=[rbac], principals=rbac.principal_resolver())
+```
+
+| Route | What it does |
+| :-- | :-- |
+| `GET /me/permissions` | The actor's effective roles and permissions in a scope — optimistic, for the UI |
+| `POST`·`GET /roles` | Create / list roles in a scope |
+| `PATCH`·`DELETE /roles/{role_id}` | Edit or delete one — rejects `is_system` roles |
+| `PUT /roles/{role_id}/permissions` | Replace its direct permissions |
+| `PUT /roles/{role_id}/parents` | Replace who it inherits from |
+| `POST`·`DELETE /assignments` | Assign or revoke a role for a user, in a scope |
+
+No new dependencies: it plugs into the `AuthorizationEngine` contract the core already exposes
+(see [Authorization](./authorization.md)) and adds six tables of its own for roles, the
+permission catalog, their junctions, assignments and a per-scope version counter.
+
+`RoleRegistry` roles stay the source of truth for **what a role means** — `RbacPlugin` seeds them
+into the table at startup as `is_system=True`, not editable through the API — and this plugin
+adds what code-only roles never had: per-tenant roles, expiring assignments, and a decision point
+that plugs into the same engine as anything else.
+
+> **Anti-escalation is not optional.** Nobody — not even a caller with `authz.manage` — can grant
+> a role or a permission that exceeds what they themselves hold effectively in that scope. The
+> one deliberate bypass is `assign_role(actor_id=None, ...)`, the sanctioned way to hand out the
+> very first role in a fresh deployment, and it is always audited as `granted_by=None`.
+
+Every mutation bumps a per-scope version counter (`darwin_authz_version`), and the permission
+matrix cache's key carries that version — so revoking a role takes effect on the next request
+that resolves it, without waiting on any TTL.
+
+## `drbac` — contextual authorization on top of `rbac`
+
+```python
+from hexcore.darwin.plugins.drbac import DrbacPlugin
+
+drbac = DrbacPlugin(role_permissions=rbac.service().permission_keys_for_role_name)
+configure_identity(IdentityConfig(), plugins=[rbac, drbac], principals=rbac.principal_resolver())
+```
+
+| Route | What it does |
+| :-- | :-- |
+| `POST /check` | Batch decisions (≤ 50, deduplicated) against the real `AuthorizationEngine` |
+| `GET /me/snapshot` | Only the `client_evaluable` rules of a scope — for the TypeScript client's optimistic `evaluate()` |
+| `POST`·`GET /policies` | Create / list conditional policies in a scope |
+| `PATCH`·`DELETE /policies/{policy_id}` | Edit or delete one |
+| `POST`·`GET /bindings` | Grant or list a contextual role binding |
+| `DELETE /bindings/{binding_id}` | Revoke one |
+| `POST /simulate` | Like `check`, plus which rules were evaluated and how |
+
+`requires = ("rbac",)`: DRBAC extends RBAC, it does not replace it — roles stay the baseline of
+what is allowed, and DRBAC's policies restrict them conditionally ("you can approve invoices,
+just not your own") or extend them contextually through time-limited role bindings scoped to a
+hierarchical `scope_path` (`"org:42"` covers `"org:42/project:7"` too).
+
+**No module of `drbac` imports anything from `rbac`.** A `RoleBinding.role_name` is a bare string,
+not a foreign key into any `rbac` table — the two plugins genuinely do not know about each other,
+same as every other pair in this list. The only real bridge — expanding a contextual role name
+into the permissions it grants — is the `role_permissions` callable you wire explicitly when you
+register both plugins, exactly the pattern `rbac`'s own `organization` integration already uses.
+
+Conditions are a declarative AST (`Eq`, `And`, `WithinScope`, ...), never `eval`: `Var` can only
+read `subject.*`/`resource.*`/`env.*`, checked when the condition is built, and evaluation is
+three-valued — `true`/`false` decide, and a variable that cannot resolve is `null`
+("indeterminate"), never guessed toward `allow`. See [Authorization](./authorization.md) for the
+full semantics and the threat model behind the design.
+
+> **`WithinScope` compares scope paths by segment, never by raw string prefix.** `"org:4"` is not
+> an ancestor of `"org:42/..."` just because the string happens to be a prefix — that exact
+> mistake is the cross-tenant escalation this plugin is built to avoid.
+
+---
+
 ## Wiring them up
 
 ```python
@@ -250,5 +333,6 @@ routes and use only the commands.
 
 ## See also
 
+- [Authorization: `rbac`, `drbac` and the engine](./authorization.md)
 - [Writing your own plugin](./writing-plugins.md)
 - [Storage, schema and migrations](./storage.md)
