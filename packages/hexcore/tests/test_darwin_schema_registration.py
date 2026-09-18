@@ -55,6 +55,10 @@ CON_TABLA: dict[str, int] = {
     # tiene sólo cuatro documentos y no seis: los permisos directos y los padres de un rol van
     # embebidos en el propio documento del rol.
     "rbac": 6,
+    # drbac_policy, drbac_rule, drbac_role_binding, drbac_authz_version. Mongo tiene sólo tres
+    # documentos: las reglas van embebidas en el documento de la política — ver el docstring de
+    # `drbac/orms/beanie/repository.py`.
+    "drbac": 4,
 }
 
 #: Los que no aportan tabla, y por qué. `magic_link` reusa `verification`; `impersonate` no
@@ -72,6 +76,8 @@ CON_DOCUMENTOS: dict[str, int] = {
     "organization": 2,
     # rol (con permisos y padres embebidos), permiso, asignación, versión.
     "rbac": 4,
+    # política (con reglas embebidas), binding de rol contextual, versión.
+    "drbac": 3,
 }
 
 TODOS = tuple(installed_plugins())

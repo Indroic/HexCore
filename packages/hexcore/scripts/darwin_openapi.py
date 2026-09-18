@@ -60,6 +60,7 @@ def _construir_app() -> t.Any:
     from hexcore.darwin.plugins.oauth import OAuthPlugin
     from hexcore.darwin.plugins.organization import OrganizationPlugin
     from hexcore.darwin.plugins.passkey import PasskeyPlugin
+    from hexcore.darwin.plugins.drbac import DrbacPlugin
     from hexcore.darwin.plugins.rbac import RbacPlugin
     from hexcore.darwin.plugins.two_factor import TwoFactorPlugin
     from hexcore.darwin.testing import configure_test_identity
@@ -74,6 +75,7 @@ def _construir_app() -> t.Any:
             ImpersonatePlugin(),
             OrganizationPlugin(),
             RbacPlugin(),
+            DrbacPlugin(),
         ]
     )
     configure_test_identity(plugins=plugins)

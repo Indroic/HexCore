@@ -116,6 +116,140 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/drbac/bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Bindings */
+        get: operations["listar_bindings_auth_drbac_bindings_get"];
+        put?: never;
+        /** Crear Binding */
+        post: operations["crear_binding_auth_drbac_bindings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/drbac/bindings/{binding_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revocar Binding */
+        delete: operations["revocar_binding_auth_drbac_bindings__binding_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/drbac/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check
+         * @description La decisión real de `AuthorizationEngine` para cada ítem, en el mismo orden que llegó.
+         *     Deduplica ítems idénticos: se evalúan una sola vez.
+         */
+        post: operations["check_auth_drbac_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/drbac/me/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mi Snapshot
+         * @description Las reglas `client_evaluable` de `scope` y sus ancestros. **Optimista para UI, y sin
+         *     nada sensible**: ni bindings, ni políticas deshabilitadas, ni reglas con `Predicate`
+         *     (nunca son `client_evaluable` — ver `DrbacService._preparar_reglas`).
+         */
+        get: operations["mi_snapshot_auth_drbac_me_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/drbac/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Politicas */
+        get: operations["listar_politicas_auth_drbac_policies_get"];
+        put?: never;
+        /** Crear Politica */
+        post: operations["crear_politica_auth_drbac_policies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/drbac/policies/{policy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Borrar Politica */
+        delete: operations["borrar_politica_auth_drbac_policies__policy_id__delete"];
+        options?: never;
+        head?: never;
+        /** Actualizar Politica */
+        patch: operations["actualizar_politica_auth_drbac_policies__policy_id__patch"];
+        trace?: never;
+    };
+    "/auth/drbac/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Simular
+         * @description Como un ítem de `check`, pero con el detalle de qué reglas se evaluaron y cómo.
+         */
+        post: operations["simular_auth_drbac_simulate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/impersonate": {
         parameters: {
             query?: never;
@@ -1000,6 +1134,19 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * And
+         * @description Todas las condiciones tienen que dar `True` — lógica de Kleene, ver el docstring del módulo.
+         */
+        And: {
+            /** Items */
+            items: (components["schemas"]["Eq"] | components["schemas"]["Ne"] | components["schemas"]["Gt"] | components["schemas"]["Gte"] | components["schemas"]["Lt"] | components["schemas"]["Lte"] | components["schemas"]["In"] | components["schemas"]["Contains"] | components["schemas"]["StartsWith"] | components["schemas"]["WithinScope"] | components["schemas"]["TimeBetween"] | components["schemas"]["And"] | components["schemas"]["Or"] | components["schemas"]["Not"] | components["schemas"]["Predicate"])[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "and";
+        };
         /** AssignRoleBody */
         AssignRoleBody: {
             /** Expires At */
@@ -1043,6 +1190,19 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** BindingOut */
+        BindingOut: {
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: string;
+            /** Role Name */
+            role_name: string;
+            /** Scope Path */
+            scope_path: string;
+            /** Subject Id */
+            subject_id: string;
+        };
         /** ChallengeBody */
         ChallengeBody: {
             /** Challenge */
@@ -1050,10 +1210,65 @@ export interface components {
             /** Code */
             code: string;
         };
+        /** CheckBody */
+        CheckBody: {
+            /** Items */
+            items: components["schemas"]["CheckItem"][];
+        };
+        /** CheckItem */
+        CheckItem: {
+            /** Action */
+            action: string;
+            /** Attributes */
+            attributes?: {
+                [key: string]: unknown;
+            };
+            /** Owner Id */
+            owner_id?: string | null;
+            /** Resource Id */
+            resource_id?: string | null;
+            /**
+             * Resource Type
+             * @default
+             */
+            resource_type: string;
+            /**
+             * Scope Path
+             * @default
+             */
+            scope_path: string;
+        };
+        /** CheckResultOut */
+        CheckResultOut: {
+            /** Action */
+            action: string;
+            /** Allowed */
+            allowed: boolean;
+            /** Resource Id */
+            resource_id: string | null;
+            /** Resource Type */
+            resource_type: string;
+        };
         /** ConfirmBody */
         ConfirmBody: {
             /** Code */
             code: string;
+        };
+        /**
+         * Const
+         * @description Un literal: ``Const("draft")``, ``Const(5)``, ``Const(["draft", "sent"])``.
+         *
+         *     Una lista se guarda como tupla (`ConstScalar` es inmutable) — es la forma que usan `In`/
+         *     `Contains` para el lado de "estos son los valores posibles".
+         */
+        Const: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "const";
+            /** Value */
+            value?: boolean | number | string | (boolean | number | string | null)[] | null;
         };
         /** ConsumeMagicLinkBody */
         ConsumeMagicLinkBody: {
@@ -1061,6 +1276,35 @@ export interface components {
             email: string;
             /** Token */
             token: string;
+        };
+        /**
+         * Contains
+         * @description ``right`` está adentro de ``left`` (una lista o un string) — el espejo de `In`.
+         */
+        Contains: {
+            /** Left */
+            left: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Right */
+            right: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "contains";
+        };
+        /** CreateBindingBody */
+        CreateBindingBody: {
+            /** Condition */
+            condition?: (components["schemas"]["Eq"] | components["schemas"]["Ne"] | components["schemas"]["Gt"] | components["schemas"]["Gte"] | components["schemas"]["Lt"] | components["schemas"]["Lte"] | components["schemas"]["In"] | components["schemas"]["Contains"] | components["schemas"]["StartsWith"] | components["schemas"]["WithinScope"] | components["schemas"]["TimeBetween"] | components["schemas"]["And"] | components["schemas"]["Or"] | components["schemas"]["Not"] | components["schemas"]["Predicate"]) | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Role Name */
+            role_name: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
         };
         /** CreateOrganizationBody */
         CreateOrganizationBody: {
@@ -1072,6 +1316,28 @@ export interface components {
             name: string;
             /** Slug */
             slug?: string | null;
+        };
+        /** CreatePolicyBody */
+        CreatePolicyBody: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Priority
+             * @default 100
+             */
+            priority: number;
+            /** Rules */
+            rules?: components["schemas"]["RuleIn"][];
         };
         /** CreateRoleBody */
         CreateRoleBody: {
@@ -1104,6 +1370,21 @@ export interface components {
             /** Uri */
             uri: string;
         };
+        /**
+         * Eq
+         * @description ``left == right``.
+         */
+        Eq: {
+            /** Left */
+            left: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Right */
+            right: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "eq";
+        };
         /** FinishAuthenticationBody */
         FinishAuthenticationBody: {
             /** Credential */
@@ -1124,6 +1405,36 @@ export interface components {
             };
             /** Name */
             name?: string | null;
+        };
+        /**
+         * Gt
+         * @description ``left > right``. Indeterminado si los tipos no son comparables entre sí.
+         */
+        Gt: {
+            /** Left */
+            left: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Right */
+            right: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "gt";
+        };
+        /**
+         * Gte
+         * @description ``left >= right``.
+         */
+        Gte: {
+            /** Left */
+            left: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Right */
+            right: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "gte";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1183,6 +1494,21 @@ export interface components {
             stopped: boolean;
         };
         /**
+         * In
+         * @description ``left`` está entre los valores de ``right`` (que suele resolver a una lista de `Const`).
+         */
+        In: {
+            /** Left */
+            left: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Right */
+            right: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "in";
+        };
+        /**
          * InvitationIssued
          * @description La respuesta de `POST /organizations/{organization_id}/invitations`.
          */
@@ -1218,6 +1544,36 @@ export interface components {
         LinkedProviders: {
             /** Providers */
             providers: string[];
+        };
+        /**
+         * Lt
+         * @description ``left < right``.
+         */
+        Lt: {
+            /** Left */
+            left: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Right */
+            right: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "lt";
+        };
+        /**
+         * Lte
+         * @description ``left <= right``.
+         */
+        Lte: {
+            /** Left */
+            left: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Right */
+            right: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "lte";
         };
         /**
          * MagicLinkRequested
@@ -1283,6 +1639,34 @@ export interface components {
             user_id: string;
         };
         /**
+         * Ne
+         * @description ``left != right``.
+         */
+        Ne: {
+            /** Left */
+            left: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Right */
+            right: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "ne";
+        };
+        /**
+         * Not
+         * @description Invierte el resultado. Un indeterminado sigue indeterminado: `not None` no es `True`.
+         */
+        Not: {
+            /** Item */
+            item: components["schemas"]["Eq"] | components["schemas"]["Ne"] | components["schemas"]["Gt"] | components["schemas"]["Gte"] | components["schemas"]["Lt"] | components["schemas"]["Lte"] | components["schemas"]["In"] | components["schemas"]["Contains"] | components["schemas"]["StartsWith"] | components["schemas"]["WithinScope"] | components["schemas"]["TimeBetween"] | components["schemas"]["And"] | components["schemas"]["Or"] | components["schemas"]["Not"] | components["schemas"]["Predicate"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "not";
+        };
+        /**
          * OAuthCallbackResponse
          * @description La respuesta de `GET /auth/oauth/{provider}/callback`.
          *
@@ -1305,6 +1689,19 @@ export interface components {
              * @default Bearer
              */
             token_type: string;
+        };
+        /**
+         * Or
+         * @description Alguna condición tiene que dar `True` — lógica de Kleene, ver el docstring del módulo.
+         */
+        Or: {
+            /** Items */
+            items: (components["schemas"]["Eq"] | components["schemas"]["Ne"] | components["schemas"]["Gt"] | components["schemas"]["Gte"] | components["schemas"]["Lt"] | components["schemas"]["Lte"] | components["schemas"]["In"] | components["schemas"]["Contains"] | components["schemas"]["StartsWith"] | components["schemas"]["WithinScope"] | components["schemas"]["TimeBetween"] | components["schemas"]["And"] | components["schemas"]["Or"] | components["schemas"]["Not"] | components["schemas"]["Predicate"])[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "or";
         };
         /**
          * OrgRole
@@ -1346,6 +1743,50 @@ export interface components {
             /** Name */
             name: string | null;
         };
+        /** PolicyOut */
+        PolicyOut: {
+            /** Description */
+            description: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Priority */
+            priority: number;
+            /** Rules */
+            rules: components["schemas"]["RuleOut"][];
+            /** Scope Key */
+            scope_key: string;
+        };
+        /**
+         * Predicate
+         * @description Un predicado con nombre, para lo que este AST no cubre — ver `predicates.py`.
+         *
+         *     Sólo se evalúa del lado del servidor: una regla que use `Predicate` en su condición no es
+         *     ``client_evaluable`` (Fase F5), porque el cliente no tiene forma de saber qué hace el
+         *     predicado sin ejecutar código Python arbitrario, que es justo lo que este módulo evita.
+         *
+         *     Uso::
+         *
+         *         Predicate("business_hours")
+         *         Predicate("min_amount", Var("resource.amount"), Const(1000))
+         */
+        Predicate: {
+            /**
+             * Args
+             * @default []
+             */
+            args: (components["schemas"]["Var"] | components["schemas"]["Const"])[];
+            /** Name */
+            name: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "predicate";
+        };
         /** RequestMagicLinkBody */
         RequestMagicLinkBody: {
             /** Email */
@@ -1371,6 +1812,44 @@ export interface components {
             name: string;
             /** Scope Key */
             scope_key: string;
+        };
+        /** RuleIn */
+        RuleIn: {
+            /** Actions */
+            actions: string[];
+            /**
+             * Client Evaluable
+             * @default false
+             */
+            client_evaluable: boolean;
+            /** Condition */
+            condition?: (components["schemas"]["Eq"] | components["schemas"]["Ne"] | components["schemas"]["Gt"] | components["schemas"]["Gte"] | components["schemas"]["Lt"] | components["schemas"]["Lte"] | components["schemas"]["In"] | components["schemas"]["Contains"] | components["schemas"]["StartsWith"] | components["schemas"]["WithinScope"] | components["schemas"]["TimeBetween"] | components["schemas"]["And"] | components["schemas"]["Or"] | components["schemas"]["Not"] | components["schemas"]["Predicate"]) | null;
+            /**
+             * Effect
+             * @enum {string}
+             */
+            effect: "allow" | "deny";
+            /** Resource Type */
+            resource_type: string;
+        };
+        /** RuleOut */
+        RuleOut: {
+            /** Actions */
+            actions: string[];
+            /** Client Evaluable */
+            client_evaluable: boolean;
+            /** Condition */
+            condition: {
+                [key: string]: unknown;
+            } | null;
+            /** Effect */
+            effect: string;
+            /** Id */
+            id: string;
+            /** Position */
+            position: number;
+            /** Resource Type */
+            resource_type: string;
         };
         /**
          * SessionInfo
@@ -1484,6 +1963,39 @@ export interface components {
             /** Signed Out */
             signed_out: boolean;
         };
+        /** SimulateOut */
+        SimulateOut: {
+            /** Allowed */
+            allowed: boolean;
+            /** Explain */
+            explain: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** SnapshotOut */
+        SnapshotOut: {
+            /** Expires At */
+            expires_at: string;
+            /** Rules */
+            rules: components["schemas"]["SnapshotRuleOut"][];
+            /** Scope */
+            scope: string;
+            /** Version */
+            version: number;
+        };
+        /** SnapshotRuleOut */
+        SnapshotRuleOut: {
+            /** Actions */
+            actions: string[];
+            /** Condition */
+            condition: {
+                [key: string]: unknown;
+            } | null;
+            /** Effect */
+            effect: string;
+            /** Resource Type */
+            resource_type: string;
+        };
         /**
          * StartImpersonationBody
          * @description El cuerpo de `POST /auth/impersonate/{user_id}`.
@@ -1494,6 +2006,38 @@ export interface components {
         StartImpersonationBody: {
             /** Reason */
             reason: string;
+        };
+        /**
+         * StartsWith
+         * @description ``left`` (un string) empieza con ``right`` (un string).
+         */
+        StartsWith: {
+            /** Left */
+            left: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Right */
+            right: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "starts_with";
+        };
+        /**
+         * TimeBetween
+         * @description ``start <= value <= end``, con los tres operandos resueltos a `datetime`.
+         */
+        TimeBetween: {
+            /** End */
+            end: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Start */
+            start: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "time_between";
+            /** Value */
+            value: components["schemas"]["Var"] | components["schemas"]["Const"];
         };
         /** TwoFactorStatus */
         TwoFactorStatus: {
@@ -1515,6 +2059,19 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** UpdatePolicyBody */
+        UpdatePolicyBody: {
+            /** Description */
+            description?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Priority */
+            priority?: number | null;
+            /** Rules */
+            rules?: components["schemas"]["RuleIn"][] | null;
+        };
         /** UpdateRoleBody */
         UpdateRoleBody: {
             /** Description */
@@ -1531,12 +2088,56 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /**
+         * Var
+         * @description Una lectura del contexto de evaluación: ``"subject.id"``, ``"resource.owner_id"``,
+         *     ``"env.now"``.
+         *
+         *     La ruta se valida **al construirse**, no al evaluar: `subject.*`/`resource.*`/`env.*` son
+         *     los únicos namespaces permitidos, y ninguna otra rama es alcanzable ni siquiera por una
+         *     política que ya está guardada, porque la construcción es el único camino para tener una
+         *     instancia (incluida la que sale de deserializar JSON).
+         *
+         *     Uso::
+         *
+         *         Var("resource.owner_id")
+         */
+        Var: {
+            /** Path */
+            path: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "var";
+        };
         /** VerifyEmailRequest */
         VerifyEmailRequest: {
             /** Code */
             code: string;
             /** Email */
             email: string;
+        };
+        /**
+         * WithinScope
+         * @description ``left`` (un `scope_path` como ``"org:42/project:7"``) está en o debajo de ``right`` (el
+         *     ancestro, ``"org:42"``).
+         *
+         *     La comparación es **por segmentos** separados por ``/``, nunca `str.startswith` crudo:
+         *     ``"org:4"`` no puede ser ancestro de ``"org:42/..."`` sólo porque el string es un prefijo
+         *     —ésa es exactamente la escalada cross-tenant que el plan de rbac/drbac marca como riesgo—,
+         *     tiene que coincidir segmento por segmento.
+         */
+        WithinScope: {
+            /** Left */
+            left: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /** Right */
+            right: components["schemas"]["Var"] | components["schemas"]["Const"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "within_scope";
         };
     };
     responses: never;
@@ -1686,6 +2287,336 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnrollmentResponse"];
+                };
+            };
+        };
+    };
+    listar_bindings_auth_drbac_bindings_get: {
+        parameters: {
+            query: {
+                subject_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_binding_auth_drbac_bindings_post: {
+        parameters: {
+            query?: {
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBindingBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revocar_binding_auth_drbac_bindings__binding_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                binding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_auth_drbac_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResultOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mi_snapshot_auth_drbac_me_snapshot_get: {
+        parameters: {
+            query?: {
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_politicas_auth_drbac_policies_get: {
+        parameters: {
+            query?: {
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    crear_politica_auth_drbac_policies_post: {
+        parameters: {
+            query?: {
+                scope?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePolicyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    borrar_politica_auth_drbac_policies__policy_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    actualizar_politica_auth_drbac_policies__policy_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePolicyBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    simular_auth_drbac_simulate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckItem"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimulateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

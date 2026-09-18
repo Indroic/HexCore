@@ -81,12 +81,9 @@ PROMESAS: dict[str, tuple[tuple[str, str], ...]] = {
         ("hexcore.darwin.plugins.rbac", "RbacRole"),
         ("hexcore.darwin.plugins.rbac.matcher", "CompiledPermissionSet"),
     ),
-    # Todavía sin `DrbacPlugin` (Fase F4 del plan rbac/drbac: sólo el lenguaje de condiciones,
-    # el plugin llega en la Fase F5). `Eq`/`PredicateRegistry` son lo que ya existe y ejercitan
-    # el paquete resolviendo de verdad.
     "darwin-drbac": (
-        ("hexcore.darwin.plugins.drbac.conditions", "Eq"),
-        ("hexcore.darwin.plugins.drbac.predicates", "PredicateRegistry"),
+        ("hexcore.darwin.plugins.drbac", "DrbacPlugin"),
+        ("hexcore.darwin.plugins.drbac.pdp", "PolicyDecisionPoint"),
     ),
 }
 
