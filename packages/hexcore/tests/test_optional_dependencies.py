@@ -261,6 +261,22 @@ import pytest
     ("fastapi", "hexcore.darwin.plugins.rbac.cli"),
     ("joserfc", "hexcore.darwin.plugins.rbac.cli"),
     ("argon2", "hexcore.darwin.plugins.rbac.cli"),
+    # ── Fase F4 del plan rbac/drbac: el lenguaje de condiciones de `drbac` ─────
+    # El AST y el registro de predicados son stdlib + pydantic y nada más: ni sqlalchemy, ni
+    # el resto de los extras de identidad, porque todavía no hay persistencia ni router (eso
+    # es la Fase F5).
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac"),
+    ("fastapi", "hexcore.darwin.plugins.drbac"),
+    ("joserfc", "hexcore.darwin.plugins.drbac"),
+    ("argon2", "hexcore.darwin.plugins.drbac"),
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac.conditions"),
+    ("fastapi", "hexcore.darwin.plugins.drbac.conditions"),
+    ("joserfc", "hexcore.darwin.plugins.drbac.conditions"),
+    ("argon2", "hexcore.darwin.plugins.drbac.conditions"),
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac.predicates"),
+    ("fastapi", "hexcore.darwin.plugins.drbac.predicates"),
+    ("joserfc", "hexcore.darwin.plugins.drbac.predicates"),
+    ("argon2", "hexcore.darwin.plugins.drbac.predicates"),
     # ── Fase 10: los kits de testing ──────────────────────────────────────────
     # El kit genérico son dos dobles sobre los puertos de dominio: nada de sqlalchemy. Es lo que
     # permite que un consumidor sin `[sql]` pruebe sus casos de uso.

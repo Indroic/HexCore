@@ -1,0 +1,296 @@
+{
+  "_comment": "Vectores dorados del AST de condiciones de drbac (Fase F4 del plan rbac/drbac). Los consume tests/test_darwin_drbac_conditions.py (pytest) y, desde la Fase F6, el equivalente en vitest — el mismo resultado en las dos runtimes es lo que este archivo fija. `expected` es `true`/`false`/`null` (`null` = indeterminado). Deliberadamente no incluye `predicate`: un predicado se registra en código, por runtime, y no es parte del AST portable.",
+  "vectors": [
+    {
+      "name": "eq_true",
+      "condition": {
+        "type": "eq",
+        "left": { "type": "var", "path": "resource.owner_id" },
+        "right": { "type": "var", "path": "subject.id" }
+      },
+      "context": { "subject": { "id": "u1" }, "resource": { "owner_id": "u1" }, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "eq_false",
+      "condition": {
+        "type": "eq",
+        "left": { "type": "var", "path": "resource.owner_id" },
+        "right": { "type": "var", "path": "subject.id" }
+      },
+      "context": { "subject": { "id": "u1" }, "resource": { "owner_id": "u2" }, "env": {} },
+      "expected": false
+    },
+    {
+      "name": "ne_true",
+      "condition": {
+        "type": "ne",
+        "left": { "type": "var", "path": "resource.status" },
+        "right": { "type": "const", "value": "archived" }
+      },
+      "context": { "subject": {}, "resource": { "status": "draft" }, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "gt_true",
+      "condition": {
+        "type": "gt",
+        "left": { "type": "var", "path": "resource.amount" },
+        "right": { "type": "const", "value": 1000 }
+      },
+      "context": { "subject": {}, "resource": { "amount": 1500 }, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "gte_equal_is_true",
+      "condition": {
+        "type": "gte",
+        "left": { "type": "var", "path": "resource.amount" },
+        "right": { "type": "const", "value": 1000 }
+      },
+      "context": { "subject": {}, "resource": { "amount": 1000 }, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "lt_false",
+      "condition": {
+        "type": "lt",
+        "left": { "type": "var", "path": "resource.amount" },
+        "right": { "type": "const", "value": 1000 }
+      },
+      "context": { "subject": {}, "resource": { "amount": 1500 }, "env": {} },
+      "expected": false
+    },
+    {
+      "name": "lte_incomparable_types_is_indeterminate",
+      "condition": {
+        "type": "lte",
+        "left": { "type": "var", "path": "resource.amount" },
+        "right": { "type": "const", "value": "no-es-numero" }
+      },
+      "context": { "subject": {}, "resource": { "amount": 1500 }, "env": {} },
+      "expected": null
+    },
+    {
+      "name": "in_true",
+      "condition": {
+        "type": "in",
+        "left": { "type": "var", "path": "resource.status" },
+        "right": { "type": "const", "value": ["draft", "pending"] }
+      },
+      "context": { "subject": {}, "resource": { "status": "draft" }, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "in_false",
+      "condition": {
+        "type": "in",
+        "left": { "type": "var", "path": "resource.status" },
+        "right": { "type": "const", "value": ["draft", "pending"] }
+      },
+      "context": { "subject": {}, "resource": { "status": "approved" }, "env": {} },
+      "expected": false
+    },
+    {
+      "name": "contains_true",
+      "condition": {
+        "type": "contains",
+        "left": { "type": "var", "path": "resource.tags" },
+        "right": { "type": "const", "value": "urgent" }
+      },
+      "context": { "subject": {}, "resource": { "tags": ["urgent", "billing"] }, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "starts_with_true",
+      "condition": {
+        "type": "starts_with",
+        "left": { "type": "var", "path": "resource.scope_path" },
+        "right": { "type": "const", "value": "org:42" }
+      },
+      "context": { "subject": {}, "resource": { "scope_path": "org:42/project:7" }, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "within_scope_descendant_is_true",
+      "condition": {
+        "type": "within_scope",
+        "left": { "type": "var", "path": "resource.scope_path" },
+        "right": { "type": "const", "value": "org:42" }
+      },
+      "context": { "subject": {}, "resource": { "scope_path": "org:42/project:7" }, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "within_scope_same_path_is_true",
+      "condition": {
+        "type": "within_scope",
+        "left": { "type": "var", "path": "resource.scope_path" },
+        "right": { "type": "const", "value": "org:42" }
+      },
+      "context": { "subject": {}, "resource": { "scope_path": "org:42" }, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "within_scope_string_prefix_false_positive_is_rejected",
+      "_comment": "org:4 NO es ancestro de org:42/... aunque el string 'org:4' sea prefijo del string 'org:42/project:7' — la comparación es por segmentos, no str.startswith. Ver el riesgo de escalada cross-tenant del plan.",
+      "condition": {
+        "type": "within_scope",
+        "left": { "type": "var", "path": "resource.scope_path" },
+        "right": { "type": "const", "value": "org:4" }
+      },
+      "context": { "subject": {}, "resource": { "scope_path": "org:42/project:7" }, "env": {} },
+      "expected": false
+    },
+    {
+      "name": "within_scope_unrelated_branch_is_false",
+      "condition": {
+        "type": "within_scope",
+        "left": { "type": "var", "path": "resource.scope_path" },
+        "right": { "type": "const", "value": "org:42/project:7" }
+      },
+      "context": { "subject": {}, "resource": { "scope_path": "org:42/project:8" }, "env": {} },
+      "expected": false
+    },
+    {
+      "name": "time_between_inside_window_is_true",
+      "condition": {
+        "type": "time_between",
+        "value": { "type": "var", "path": "env.now" },
+        "start": { "type": "const", "value": "2026-01-01T09:00:00+00:00" },
+        "end": { "type": "const", "value": "2026-01-01T18:00:00+00:00" }
+      },
+      "context": { "subject": {}, "resource": {}, "env": { "now": "2026-01-01T12:00:00+00:00" } },
+      "expected": true
+    },
+    {
+      "name": "time_between_outside_window_is_false",
+      "condition": {
+        "type": "time_between",
+        "value": { "type": "var", "path": "env.now" },
+        "start": { "type": "const", "value": "2026-01-01T09:00:00+00:00" },
+        "end": { "type": "const", "value": "2026-01-01T18:00:00+00:00" }
+      },
+      "context": { "subject": {}, "resource": {}, "env": { "now": "2026-01-01T20:00:00+00:00" } },
+      "expected": false
+    },
+    {
+      "name": "missing_var_is_indeterminate",
+      "condition": {
+        "type": "eq",
+        "left": { "type": "var", "path": "resource.does_not_exist" },
+        "right": { "type": "const", "value": "draft" }
+      },
+      "context": { "subject": {}, "resource": { "status": "draft" }, "env": {} },
+      "expected": null
+    },
+    {
+      "name": "and_all_true_is_true",
+      "condition": {
+        "type": "and",
+        "items": [
+          { "type": "eq", "left": { "type": "var", "path": "resource.owner_id" }, "right": { "type": "var", "path": "subject.id" } },
+          { "type": "in", "left": { "type": "var", "path": "resource.status" }, "right": { "type": "const", "value": ["draft"] } }
+        ]
+      },
+      "context": { "subject": { "id": "u1" }, "resource": { "owner_id": "u1", "status": "draft" }, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "and_one_false_dominates_indeterminate",
+      "_comment": "Lógica de Kleene: False domina, aunque el otro término sea indeterminado.",
+      "condition": {
+        "type": "and",
+        "items": [
+          { "type": "eq", "left": { "type": "const", "value": 1 }, "right": { "type": "const", "value": 2 } },
+          { "type": "eq", "left": { "type": "var", "path": "resource.does_not_exist" }, "right": { "type": "const", "value": 1 } }
+        ]
+      },
+      "context": { "subject": {}, "resource": {}, "env": {} },
+      "expected": false
+    },
+    {
+      "name": "and_true_and_indeterminate_is_indeterminate",
+      "condition": {
+        "type": "and",
+        "items": [
+          { "type": "eq", "left": { "type": "const", "value": 1 }, "right": { "type": "const", "value": 1 } },
+          { "type": "eq", "left": { "type": "var", "path": "resource.does_not_exist" }, "right": { "type": "const", "value": 1 } }
+        ]
+      },
+      "context": { "subject": {}, "resource": {}, "env": {} },
+      "expected": null
+    },
+    {
+      "name": "or_one_true_dominates_indeterminate",
+      "condition": {
+        "type": "or",
+        "items": [
+          { "type": "eq", "left": { "type": "const", "value": 1 }, "right": { "type": "const", "value": 1 } },
+          { "type": "eq", "left": { "type": "var", "path": "resource.does_not_exist" }, "right": { "type": "const", "value": 1 } }
+        ]
+      },
+      "context": { "subject": {}, "resource": {}, "env": {} },
+      "expected": true
+    },
+    {
+      "name": "or_false_and_indeterminate_is_indeterminate",
+      "condition": {
+        "type": "or",
+        "items": [
+          { "type": "eq", "left": { "type": "const", "value": 1 }, "right": { "type": "const", "value": 2 } },
+          { "type": "eq", "left": { "type": "var", "path": "resource.does_not_exist" }, "right": { "type": "const", "value": 1 } }
+        ]
+      },
+      "context": { "subject": {}, "resource": {}, "env": {} },
+      "expected": null
+    },
+    {
+      "name": "not_true_is_false",
+      "condition": {
+        "type": "not",
+        "item": { "type": "eq", "left": { "type": "const", "value": 1 }, "right": { "type": "const", "value": 1 } }
+      },
+      "context": { "subject": {}, "resource": {}, "env": {} },
+      "expected": false
+    },
+    {
+      "name": "not_indeterminate_stays_indeterminate",
+      "condition": {
+        "type": "not",
+        "item": { "type": "eq", "left": { "type": "var", "path": "resource.does_not_exist" }, "right": { "type": "const", "value": 1 } }
+      },
+      "context": { "subject": {}, "resource": {}, "env": {} },
+      "expected": null
+    },
+    {
+      "name": "nested_or_of_ands_no_self_approval_example",
+      "_comment": "Aproxima el ejemplo del plan: permití update si sos el dueño y el estado es draft, o si el estado es pending y sos el aprobador.",
+      "condition": {
+        "type": "or",
+        "items": [
+          {
+            "type": "and",
+            "items": [
+              { "type": "eq", "left": { "type": "var", "path": "resource.owner_id" }, "right": { "type": "var", "path": "subject.id" } },
+              { "type": "in", "left": { "type": "var", "path": "resource.status" }, "right": { "type": "const", "value": ["draft"] } }
+            ]
+          },
+          {
+            "type": "and",
+            "items": [
+              { "type": "eq", "left": { "type": "var", "path": "resource.status" }, "right": { "type": "const", "value": "pending" } },
+              { "type": "eq", "left": { "type": "var", "path": "resource.approver_id" }, "right": { "type": "var", "path": "subject.id" } }
+            ]
+          }
+        ]
+      },
+      "context": {
+        "subject": { "id": "u1" },
+        "resource": { "owner_id": "u2", "status": "pending", "approver_id": "u1" },
+        "env": {}
+      },
+      "expected": true
+    }
+  ]
+}
