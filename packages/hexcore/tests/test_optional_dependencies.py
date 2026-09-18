@@ -262,13 +262,7 @@ import pytest
     ("joserfc", "hexcore.darwin.plugins.rbac.cli"),
     ("argon2", "hexcore.darwin.plugins.rbac.cli"),
     # ── Fase F4 del plan rbac/drbac: el lenguaje de condiciones de `drbac` ─────
-    # El AST y el registro de predicados son stdlib + pydantic y nada más: ni sqlalchemy, ni
-    # el resto de los extras de identidad, porque todavía no hay persistencia ni router (eso
-    # es la Fase F5).
-    ("sqlalchemy", "hexcore.darwin.plugins.drbac"),
-    ("fastapi", "hexcore.darwin.plugins.drbac"),
-    ("joserfc", "hexcore.darwin.plugins.drbac"),
-    ("argon2", "hexcore.darwin.plugins.drbac"),
+    # El AST y el registro de predicados son stdlib + pydantic y nada más.
     ("sqlalchemy", "hexcore.darwin.plugins.drbac.conditions"),
     ("fastapi", "hexcore.darwin.plugins.drbac.conditions"),
     ("joserfc", "hexcore.darwin.plugins.drbac.conditions"),
@@ -277,6 +271,39 @@ import pytest
     ("fastapi", "hexcore.darwin.plugins.drbac.predicates"),
     ("joserfc", "hexcore.darwin.plugins.drbac.predicates"),
     ("argon2", "hexcore.darwin.plugins.drbac.predicates"),
+    # ── Fase F5 del plan rbac/drbac: persistencia, PDP, PIP, router de `drbac` ─
+    # El dominio, el PDP, el PIP, el servicio, el provider y el cache no tocan ningún extra:
+    # resuelven repositorios y sqlalchemy perezosamente, igual que `rbac`. El paquete
+    # (`DrbacPlugin`) resuelve mixins, service y router perezosamente también, así que nombrarlo
+    # tampoco arrastra nada.
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac"),
+    ("fastapi", "hexcore.darwin.plugins.drbac"),
+    ("joserfc", "hexcore.darwin.plugins.drbac"),
+    ("argon2", "hexcore.darwin.plugins.drbac"),
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac.domain"),
+    ("fastapi", "hexcore.darwin.plugins.drbac.domain"),
+    ("joserfc", "hexcore.darwin.plugins.drbac.domain"),
+    ("argon2", "hexcore.darwin.plugins.drbac.domain"),
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac.pip"),
+    ("fastapi", "hexcore.darwin.plugins.drbac.pip"),
+    ("joserfc", "hexcore.darwin.plugins.drbac.pip"),
+    ("argon2", "hexcore.darwin.plugins.drbac.pip"),
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac.pdp"),
+    ("fastapi", "hexcore.darwin.plugins.drbac.pdp"),
+    ("joserfc", "hexcore.darwin.plugins.drbac.pdp"),
+    ("argon2", "hexcore.darwin.plugins.drbac.pdp"),
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac.cache"),
+    ("fastapi", "hexcore.darwin.plugins.drbac.cache"),
+    ("joserfc", "hexcore.darwin.plugins.drbac.cache"),
+    ("argon2", "hexcore.darwin.plugins.drbac.cache"),
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac.service"),
+    ("fastapi", "hexcore.darwin.plugins.drbac.service"),
+    ("joserfc", "hexcore.darwin.plugins.drbac.service"),
+    ("argon2", "hexcore.darwin.plugins.drbac.service"),
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac.provider"),
+    ("fastapi", "hexcore.darwin.plugins.drbac.provider"),
+    ("joserfc", "hexcore.darwin.plugins.drbac.provider"),
+    ("argon2", "hexcore.darwin.plugins.drbac.provider"),
     # ── Fase 10: los kits de testing ──────────────────────────────────────────
     # El kit genérico son dos dobles sobre los puertos de dominio: nada de sqlalchemy. Es lo que
     # permite que un consumidor sin `[sql]` pruebe sus casos de uso.
@@ -338,6 +365,8 @@ import pytest
     ("sqlalchemy", "hexcore.darwin.plugins.organization.orms.beanie.repository"),
     ("beanie", "hexcore.darwin.plugins.rbac.orms.sqlalchemy.repository"),
     ("sqlalchemy", "hexcore.darwin.plugins.rbac.orms.beanie.repository"),
+    ("beanie", "hexcore.darwin.plugins.drbac.orms.sqlalchemy.repository"),
+    ("sqlalchemy", "hexcore.darwin.plugins.drbac.orms.beanie.repository"),
     # La sub-app de Typer la arrastra `hexcore/__init__.py` **eager** vía
     # `hexcore.infrastructure.cli`: si importara algo de Darwin en el nivel superior, un
     # `import hexcore` en un proceso pelado se caería. Es el contrato más frágil de la fase.
