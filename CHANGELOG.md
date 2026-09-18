@@ -1,3 +1,9 @@
+## hexcore-v11.0.0 (2026-09-18)
+
+### Feat
+
+- **darwin**: ronda de correcciones rbac/drbac para 10.4 (HC-8..HC-22)
+
 ## hexcore-v10.4.0 (2026-09-18)
 
 ### Feat
