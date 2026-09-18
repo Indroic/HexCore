@@ -10,9 +10,11 @@ system to Python + CQRS.
 pip install 'hexcore[darwin-sqlalchemy]'
 ```
 
-192 symbols. Use `python scripts/hexcore_surface.py --find <name>` rather than guessing; the
+214 symbols. Use `python scripts/hexcore_surface.py --find <name>` rather than guessing; the
 groups are `IdentityConfig`/container, commands, context, entities and value objects, events,
-exceptions, permissions, ports, API, infrastructure, plugins, SQL storage.
+exceptions, permissions, ports, API, infrastructure, plugins, SQL storage. `rbac`/`drbac`'s own
+symbols are **not** in this facade — like every other plugin, they live under
+`hexcore.darwin.plugins.rbac`/`.drbac` and are imported directly.
 
 ---
 
@@ -179,7 +181,9 @@ your application's permissions.
 `ResolvedPrincipal(roles, scopes, status)`. The default returns an empty one. It is consulted on
 sign-in and on every refresh rotation, and all three travel inside the token, so `authenticate`
 stays DB-free. A change lands on the next rotation (one `access_ttl`); for an immediate cut use
-`revoke_all_for`.
+`revoke_all_for`. This is the flat, code-owned path. For roles and permissions an admin can
+create and assign through an API — with anti-escalation, per-tenant scoping and conditional
+rules — see **"rbac and drbac"** below.
 
 `status` is a free-form `str` that **Darwin never interprets** — it only carries it to
 `auth.actor.status`. It exists because Darwin knows only `is_active`/`locked_until` and checks
@@ -263,7 +267,7 @@ list that belongs in `DARWIN_PLUGINS`.
 
 ---
 
-## The six bundled plugins
+## The eight bundled plugins
 
 | Extra | Plugin | What it adds |
 | :-- | :-- | :-- |
@@ -273,9 +277,11 @@ list that belongs in `DARWIN_PLUGINS`.
 | `[darwin-impersonate]` | `impersonate` | "Sign in as", audited |
 | `[darwin-passkey]` | `passkey` | WebAuthn |
 | `[darwin-organization]` | `organization` | Organizations, members, invitations |
+| `[darwin-rbac]` | `rbac` | Persisted, assignable roles and permissions |
+| `[darwin-drbac]` | `drbac` | Conditional policies + contextual role bindings, on top of `rbac` |
 
 Every plugin extra pulls in `hexcore[darwin]`, so installing one brings the core it needs.
-Four of the six add no new dependencies today and still earn their extra: it is the stable
+Six of the eight add no new dependencies today and still earn their extra: it is the stable
 name where a future dependency lands (`[darwin-passkey]` did not have `webauthn` until it
 did), it makes the install command work, and it documents the surface where consumers look.
 
@@ -300,6 +306,65 @@ everything else in this file.
 
 `hexcore identity plugins <module>` prints what a registry contributes, which is the fastest
 way to check a plugin is wired as you think.
+
+---
+
+## `AuthorizationEngine`, `rbac` and `drbac`
+
+Answers "can this actor do X to this resource", not just "does this actor have this scope".
+`AuthorizationProvider.decide()` returns `allow`/`deny`/`not_applicable`; `AuthorizationEngine`
+combines every registered one with **deny-overrides + default-deny**: any `deny` wins, else the
+first `allow` wins, else (including zero providers) it denies. A provider that raises is treated
+as `deny` and logged.
+
+```python
+from hexcore.darwin.infrastructure.api.authorization import require_permission
+
+@router.post("/invoices/{id}/approve",
+             dependencies=[Depends(require_permission("invoice.approve", resource=load_ref))])
+```
+
+`authorize_command(action, resource_from=...)` for CQRS; `await authorize(action, resource)` for
+imperative code inside a handler, using `require_auth()`'s actor. `AccessDeniedError` (403)
+carries only `required` — never the reason a policy lost.
+
+**`rbac`** — persisted, assignable roles. `RoleRegistry` code roles seed as `is_system=True`,
+not editable by API. Every table has `scope_key: str`, never `NULL` (`""` = global);
+`RbacAuthorizationProvider` does **not** walk scope hierarchy — that is `drbac`'s job.
+Anti-escalation everywhere: nobody grants more than they hold effectively in that scope, except
+`assign_role(actor_id=None, ...)`, the sanctioned bootstrap bypass, always audited as
+`granted_by=None`. Every mutation bumps `darwin_authz_version` for its scope; the permission
+cache's key carries the version, so revocation needs no cache invalidation — the old key is
+simply never asked for again.
+
+**`drbac`** — conditional policies + contextual role bindings **on top of** `rbac`
+(`requires = ("rbac",)`), but **no module imports anything from `rbac`** — `requires` only
+orders registration, validated by name. A `RoleBinding.role_name` is a bare string, not a FK;
+the one bridge is a `role_permissions` callable you wire yourself, same pattern as `rbac`'s own
+`organization` integration. Resolves the full ancestor chain of a `scope_path`
+(`"org:1"` covers `"org:1/proj:2"`). Conditions are a declarative AST (`Eq`, `And`,
+`WithinScope`, ...) — no `eval`, `Var` reads only `subject.*`/`resource.*`/`env.*`, checked when
+built. Evaluation is three-valued (Kleene logic, like SQL `NULL`): `true`/`false` decide, an
+unresolved `Var` or an unregistered `Predicate` is indeterminate, never guessed toward `allow`.
+Decision order: clear `deny` > clear `allow` > any indeterminate (fail-closed deny) >
+`not_applicable`. `POST /check` is the real decision (batched, ≤ 50, deduplicated);
+`GET /me/snapshot` only ever returns `client_evaluable` rules — never one with a `Predicate` in
+it, forced out server-side regardless of what was declared.
+
+⚠️ **`WithinScope` and scope-chain resolution compare by path segment, never by raw string
+prefix.** `"org:4"` is not an ancestor of `"org:42/..."` just because the string is a prefix of
+it — that mistake is a cross-tenant privilege escalation, not a cosmetic bug.
+
+⚠️ **`ConditionTooComplexError`/`InvalidVarPathError` (422) are enforced when a policy is
+saved**, not only when it is evaluated — a policy is written once and evaluated on every
+matching request.
+
+Client side: `client.rbac.can(resource, action, opts?)` / `hasRole(...)` are synchronous and
+optimistic against a cached snapshot; `client.drbac.evaluate(...)` is the same idea, returning
+`"allow" | "deny" | "unknown"`. `client.drbac.check(...)`/`checkMany(...)` are the authoritative,
+batched calls against `POST /check`. Full detail: `references/darwin-client.md`.
+
+Full guide with the threat model: `docs/hexcore/en/darwin/authorization.md`.
 
 ---
 

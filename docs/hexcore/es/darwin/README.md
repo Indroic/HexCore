@@ -49,7 +49,8 @@ Eso monta ocho rutas bajo `/auth`:
 | Documento | Qué cubre |
 | :-- | :-- |
 | [Almacenamiento](./almacenamiento.md) | Backends, esquema, Alembic, `init_beanie`, modelo de usuario propio |
-| [Plugins incluidos](./plugins-incluidos.md) | Los seis, con sus rutas y advertencias |
+| [Plugins incluidos](./plugins-incluidos.md) | Los ocho, con sus rutas y advertencias |
+| [Autorización](./autorizacion.md) | `AuthorizationEngine`, `rbac`, `drbac`, y el modelo de amenazas |
 | [Escribir un plugin propio](./plugins-propios.md) | Los puntos de extensión, hooks, y las trampas |
 
 ← Volver al [índice de la documentación](../).
@@ -293,6 +294,11 @@ que sea inmediato, la herramienta es `revoke_all_for`, que sube la generación y
 tokens del usuario de una.
 
 Los tres viajan en el token, no en la base: `authenticate` es el camino caliente y no consulta.
+
+> Éste es el camino retrocompatible: un resolver plano, del código. Si necesitás roles y
+> permisos que un admin pueda crear y asignar por una API, con anti-escalada y scoping por
+> tenant, ver [Autorización](./autorizacion.md) para `rbac` y `drbac` — los dos se componen con
+> esta sección, no la reemplazan.
 
 ### El estado de la cuenta
 

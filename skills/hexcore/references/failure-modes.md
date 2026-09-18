@@ -299,6 +299,81 @@ this reason.
 
 ---
 
+## Darwin: rbac and drbac
+
+### A role assignment raises `EscalationError` on what looks like a normal grant
+
+**Cause.** The assigner is trying to grant a role whose permission set is not a subset of their
+own. `assign_role` checks this on every call except the one bootstrap call with
+`actor_id=None`.
+
+**Fix.** Bootstrap the first admin with `actor_id=None` — never at request time, only in a
+migration or startup script — then have every later assignment come from an actor who already
+holds a superset of what they are granting.
+
+### Editing a role in the database does nothing, or `SystemRoleImmutableError`
+
+**Cause.** Roles created with `is_system=True` come from code (`RoleRegistry`), not from a
+table row a human edits. Some paths silently no-op on a system role, others raise.
+
+**Fix.** Change the permission set in code and redeploy. A system role's permissions are not
+runtime state.
+
+### `ConditionTooComplexError` / `InvalidVarPathError` on a policy save that looks fine
+
+**Cause.** `enforce_condition_limits` runs at save time, not at evaluation time — max node
+count, max depth, and the set of `Var` roots (`resource.*`, `actor.*`, `context.*`) are all
+checked before the policy is ever persisted.
+
+**Fix.** Flatten the condition tree, or split it into more, simpler rules. This is a save-time
+gate, not a bug: it exists so an oversized tree never reaches the evaluator, where it would
+otherwise be the CPU-budget problem the PDP has to defend against.
+
+### drbac denies a request that rbac alone would have allowed, with no matching `deny` rule {#drbac-indeterminate}
+
+**Not a bug.** The PDP's order is deny-clear > allow-clear > indeterminate-fails-closed >
+`not_applicable`. If the PIP could not resolve a `resource.*` attribute a rule's condition
+needs, that rule evaluates to `None` (indeterminate) rather than `True`/`False` — Kleene logic,
+not a two-valued boolean. An indeterminate result with no other clear `allow` fails closed.
+
+**Fix.** Check that the `PolicyInformationPoint` actually resolves the attribute the condition
+references. If it legitimately cannot (the resource does not carry that field), the condition
+is wrong for that resource type, not the evaluator.
+
+### A revoked role still authorizes for up to two minutes
+
+**Cause.** `embed_in_token` (`"roles"` / `"roles_and_permissions"`) puts the roles or
+permissions in the access token itself. `darwin_authz_version` invalidates the *server-side*
+cache immediately, but a token already issued is self-contained until it expires or is
+refreshed — the two-minute `access_ttl` is the actual bound.
+
+**Fix.** This is the tradeoff `embed_in_token` makes for latency. For revocation that must be
+immediate, do not embed permissions in the token — resolve them per-request against the
+versioned cache instead.
+
+### `evaluate()` on the client answers `"unknown"` for something the server would allow or deny
+
+**Not a bug.** A rule whose condition contains a `Predicate` is never sent to the client —
+the server forces `client_evaluable=False` on it, because the browser has no way to run the
+same Python. `evaluate()` is sync and optimistic against whatever rules it *did* receive;
+`"unknown"` there means "ask the server," not "denied."
+
+**Fix.** Never gate the real action on `evaluate()`. Use `check()`/`checkMany()`, which hits
+`AuthorizationEngine.decide()` on the server and is the only authoritative answer.
+
+### `WithinScope` seems to match a tenant it should not
+
+**Cause.** A `scope_key` that does not follow the `segment:segment` convention (for example,
+concatenating IDs without a separator) makes segment-based comparison meaningless — two
+different tenants can produce the same leading characters. `WithinScope` compares parsed
+segments precisely to avoid the string-prefix version of this bug, but it cannot fix a
+scope that was never segmented in the first place.
+
+**Fix.** Always build `scope_key` as colon-separated segments (`org:42`, `org:42:team:7`).
+Never derive it by string concatenation.
+
+---
+
 ## Event sourcing
 
 ### A projection never sees an event that is definitely in the store

@@ -25,7 +25,7 @@ typed errors. Nothing here has to be switched on.
 | :-- | :-- | :-- |
 | 3 | **[Transports](./transports.md)** | `BearerTransport` vs `CookieTransport`, token storage, cookie jars |
 | 4 | **[Session and store](./session-and-store.md)** | The `useSyncExternalStore` contract, Svelte, SSR |
-| 5 | **[Plugins](./plugins.md)** | Explicit registration and all six bundled plugins |
+| 5 | **[Plugins](./plugins.md)** | Explicit registration and all eight bundled plugins |
 | 6 | **[Errors](./errors.md)** | The single `DarwinError`, its codes and the predicates |
 
 ## Reference
@@ -77,7 +77,7 @@ never touches passkeys never ships it.
 | `HttpOnly` cookies | `new CookieTransport()` |
 | React binding | `useSyncExternalStore(client.session.subscribe, …)` |
 | Svelte binding | `toSvelteStore(client.session)` |
-| TOTP, magic links, OAuth, passkeys, impersonation, organizations | The six [plugins](./plugins.md) |
+| TOTP, magic links, OAuth, passkeys, impersonation, organizations, RBAC, DRBAC | The eight [plugins](./plugins.md) |
 | Discriminating one failure from another | `err.code`, `isRefreshable`, `isSessionDead`, `isTwoFactorRequired` |
 
 ---
