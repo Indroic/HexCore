@@ -1,3 +1,19 @@
+## darwin-client-v1.3.0 (2026-09-18)
+
+### Feat
+
+- **darwin-client**: drbac — cliente TypeScript (Fase F6 de rbac/drbac)
+- **darwin**: drbac — persistencia, PDP, PIP y router (Fase F5 de rbac/drbac)
+- **darwin**: drbac — lenguaje de condiciones (Fase F4 de rbac/drbac)
+- **darwin-client**: rbac — cliente TypeScript (Fase F3 de rbac/drbac)
+- **darwin**: rbac — servicio, resolver, provider y router (Fase F2 de rbac/drbac)
+- **darwin**: rbac — dominio y persistencia (Fase F1 de rbac/drbac)
+
+### Fix
+
+- **darwin**: drbac no confunde latencia de la base con budget de evaluacion
+- **ci**: agregar darwin-rbac a la matriz de extras y a extra_smoke
+
 ## darwin-client-v1.2.0 (2026-09-17)
 
 ### Feat
