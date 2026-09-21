@@ -266,7 +266,7 @@ class _ValidarCableado:
         self._proveedores = proveedores
         self._tiene_allowlist = tiene_allowlist
 
-    async def __call__(self) -> None:
+    async def start(self) -> None:
         import logging
 
         if self._proveedores and not self._tiene_allowlist:

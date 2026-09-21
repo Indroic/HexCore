@@ -22,6 +22,26 @@ logger = logging.getLogger("hexcore.darwin.lifespan")
 __all__ = ["IdentityStep", "SessionReaperStep", "identity_startup_steps"]
 
 
+def _verificar_paso(paso: t.Any) -> None:
+    """
+    Verifica que el paso de un plugin cumpla `StartupStep` **antes** de arrancar ninguno.
+
+    Se valida la lista entera primero, y recién después se arranca: un paso mal formado en el
+    segundo plugin no puede descubrirse después de que el primero ya corrió su seeding.
+
+    El mensaje nombra al paso y la forma que le falta porque el síntoma sin esto es
+    `AttributeError: 'X' object has no attribute 'start'` saliendo de un módulo del framework,
+    que no le dice a nadie que el culpable es el plugin que acaba de agregar.
+    """
+    if callable(getattr(paso, "start", None)):
+        return
+    raise TypeError(
+        f"El paso de arranque {type(paso).__name__!r} que aporta un plugin no cumple "
+        "`StartupStep`: le falta `async def start(self) -> None`. Un `__call__` no alcanza — "
+        "`build_lifespan` y `IdentityStep` llaman a `start()`."
+    )
+
+
 class IdentityStep:
     """
     Configura Darwin y verifica que su esquema esté visible para Alembic.
@@ -75,6 +95,8 @@ class IdentityStep:
         # `build_lifespan(...)` (HC-17). Se corren en el orden en que los plugins fueron
         # registrados, después de que el contenedor ya existe.
         self._plugin_steps = list(contenedor.plugins.startup_steps())
+        for paso in self._plugin_steps:
+            _verificar_paso(paso)
         for paso in self._plugin_steps:
             await paso.start()
 

@@ -266,7 +266,7 @@ class _AvisarRpDeDesarrollo:
     def __init__(self, rp_id: str | None) -> None:
         self._rp_id = rp_id
 
-    async def __call__(self) -> None:
+    async def start(self) -> None:
         import logging
 
         if self._rp_id in ("localhost", "127.0.0.1"):
