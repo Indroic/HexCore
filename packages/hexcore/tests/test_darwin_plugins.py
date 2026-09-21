@@ -858,3 +858,129 @@ async def test_el_hook_middleware_se_compone_con_el_pipeline_real():
 
     assert resultado == "ok"
     assert vistos == ["ana@b.c"], "el hook corrió antes del handler"
+
+
+# ── Los pasos de arranque cumplen `StartupStep` ───────────────────────────────
+def _plugins_de_serie() -> list[DarwinPlugin]:
+    """
+    Una instancia mínima de cada plugin que shippea Darwin.
+
+    Se construyen acá y no por descubrimiento: `PasskeyPlugin` exige `rp_id`, así que un
+    barrido automático del paquete no podría instanciarlo, y un plugin que el barrido saltea
+    es justamente el que se escapa de esta verificación.
+    """
+    from hexcore.darwin.plugins.drbac import DrbacPlugin
+    from hexcore.darwin.plugins.impersonate import ImpersonatePlugin
+    from hexcore.darwin.plugins.oauth import OAuthPlugin
+    from hexcore.darwin.plugins.organization import OrganizationPlugin
+    from hexcore.darwin.plugins.passkey import PasskeyPlugin
+    from hexcore.darwin.plugins.rbac import RbacPlugin
+    from hexcore.darwin.plugins.two_factor import TwoFactorPlugin
+
+    return [
+        DrbacPlugin(),
+        ImpersonatePlugin(),
+        MagicLinkPlugin(),
+        OAuthPlugin(),
+        OrganizationPlugin(),
+        PasskeyPlugin(rp_id="mi-app.com", origins=["https://mi-app.com"]),
+        RbacPlugin(),
+        TwoFactorPlugin(),
+    ]
+
+
+def test_los_pasos_de_los_plugins_cumplen_startup_step():
+    """
+    `IdentityStep.start()` llama `await paso.start()`, así que un paso que expone `__call__`
+    en vez de `start` **rompe el arranque completo** del consumidor — no el plugin, el
+    arranque: el `AttributeError` sale antes de que ningún paso siguiente corra.
+
+    Pasó de verdad: `impersonate`, `oauth` y `passkey` shippearon sus pasos con `__call__`, y
+    los tests de cada plugin los invocaban como `paso()`, que es exactamente la forma que el
+    framework no usa. Por eso esta verificación está acá, sobre todos los plugins a la vez, y
+    no repartida en el archivo de cada uno.
+    """
+    import inspect
+
+    for plugin in _plugins_de_serie():
+        for paso in plugin.startup_steps():
+            assert isinstance(getattr(paso, "name", None), str), (
+                f"el paso {type(paso).__name__!r} de {plugin.name!r} no declara `name`"
+            )
+            arrancar = getattr(paso, "start", None)
+            assert arrancar is not None, (
+                f"el paso {type(paso).__name__!r} de {plugin.name!r} no tiene `start()`"
+            )
+            assert inspect.iscoroutinefunction(arrancar), (
+                f"el `start()` del paso {type(paso).__name__!r} de {plugin.name!r} "
+                "no es async"
+            )
+
+
+def test_un_paso_sin_start_falla_nombrandolo():
+    """
+    El síntoma sin esto es un `AttributeError` saliendo de un módulo del framework, que no le
+    dice a nadie que el culpable es el plugin de terceros que acaban de agregar.
+    """
+    from hexcore.darwin.infrastructure.lifespan import _verificar_paso
+
+    class PasoMalo:
+        name = "malo"
+
+        async def __call__(self) -> None: ...
+
+    with pytest.raises(TypeError, match="PasoMalo"):
+        _verificar_paso(PasoMalo())
+
+
+def test_identity_step_arranca_con_los_plugins_de_serie(caplog):
+    """
+    La regresión completa, por el camino que usa el consumidor: `IdentityStep.start()`.
+
+    Es el test que faltaba. El de HC-17 ya cubría que `IdentityStep` corriera los pasos de los
+    plugins, pero lo hacía con `RbacPlugin` — el único de los cuatro cuyo paso tenía `start()`.
+    Con `impersonate`, `oauth` o `passkey` registrados, el mismo camino tiraba
+    `AttributeError: '_AvisarSinAuditoria' object has no attribute 'start'` y **el arranque
+    entero moría**, no sólo el plugin: la excepción sale antes de que corra ningún paso
+    siguiente.
+
+    Se verifica además que los avisos **salgan**. Es la otra mitad del bug: los tres pasos
+    reventaban antes de loguear, así que los tres avisos de arranque que Darwin promete
+    —impersonación sin auditoría, oauth sin allowlist, `rp_id` de desarrollo— nunca se
+    emitieron en ningún despliegue.
+    """
+    import asyncio
+    import logging
+
+    from hexcore.darwin.application.config import IdentityConfig
+    from hexcore.darwin.application.container import reset_identity
+    from hexcore.darwin.infrastructure.lifespan import IdentityStep
+    from hexcore.darwin.plugins.impersonate import ImpersonatePlugin
+    from hexcore.darwin.plugins.oauth import OAuthPlugin
+    from hexcore.darwin.plugins.oauth.providers import google
+    from hexcore.darwin.plugins.passkey import PasskeyPlugin
+
+    plugins = PluginRegistry(
+        [
+            ImpersonatePlugin(),
+            OAuthPlugin(providers=[google(client_id="a", client_secret="b")]),
+            PasskeyPlugin(rp_id="localhost", origins=["http://localhost:3000"]),
+        ]
+    )
+    paso = IdentityStep(
+        IdentityConfig(secret_key="k" * 48),
+        components={"plugins": plugins},
+        verify_schema=False,
+    )
+
+    reset_identity()
+    try:
+        with caplog.at_level(logging.WARNING, logger="hexcore.darwin"):
+            asyncio.run(paso.start())
+            asyncio.run(paso.stop())
+    finally:
+        reset_identity()
+
+    assert "no va a quedar registrada" in caplog.text, "el aviso de impersonate no salió"
+    assert "allowlist" in caplog.text, "el aviso de oauth no salió"
+    assert "sólo funciona en desarrollo" in caplog.text, "el aviso de passkey no salió"

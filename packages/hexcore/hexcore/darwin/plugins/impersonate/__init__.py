@@ -196,7 +196,7 @@ class _AvisarSinAuditoria:
 
     name = "darwin.impersonate.audit_check"
 
-    async def __call__(self) -> None:
+    async def start(self) -> None:
         import logging
 
         from hexcore.darwin.application.container import get_identity_container
