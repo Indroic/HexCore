@@ -97,7 +97,6 @@ ALIASES_REMOVIDOS = [
     ("hexcore.domain.cqrs.handlers", "IQueryHandler", "AbstractQueryHandler"),
     ("hexcore.domain.cqrs.middleware", "IMiddleware", "AbstractMiddleware"),
     ("hexcore.domain.cqrs.serializer", "ISerializer", "AbstractSerializer"),
-    ("hexcore.domain.events", "IEventDispatcher", "EventBus"),
     ("hexcore.domain.cqrs", "ICommandBus", "AbstractCommandBus"),
     ("hexcore.domain.cqrs", "IQueryBus", "AbstractQueryBus"),
     ("hexcore.domain.cqrs", "IEventBus", "AbstractEventBus"),
@@ -105,11 +104,6 @@ ALIASES_REMOVIDOS = [
     ("hexcore.domain.cqrs", "IQueryHandler", "AbstractQueryHandler"),
     ("hexcore.domain.cqrs", "IMiddleware", "AbstractMiddleware"),
     ("hexcore.domain.cqrs", "ISerializer", "AbstractSerializer"),
-    (
-        "hexcore.infrastructure.events.events_backends.memory",
-        "InMemoryEventDispatcher",
-        "InMemoryEventBus",
-    ),
 ]
 
 # Los que dependen de un extra: mismo trato, pero el módulo necesita `[sql]`/`[mongo]`.
@@ -128,6 +122,46 @@ ALIASES_REMOVIDOS_OPCIONALES = [
 ]
 
 TODOS = ALIASES_REMOVIDOS + ALIASES_REMOVIDOS_OPCIONALES
+
+
+#: Nombres removidos cuyo reemplazo **no vive en el mismo módulo**, así que no entran en la
+#: parametrización de `TODOS` —que busca el canónico dentro de `module_path`— y se verifican
+#: acá, con el módulo del reemplazo explícito.
+#:
+#: `IEventDispatcher` se fue en 7.0 y `EventBus`, que era su reemplazo, se fue en 11.0: hoy el
+#: canónico de los dos es `AbstractEventBus`. Así termina una deprecación encadenada —el nombre
+#: intermedio también se elimina— y por eso la lista guarda el par final y no el histórico.
+REMOVIDOS_CON_CANONICO_EN_OTRO_MODULO = [
+    (
+        "hexcore.domain.events",
+        "IEventDispatcher",
+        "hexcore.domain.cqrs.buses",
+        "AbstractEventBus",
+    ),
+    (
+        "hexcore.domain.events",
+        "EventBus",
+        "hexcore.domain.cqrs.buses",
+        "AbstractEventBus",
+    ),
+    ("hexcore", "PermissionsRegistry", "hexcore.darwin", "RoleRegistry"),
+    ("hexcore", "TokenClaims", "hexcore.darwin", "AccessTokenClaims"),
+]
+
+#: Módulos que se eliminaron **enteros** en 11.0.
+#:
+#: Se verifican aparte de los nombres porque el modo de falla es otro: un módulo que se fue no
+#: da `AttributeError` al pedirle un nombre, da `ModuleNotFoundError` al importarlo, y quien
+#: tenía `from hexcore.domain.auth import TokenClaims` arriba de un archivo lo descubre en el
+#: import y no en el uso.
+MODULOS_REMOVIDOS = [
+    "hexcore.domain.auth",
+    "hexcore.domain.auth.permissions",
+    "hexcore.domain.auth.value_objects",
+    "hexcore.infrastructure.events",
+    "hexcore.infrastructure.events.events_backends",
+    "hexcore.infrastructure.events.events_backends.memory",
+]
 
 
 # ── 1. El alias ya no resuelve ─────────────────────────────────────────────────
@@ -173,34 +207,17 @@ def test_el_canonico_sigue_existiendo(module_path, _alias, canonical):
     assert getattr(modulo, canonical) is not None
 
 
-#: Los que en su momento fueron el reemplazo y ahora estan deprecados ellos mismos.
-#:
-#: `EventBus` reemplazo a `IEventDispatcher` en 5.0, y en 9.0 quedo deprecado a su vez en
-#: favor de `AbstractEventBus`: HexCore tenia dos puertos de bus de eventos incompatibles y
-#: quedo uno. Lo mismo con el `InMemoryEventBus` de `infrastructure.events`, que convivia con
-#: otra clase homonima en `application.cqrs`.
-#:
-#: Que un nombre pase por las dos etapas es lo normal en una deprecacion encadenada, y por
-#: eso la lista existe en vez de sacarlos de `TODOS`: el resto de las propiedades -- que el
-#: alias viejo ya no resuelva, que el reemplazo siga existiendo -- se siguen verificando.
-CANONICOS_AHORA_DEPRECADOS = {
-    ("hexcore.domain.events", "EventBus"),
-    ("hexcore.infrastructure.events.events_backends.memory", "InMemoryEventBus"),
-}
-
-
-# Se filtran de la parametrizacion en vez de saltarse adentro: el gate de CI exige cero
-# SKIPPED, y con razon -- un skip permanente es un test que nadie vuelve a mirar. Lo que estos
-# dos nombres si tienen que cumplir lo verifica `test_los_buses_viejos_avisan`.
-@pytest.mark.parametrize(
-    ("module_path", "_alias", "canonical"),
-    [
-        caso
-        for caso in TODOS
-        if (caso[0], caso[2]) not in CANONICOS_AHORA_DEPRECADOS
-    ],
-)
+@pytest.mark.parametrize(("module_path", "_alias", "canonical"), TODOS)
 def test_el_canonico_no_avisa(module_path, _alias, canonical):
+    """
+    Pedir el nombre bueno no puede emitir nada.
+
+    Hasta 11.0 esta parametrización tenía que filtrar dos casos —`EventBus` y el
+    `InMemoryEventBus` de `infrastructure.events` eran el reemplazo de un alias de 5.0 y a la
+    vez estaban deprecados ellos mismos—, así que el canónico de esas filas sí avisaba. Con
+    los dos eliminados, la cadena terminó y el filtro sobra: hoy no queda ningún canónico
+    deprecado, y si mañana vuelve a haber uno, este test lo dice.
+    """
     modulo = importlib.import_module(module_path)
 
     with warnings.catch_warnings(record=True) as capturados:
@@ -213,61 +230,60 @@ def test_el_canonico_no_avisa(module_path, _alias, canonical):
     assert deprecaciones == []
 
 
-# ── Los dos buses de eventos que se unificaron en 9.0 ──────────────────────────
+# ── Lo que 11.0 eliminó, en la fecha que cada aviso anunció ───────────────────
 @pytest.mark.parametrize(
-    ("module_path", "nombre", "reemplazo"),
-    [
-        ("hexcore.domain.events", "EventBus", "AbstractEventBus"),
-        (
-            "hexcore.infrastructure.events.events_backends.memory",
-            "InMemoryEventBus",
-            "hexcore.cqrs.InMemoryEventBus",
-        ),
-    ],
+    ("module_path", "nombre", "_modulo_canonico", "_canonico"),
+    REMOVIDOS_CON_CANONICO_EN_OTRO_MODULO,
 )
-def test_los_buses_viejos_avisan(module_path, nombre, reemplazo):
+def test_el_nombre_removido_no_resuelve(
+    module_path, nombre, _modulo_canonico, _canonico
+):
+    """
+    Ya no resuelve **ni avisando**: el `__getattr__` que emitía el aviso se fue con el nombre.
+
+    Es la diferencia entre deprecar y remover, y es la que hace honesto al aviso: mientras el
+    nombre avisaba, seguía funcionando; ahora no está, y el error lo dice sin rodeos.
+    """
     modulo = importlib.import_module(module_path)
 
-    with warnings.catch_warnings(record=True) as capturados:
-        warnings.simplefilter("always")
+    with pytest.raises(AttributeError, match="has no attribute"):
         getattr(modulo, nombre)
 
-    deprecaciones = [
-        w for w in capturados if issubclass(w.category, DeprecationWarning)
-    ]
-    assert len(deprecaciones) == 1, f"{nombre} tenia que avisar exactamente una vez"
-    assert reemplazo in str(deprecaciones[0].message)
+
+@pytest.mark.parametrize(
+    ("module_path", "nombre", "_modulo_canonico", "_canonico"),
+    REMOVIDOS_CON_CANONICO_EN_OTRO_MODULO,
+)
+def test_el_nombre_removido_no_esta_en_all(
+    module_path, nombre, _modulo_canonico, _canonico
+):
+    modulo = importlib.import_module(module_path)
+
+    assert nombre not in getattr(modulo, "__all__", [])
 
 
-def test_el_event_bus_viejo_es_el_puerto_nuevo():
+@pytest.mark.parametrize(
+    ("_module_path", "_nombre", "modulo_canonico", "canonico"),
+    REMOVIDOS_CON_CANONICO_EN_OTRO_MODULO,
+)
+def test_el_canonico_del_removido_existe(
+    _module_path, _nombre, modulo_canonico, canonico
+):
     """
-    Se aliasa **al reemplazo**, no al objeto viejo.
-
-    Los dos ABCs eran estructuralmente identicos -- misma firma de subscribe y publish --,
-    asi que devolver el nuevo no rompe a nadie en la linea siguiente. Lo unico que cambia es
-    que un bus que subclaseaba el viejo ahora **si** pasa el issubclass contra
-    AbstractEventBus, que es la correccion, no el dano.
+    La otra dirección: si la remoción se llevó de más, o el reemplazo que el aviso prometía
+    nunca existió, el usuario se queda sin a dónde migrar y lo descubre después de borrar su
+    código viejo.
     """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        from hexcore.domain.events import EventBus
+    modulo = importlib.import_module(modulo_canonico)
 
-    from hexcore.domain.cqrs.buses import AbstractEventBus
-
-    assert EventBus is AbstractEventBus
+    assert getattr(modulo, canonico, None) is not None
 
 
-def test_el_in_memory_event_bus_viejo_es_el_de_cqrs():
-    """Gana el de CQRS: tiene pipeline de middlewares y Smart Routing, el otro no."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        from hexcore.infrastructure.events.events_backends.memory import InMemoryEventBus
-
-    from hexcore.application.cqrs.in_memory_buses import (
-        InMemoryEventBus as BusDeCQRS,
-    )
-
-    assert InMemoryEventBus is BusDeCQRS
+@pytest.mark.parametrize("module_path", MODULOS_REMOVIDOS)
+def test_el_modulo_removido_no_importa(module_path):
+    """El módulo entero se fue, así que el import falla — no queda un shim vacío que resuelva."""
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(module_path)
 
 
 @pytest.mark.parametrize(
@@ -280,7 +296,6 @@ def test_el_in_memory_event_bus_viejo_es_el_de_cqrs():
         "hexcore.domain.cqrs.middleware",
         "hexcore.domain.cqrs.serializer",
         "hexcore.domain.events",
-        "hexcore.infrastructure.events.events_backends.memory",
     ],
 )
 def test_importar_no_avisa(module_path):
@@ -307,23 +322,24 @@ def test_importar_no_avisa(module_path):
 
 
 # ── 3. Los métodos y campos removidos ──────────────────────────────────────────
-def test_event_bus_register_y_dispatch_se_removieron():
+def test_register_y_dispatch_se_removieron():
     """
-    `EventBus.register()` / `.dispatch()` → `subscribe()` / `publish()`.
+    `register()` / `dispatch()` → `subscribe()` / `publish()`.
 
-    Ojo: `EventBus.register` **sigue existiendo** pero es el de `ABCMeta` —el registro de
-    subclases virtuales de la stdlib—, no el método deprecado. Se distingue por su
-    `__qualname__`, no por su presencia.
+    Se verifica sobre `AbstractEventBus`, que es el puerto que quedó: el `EventBus` sobre el
+    que se escribió este test en 7.0 era un alias suyo, y en 11.0 se eliminó.
+
+    Ojo: `register` **sigue existiendo** pero es el de `ABCMeta` —el registro de subclases
+    virtuales de la stdlib—, no el método deprecado. Se distingue por su `__qualname__`, no
+    por su presencia.
     """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", DeprecationWarning)
-        from hexcore.domain.events import EventBus
+    from hexcore.domain.cqrs.buses import AbstractEventBus
 
-    assert EventBus.register.__qualname__ == "ABCMeta.register"
-    assert not hasattr(EventBus, "dispatch")
+    assert AbstractEventBus.register.__qualname__ == "ABCMeta.register"
+    assert not hasattr(AbstractEventBus, "dispatch")
 
-    assert hasattr(EventBus, "subscribe")
-    assert hasattr(EventBus, "publish")
+    assert hasattr(AbstractEventBus, "subscribe")
+    assert hasattr(AbstractEventBus, "publish")
 
 
 def test_reset_sqlalchemy_engine_se_removio():
@@ -440,137 +456,3 @@ def test_la_fecha_de_remocion_sigue_estando_en_el_futuro():
         f"promete una remoción que ya pasó. O eliminá lo deprecado, o corré REMOVED_IN al "
         f"próximo major ({major_actual + 1}.0)."
     )
-
-
-# ── Fase 10: `hexcore.domain.auth` ────────────────────────────────────────────
-class TestDomainAuthDeprecado:
-    """
-    `hexcore.domain.auth` queda deprecado: lo reemplaza `hexcore.darwin`.
-
-    Los dos nombres **no se aliasan** a su reemplazo, y eso es la decisión: `TokenClaims` tiene
-    `client_id` obligatorio, un default mutable en `scopes` y **no tiene `sid`** —sin el cual la
-    revocación es imposible por construcción—; `AccessTokenClaims` tiene otros campos y otros
-    invariantes. Devolver el nuevo donde el usuario espera el viejo rompería su código en la línea
-    siguiente. Lo que hace falta es que el viejo siga funcionando **y avise**.
-    """
-
-    def test_importar_hexcore_no_avisa(self):
-        """
-        El aviso va al **acceder al nombre**, no al importar el paquete. Si saltara en el import,
-        cada consumidor vería el warning sin usar nada deprecado — y lo silenciaría entero.
-        """
-        import subprocess
-        import sys
-
-        resultado = subprocess.run(
-            [sys.executable, "-W", "error::DeprecationWarning", "-c", "import hexcore"],
-            capture_output=True,
-            text=True,
-        )
-
-        assert resultado.returncode == 0, resultado.stderr
-
-    @pytest.mark.parametrize(
-        "nombre, reemplazo",
-        [
-            ("TokenClaims", "hexcore.darwin.AccessTokenClaims"),
-            ("PermissionsRegistry", "hexcore.darwin.RoleRegistry"),
-        ],
-    )
-    def test_el_acceso_desde_hexcore_avisa(self, nombre, reemplazo):
-        import hexcore
-
-        with pytest.warns(DeprecationWarning, match=reemplazo.replace(".", r"\.")):
-            getattr(hexcore, nombre)
-
-    @pytest.mark.parametrize(
-        "nombre", ["TokenClaims", "PermissionsRegistry"]
-    )
-    def test_el_acceso_desde_el_paquete_avisa(self, nombre):
-        import hexcore.domain.auth as auth
-
-        with pytest.warns(DeprecationWarning):
-            getattr(auth, nombre)
-
-    @pytest.mark.parametrize(
-        "nombre", ["TokenClaims", "PermissionsRegistry"]
-    )
-    def test_devuelve_el_objeto_viejo_y_no_el_reemplazo(self, nombre):
-        """
-        La propiedad que hace la deprecación usable: el código existente **sigue andando**. Un
-        alias al reemplazo lo rompería, porque los tipos no son intercambiables.
-        """
-        import hexcore
-
-        with pytest.warns(DeprecationWarning):
-            obtenido = getattr(hexcore, nombre)
-
-        assert obtenido.__name__ == nombre
-        assert obtenido.__module__.startswith("hexcore.domain.auth")
-
-    @pytest.mark.parametrize(
-        "nombre", ["TokenClaims", "PermissionsRegistry"]
-    )
-    def test_el_from_import_tambien_avisa(self, nombre):
-        """
-        PEP 562 cubre los `from`-imports, y hacía falta verificarlo: es la forma en que se
-        consumen estos dos nombres, y si no avisara la deprecación sería invisible.
-        """
-        import importlib
-
-        with pytest.warns(DeprecationWarning):
-            modulo = importlib.import_module("hexcore")
-            getattr(modulo, nombre)
-
-    @pytest.mark.parametrize(
-        "nombre", ["TokenClaims", "PermissionsRegistry"]
-    )
-    def test_siguen_en_all(self, nombre):
-        """
-        Tienen que seguir: `from hexcore import TokenClaims` es como se consumen, y sacarlos de
-        `__all__` rompería un `import *` sin dar el aviso que la deprecación existe para dar.
-        """
-        import hexcore
-        import hexcore.domain.auth as auth
-
-        assert nombre in hexcore.__all__
-        assert nombre in auth.__all__
-
-    def test_el_aviso_dice_la_version_correcta(self):
-        """
-        Se deprecaron en 7.0, no en 5.0. `warn_deprecated` hardcodeaba "5.0", y un aviso nuevo que
-        miente sobre cuándo empezó el margen pierde la única información accionable que tiene.
-        """
-        import hexcore
-        from hexcore._deprecation import REMOVED_IN
-
-        with pytest.warns(DeprecationWarning) as capturado:
-            hexcore.TokenClaims
-
-        mensaje = str(capturado[0].message)
-        assert "en HexCore 7.0" in mensaje
-        assert f"se eliminará en {REMOVED_IN}" in mensaje
-
-    def test_un_nombre_inexistente_sigue_dando_attribute_error(self):
-        """El `__getattr__` no puede convertir un typo en un warning."""
-        import hexcore
-
-        with pytest.raises(AttributeError, match="NoExiste"):
-            hexcore.NoExiste  # type: ignore[attr-defined]
-
-    def test_el_reemplazo_existe_y_es_mejor(self):
-        """
-        El aviso nombra un reemplazo: si no existiera, el usuario quedaría sin salida. Y se
-        aseveran las dos diferencias que motivan la deprecación.
-        """
-        pytest.importorskip("joserfc")
-        from hexcore.darwin import AccessTokenClaims, RoleRegistry
-
-        campos = set(AccessTokenClaims.model_fields)
-        assert {"sid", "act", "aud", "typ", "nbf", "gen", "imp"} <= campos, (
-            "el reemplazo tiene lo que le faltaba al viejo"
-        )
-        # `RoleRegistry` resuelve herencia transitiva; el `PermissionsRegistry` viejo era un
-        # `dict[str, str]` con métodos alrededor.
-        assert hasattr(RoleRegistry, "resolve_permissions")
-        assert hasattr(RoleRegistry, "register_role")

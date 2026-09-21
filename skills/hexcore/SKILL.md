@@ -187,10 +187,11 @@ Deleted in 7.0. They resolve to nothing — not a deprecation warning, an `Impor
 | `reset_sqlalchemy_engine()` | `dispose_engine()` |
 | `MiddlewareConfig` | nothing — it was dead code, removed in 3.0 |
 
-Deprecated in 9.0 and removed in 10.0: `hexcore.domain.events.EventBus`, the whole
-`hexcore.infrastructure.events` package, and `hexcore.domain.auth.{PermissionsRegistry,
-TokenClaims}`. Run `--deprecated` for the live list. Full detail and the silent behaviour
-changes: `references/removed-api.md`.
+**Removed in 11.0**, after a full major of warnings each: `hexcore.domain.events.EventBus`,
+the whole `hexcore.infrastructure.events` package, `hexcore.domain.auth` entire (with
+`PermissionsRegistry` and `TokenClaims`, also re-exported from the root package), and
+`IdentityService.sign_in(email=...)`. Run `--deprecated` for the live list. Full detail and
+the silent behaviour changes: `references/removed-api.md`.
 
 ---
 

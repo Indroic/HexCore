@@ -406,21 +406,28 @@ class TestLaCompatibilidadDeLaSuperficie:
         assert SignIn(identifier="z", password="x").identifier == "z"
 
     @pytest.mark.anyio
-    async def test_el_servicio_acepta_email_como_alias_deprecado(self) -> None:
+    async def test_el_servicio_ya_no_acepta_email(self) -> None:
+        """
+        `sign_in(email=...)` se deprecó en 10.0 y **se eliminó en 11.0**, en la versión que el
+        aviso anunciaba.
+
+        El error es el `TypeError` de Python por un keyword que la firma no tiene, y eso es lo
+        correcto: un mensaje a medida sugeriría que el parámetro existe en algún modo.
+
+        Ojo con lo que **no** cambia: el comando `SignIn` sigue aceptando `email=` y
+        `username=` —lo verifica `test_el_comando_acepta_los_tres_nombres`— porque ahí son
+        campos del cuerpo HTTP, no un alias deprecado del mismo parámetro.
+        """
         contenedor = configure_test_identity(_config())
         servicio = contenedor.identity_service()
         await servicio.sign_up(email="ana@ejemplo.com", password="una-frase-larga")
 
-        with pytest.warns(DeprecationWarning, match="identifier"):
-            usuario, _, _ = await servicio.sign_in(
+        with pytest.raises(TypeError, match="email"):
+            await servicio.sign_in(
                 email="ana@ejemplo.com", password="una-frase-larga"
             )
-        assert usuario.email == "ana@ejemplo.com"
 
-    @pytest.mark.anyio
-    async def test_pasar_los_dos_es_un_error(self) -> None:
-        contenedor = configure_test_identity(_config())
-        with pytest.raises(ValueError, match="nombre viejo del mismo parámetro"):
-            await contenedor.identity_service().sign_in(
-                identifier="a", email="b", password="x"
-            )
+        usuario, _, _ = await servicio.sign_in(
+            identifier="ana@ejemplo.com", password="una-frase-larga"
+        )
+        assert usuario.email == "ana@ejemplo.com"

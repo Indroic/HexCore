@@ -26,7 +26,7 @@ Tres formas de usarlo, de menos a más:
        try:
            await create_test_user(contenedor, "ana@ejemplo.com")
            _, _, par = await contenedor.identity_service().sign_in(
-               email="ana@ejemplo.com", password="una frase larga y buena"
+               identifier="ana@ejemplo.com", password="una frase larga y buena"
            )
        finally:
            reset_identity()
