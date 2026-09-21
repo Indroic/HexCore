@@ -3,8 +3,10 @@ Mecanismo de deprecación de HexCore.
 
 Los alias anteriores a 5.0 (`ICommandBus`, `ISerializer`, `NoSqlUnitOfWork`, …) **se
 eliminaron en 7.0**: estaban deprecados desde 5.0, o sea dos majors de aviso. Este módulo
-queda como el mecanismo, no como su inventario — lo usa lo que se deprece de acá en adelante,
-empezando por `hexcore.domain.auth`, que Darwin reemplaza.
+queda como el mecanismo, no como su inventario — lo usa lo que se deprece de acá en adelante.
+En 11.0 se eliminó la tanda que vencía ahí (`hexcore.domain.auth`, los dos buses de eventos
+viejos y `sign_in(email=...)`), así que hoy el inventario está vacío: el módulo es el mecanismo
+listo para la próxima deprecación.
 
 Un alias declarado como `ICommandBus = AbstractCommandBus` **no puede avisar**: es una
 asignación, y leerlo no ejecuta nada. Por eso el aviso se implementa con `__getattr__` de
@@ -45,14 +47,16 @@ __all__ = [
 #: En 7.0 los alias pre-5.0 **se eliminaron de verdad**. La constante apunta siempre al
 #: próximo major por publicar, y por eso se corre con cada major en vez de quedarse fija.
 #:
-#: Con 9.0 pasa a **10.0**, y esta vez la fecha no está vacía: 9.0 depreca
-#: `hexcore.domain.events.EventBus` y el `InMemoryEventBus` de `infrastructure.events`, que
-#: son los dos nombres que esperan esa remoción. Un major completo de aviso.
+#: En 11.0 se eliminó lo que prometía irse en 11.0, que es lo que mantiene honesta a la
+#: constante: `hexcore.domain.events.EventBus` y el `InMemoryEventBus` de
+#: `infrastructure.events` (deprecados en 9.0), `hexcore.domain.auth` entero con
+#: `PermissionsRegistry` y `TokenClaims`, y el alias `sign_in(email=...)` (deprecado en 10.0).
+#: El bump a 11.0.0 los dejó pasar, y los dos tests de abajo fueron los que lo cazaron.
 #:
 #: Lo vigila `test_removed_in_is_ahead_of_the_published_version`: si un bump vuelve a alcanzar
 #: este valor, el fallo salta en CI y no en el aviso que lee el usuario. Ese test es el que
 #: convierte "se nos pasó" en "no se puede releasear".
-REMOVED_IN = "11.0"
+REMOVED_IN = "12.0"
 
 
 def warn_deprecated(
@@ -135,10 +139,10 @@ def deprecated_lazy_names(
 
     La diferencia con `deprecated_aliases`, que es la razón de que existan las dos: `deprecated_aliases`
     resuelve el alias al **reemplazo** —sirve cuando los dos nombres apuntan a lo mismo— y esto
-    devuelve lo viejo, que sigue existiendo con su propia forma. Es el caso de
-    `hexcore.domain.auth`: `TokenClaims` y `AccessTokenClaims` **no** son intercambiables (distintos
-    campos, distintos invariantes), así que aliasarlos rompería a quien todavía use el viejo. Lo que
-    hace falta es que siga funcionando **y avise**.
+    devuelve lo viejo, que sigue existiendo con su propia forma. Fue el caso de
+    `hexcore.domain.auth` hasta que se eliminó en 11.0: `TokenClaims` y `AccessTokenClaims` **no**
+    eran intercambiables (distintos campos, distintos invariantes), así que aliasarlos habría roto
+    a quien todavía usaba el viejo. Lo que hacía falta era que siguiera funcionando **y avisara**.
 
     Y perezoso porque el objeto viejo puede vivir en un módulo que no se quiere importar en el
     arranque: el `from` eager es justamente lo que se está sacando.

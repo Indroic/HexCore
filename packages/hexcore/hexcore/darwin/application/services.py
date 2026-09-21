@@ -798,34 +798,6 @@ class IdentityService:
         )
         return usuario, codigo
 
-    def _resolver_alias_de_identificador(
-        self, identifier: str | None, email: str | None
-    ) -> str:
-        """
-        Acepta `email=` como alias deprecado de `identifier=`.
-
-        El parámetro se llamaba `email` hasta 10.0, y renombrarlo sin más rompería en silencio
-        a todo el que llame al servicio por keyword — que es la forma en que el servicio se
-        llama, porque la firma es keyword-only.
-        """
-        if identifier is not None and email is not None:
-            raise ValueError(
-                "Se pasaron `identifier` y `email` a la vez. `email` es el nombre viejo del "
-                "mismo parámetro: usá sólo `identifier`."
-            )
-        if identifier is not None:
-            return identifier
-        if email is not None:
-            from hexcore._deprecation import warn_deprecated
-
-            warn_deprecated(
-                "IdentityService.sign_in(email=...)",
-                "IdentityService.sign_in(identifier=...)",
-                since="10.0",
-            )
-            return email
-        raise ValueError("Falta el identificador: `sign_in(identifier=..., password=...)`.")
-
     async def _buscar_por_identificador(self, identificador: str) -> User | None:
         """
         Busca al usuario por lo que la configuración habilite.
@@ -930,20 +902,19 @@ class IdentityService:
     async def sign_in(
         self,
         *,
-        identifier: str | None = None,
+        identifier: str,
         password: str,
         transport: Transport = "cookie",
         ip_address: str | None = None,
         user_agent: str | None = None,
         scopes: t.Iterable[str] | None = None,
-        email: str | None = None,
     ) -> tuple[User, IdentitySession, TokenPair]:
         """
         Autentica con credencial local y crea la sesión.
 
         `identifier` es el mail o el nombre de usuario, según lo que habilite
-        `IdentityConfig.sign_in_identifiers`. `email=` se acepta como alias deprecado del
-        parámetro viejo, para que el código de 9.x siga compilando.
+        `IdentityConfig.sign_in_identifiers`. El alias `email=`, deprecado en 10.0, se
+        **eliminó en 11.0**.
 
         **El orden de los chequeos es deliberado y es la parte que importa.** Primero se resuelve
         la credencial y se verifica la contraseña —hasheando un señuelo si no hay fila— y sólo
@@ -962,8 +933,7 @@ class IdentityService:
                 mismo error para los dos**, y con el mismo tiempo de respuesta.
             AccountLockedError, EmailNotVerifiedError: sólo tras validar la contraseña.
         """
-        identificador = self._resolver_alias_de_identificador(identifier, email)
-        usuario = await self._buscar_por_identificador(identificador)
+        usuario = await self._buscar_por_identificador(identifier)
 
         credencial = (
             await self._accounts.get_credential(usuario.id) if usuario else None

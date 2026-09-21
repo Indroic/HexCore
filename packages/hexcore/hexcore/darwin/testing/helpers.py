@@ -382,7 +382,7 @@ async def create_test_user(
         contenedor = configure_test_identity()
         ana = await create_test_user(contenedor, "ana@ejemplo.com")
         _, _, par = await contenedor.identity_service().sign_in(
-            email="ana@ejemplo.com", password="una frase larga y buena"
+            identifier="ana@ejemplo.com", password="una frase larga y buena"
         )
     """
     usuario, _ = await container.identity_service().sign_up(

@@ -6,8 +6,10 @@
 
 | Series | Status | What it means |
 | :-- | :-- | :-- |
-| **9.x** | ✅ **Active** | The only supported one. Receives features and fixes. Adds the event store and Event Sourcing, and leaves a single event bus port. |
-| **8.x** | ⛔ Deprecated | Ships Darwin. Migrating to 9.x is mechanical: the two deprecated names still resolve and warn until 10.0. |
+| **11.x** | ✅ **Active** | The only supported one. Receives features and fixes. Removes everything 11.0 had announced — see [11.0](#110-the-announced-removals) — and fixes the plugin startup steps that broke boot. |
+| **10.x** | ⛔ Deprecated | Darwin gains username sign-in, an optional email, a resolver for roles and scopes, a persisted key store, and startup checks that refuse the development defaults in production. |
+| **9.x** | ⛔ Deprecated | Adds the event store and Event Sourcing, and leaves a single event bus port. |
+| **8.x** | ⛔ Deprecated | Ships Darwin. |
 | **7.x** | ⛔ Deprecated | Removes the pre-5.0 surface and fixes the CORS and rate-limiting defects. **No Darwin**: it shipped before the module landed on `master`. |
 | **6.x** | ⛔ Deprecated | Works, but receives no fixes. Contains the CORS and rate-limiting defects fixed in 7.0, and the pre-5.0 aliases still present. |
 | **5.x** | ⛔ Deprecated | Same API surface as 6.x. |
@@ -16,7 +18,7 @@
 | **2.x** | ⛔ Deprecated | Contains the silent bugs fixed in 5.x (below). |
 | **1.x** | ⛔ Deprecated | No support of any kind. |
 
-**Everything before 9.0 is deprecated.**
+**Everything before 11.0 is deprecated.**
 
 3.0.0 and 4.0.0 exist only because the work was merged in phases and each merge triggered an
 automatic bump: **they are not releases meant to be used**, they are intermediate cuts of the same
@@ -60,8 +62,8 @@ behavior changes.
 | `ICommandHandler`, `IQueryHandler` | `AbstractCommandHandler`, `AbstractQueryHandler` |
 | `IMiddleware` | `AbstractMiddleware` |
 | `ISerializer` | `AbstractSerializer` |
-| `IEventDispatcher` | `EventBus` |
-| `EventBus.register()` / `.dispatch()` | `EventBus.subscribe()` / `.publish()` |
+| `IEventDispatcher` | `AbstractEventBus` (it was `EventBus` until 11.0 removed that name too) |
+| `EventBus.register()` / `.dispatch()` | `AbstractEventBus.subscribe()` / `.publish()` |
 | `ServerConfig.event_dispatcher` | `ServerConfig.event_bus` |
 | `SQLAlchemyCommonImplementationsRepo` | `SqlAlchemyRepository` |
 | `BeanieODMCommonImplementationsRepo` | `BeanieRepository` |
@@ -210,21 +212,20 @@ If you are going to use Darwin, the one section that is not optional reading is 
 **[Event Sourcing](./event-sourcing.md)** — and unifies something that had been duplicated
 since the CQRS layer landed.
 
-### Deprecated, removed in 10.0
+### Deprecated here, removed in 11.0
 
-A full major of notice. Both warn with a `DeprecationWarning` **when you ask for the name**, not
+Two full majors of notice — the warning said 11.0 and 11.0 is where they went. Both warn with a `DeprecationWarning` **when you ask for the name**, not
 when the module is imported: if they warned on import, there would be no way to tell *who* uses
 the old name.
 
 | Deprecated name | Replacement | Why |
 | :-- | :-- | :-- |
 | `hexcore.domain.events.EventBus` | `hexcore.domain.cqrs.buses.AbstractEventBus` | There were two event bus ports, mutually incompatible and with no common ancestor: a bus written against one did not work for the other, and the two handler graphs coexisted without seeing each other. The CQRS one stays — it also has the middleware pipeline and Smart Routing. |
-| `hexcore.infrastructure.events.events_backends.memory.InMemoryEventBus` | `hexcore.cqrs.InMemoryEventBus` | Two classes with the same name hanging off those two ports. The CQRS one wins, being a strict superset. The whole `hexcore.infrastructure.events` package is removed in 10.0. |
+| `hexcore.infrastructure.events.events_backends.memory.InMemoryEventBus` | `hexcore.cqrs.InMemoryEventBus` | Two classes with the same name hanging off those two ports. The CQRS one wins, being a strict superset. The whole `hexcore.infrastructure.events` package went with it. |
 
-The `EventBus` alias **resolves to the replacement**, not to the old object: the two ABCs were
-structurally identical, so returning the new one does not break anyone on the next line. The
-only change is that a bus which subclassed the old one now does pass `issubclass` against
-`AbstractEventBus` — which is the fix, not the damage.
+While it lasted, the `EventBus` alias **resolved to the replacement**, not to the old object:
+the two ABCs were structurally identical, so returning the new one broke nobody on the next
+line. Since 11.0 the name is gone and the import fails, which is the point of a removal date.
 
 To find the usages before upgrading:
 
@@ -280,6 +281,42 @@ registry, instead of discarding it silently. That registry is only populated in 
 with hierarchical dispatch the normal case becomes that the concrete type is not there —
 whoever subscribes to a base class never registers it. `resolve_unknown_events=False` restores
 the old semantics.
+
+## 11.0: the announced removals
+
+Nothing new to learn here: 11.0 removes exactly what the warnings had been naming, on the
+version they named. Each replacement is a rename, except the last one.
+
+| Removed | Replacement | Deprecated since |
+| :-- | :-- | :-- |
+| `hexcore.domain.events.EventBus` | `hexcore.domain.cqrs.buses.AbstractEventBus` | 9.0 |
+| `hexcore.infrastructure.events` (the whole package) | `hexcore.cqrs.InMemoryEventBus` | 9.0 |
+| `hexcore.domain.auth` (the whole package) | `hexcore.darwin` | 10.0 |
+| `PermissionsRegistry`, also re-exported as `hexcore.PermissionsRegistry` | `hexcore.darwin.RoleRegistry` | 10.0 |
+| `TokenClaims`, also re-exported as `hexcore.TokenClaims` | `hexcore.darwin.AccessTokenClaims` | 10.0 |
+| `IdentityService.sign_in(email=...)` | `IdentityService.sign_in(identifier=...)` | 10.0 |
+
+**`TokenClaims` is the one that is not a rename.** It has no `sid`, so a session issued with it
+cannot be revoked — there is no row to point at — and it lacks `aud`, `nbf` and `typ`, so a
+refresh token can be presented where an access token is expected. `AccessTokenClaims` has
+different fields and different invariants. That is why the old name returned the old object and
+warned, instead of aliasing to the new one: porting is a rewrite of the claims you build, not a
+search and replace.
+
+**`sign_in(email=...)` is a keyword rename.** Note what does *not* change: the `SignIn` command
+still accepts `email=` and `username=`, because there they are fields of the HTTP body, not a
+deprecated alias of the same parameter.
+
+To find what you still have on the old names before upgrading:
+
+```sh
+uv run pytest -W "error::DeprecationWarning"
+```
+
+That only works while you are still on 10.x — once you are on 11.x the names are gone and the
+failure is an `ImportError` or an `AttributeError`, not a warning.
+
+---
 
 ## Versioning
 

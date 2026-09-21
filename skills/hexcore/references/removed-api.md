@@ -57,8 +57,8 @@ not a behaviour change.
 | `ICommandHandler`, `IQueryHandler` | `AbstractCommandHandler`, `AbstractQueryHandler` |
 | `IMiddleware` | `AbstractMiddleware` |
 | `ISerializer` | `AbstractSerializer` |
-| `IEventDispatcher` | `EventBus` → now `AbstractEventBus` |
-| `EventBus.register()` / `.dispatch()` | `EventBus.subscribe()` / `.publish()` |
+| `IEventDispatcher` | `AbstractEventBus` (was `EventBus`, itself removed in 11.0) |
+| `EventBus.register()` / `.dispatch()` | `AbstractEventBus.subscribe()` / `.publish()` |
 | `ServerConfig.event_dispatcher` | `ServerConfig.event_bus` |
 | `SQLAlchemyCommonImplementationsRepo` | `SqlAlchemyRepository` |
 | `BeanieODMCommonImplementationsRepo` | `BeanieRepository` |
@@ -76,25 +76,26 @@ still there.
 
 ---
 
-## 2. Deprecated in 9.0 — removed in 10.0
+## 2. Deprecated in 9.0 and 10.0 — removed in 11.0
 
-A full major of notice. Both warn **when you ask for the name**, not when the module is
-imported: warning on import would give no way to tell *who* uses the old name.
+**These no longer resolve.** They warned for a full major each, naming 11.0 as the removal
+version, and 11.0 is where they went. Flag any code that still uses them.
 
-| Deprecated | Replacement | Why |
-| :-- | :-- | :-- |
-| `hexcore.domain.events.EventBus` | `hexcore.domain.cqrs.buses.AbstractEventBus` | There were two event bus ports, mutually incompatible, with no common ancestor: a bus written against one did not work for the other, and the two handler graphs coexisted without seeing each other. The CQRS one stays — it also has the middleware pipeline and Smart Routing. |
-| `hexcore.infrastructure.events.events_backends.memory.InMemoryEventBus` | `hexcore.cqrs.InMemoryEventBus` | Two classes with the same name on those two ports. The CQRS one wins, being a strict superset. **The whole `hexcore.infrastructure.events` package is removed in 10.0.** |
-| `hexcore.domain.auth.PermissionsRegistry` | `hexcore.darwin.RoleRegistry` | Darwin replaces the pre-identity permission model |
-| `hexcore.domain.auth.TokenClaims` | `hexcore.darwin.AccessTokenClaims` | Same |
+| Removed in 11.0 | Replacement | Deprecated since | Why |
+| :-- | :-- | :-- | :-- |
+| `hexcore.domain.events.EventBus` | `hexcore.domain.cqrs.buses.AbstractEventBus` | 9.0 | There were two event bus ports, mutually incompatible, with no common ancestor: a bus written against one did not work for the other, and the two handler graphs coexisted without seeing each other. The CQRS one stays — it also has the middleware pipeline and Smart Routing. |
+| `hexcore.infrastructure.events` (the whole package, incl. `events_backends.memory.InMemoryEventBus`) | `hexcore.cqrs.InMemoryEventBus` | 9.0 | Two classes with the same name on those two ports. The CQRS one wins, being a strict superset. |
+| `hexcore.domain.auth` (the whole package) | `hexcore.darwin` | 10.0 | Darwin replaces the pre-identity model |
+| `hexcore.domain.auth.PermissionsRegistry`, `hexcore.PermissionsRegistry` | `hexcore.darwin.RoleRegistry` | 10.0 | A `dict[str, str]` with methods around it: no hierarchy, no wildcards, no cycle detection |
+| `hexcore.domain.auth.TokenClaims`, `hexcore.TokenClaims` | `hexcore.darwin.AccessTokenClaims` | 10.0 | **Not a rename.** No `sid`, so a session issued with it cannot be revoked; no `aud`/`nbf`/`typ`, so a refresh token passes where an access token is expected |
+| `IdentityService.sign_in(email=...)` | `IdentityService.sign_in(identifier=...)` | 10.0 | A keyword rename. The `SignIn` **command** still takes `email=`/`username=`: there they are HTTP body fields, not an alias |
 
-`from hexcore import TokenClaims` warns too — the root package re-exports both under the same
-`__getattr__`.
+Porting `TokenClaims` is a rewrite of the claims you build, not a search and replace — the
+fields and the invariants differ. Everything else on this table is mechanical.
 
-The `EventBus` alias **resolves to the replacement**, not to the old object: the two ABCs were
-structurally identical, so returning the new one does not break anyone on the next line. The
-only change is that a bus which subclassed the old one now passes `issubclass` against
-`AbstractEventBus` — which is the fix, not the damage.
+While it lasted, the `EventBus` alias **resolved to the replacement**, not to the old object:
+the two ABCs were structurally identical, so returning the new one broke nobody on the next
+line. Since 11.0 the name is gone and the import fails.
 
 ---
 

@@ -46,7 +46,7 @@ for it deliberately.
 - [ ] Anything from the removed-in-7.0 table (`references/removed-api.md`)?
 - [ ] `ServerConfig(event_dispatcher=...)`? It raises.
 - [ ] `bus.register(...)` / `bus.dispatch(...)` on an event bus? It is `subscribe`/`publish`.
-- [ ] Imports from `hexcore.infrastructure.events` or `hexcore.domain.auth`? Both go in 10.0.
+- [ ] Imports from `hexcore.infrastructure.events` or `hexcore.domain.auth`? **Both were removed in 11.0** — the import fails outright.
 - [ ] If unsure whether a symbol exists — **do not guess**:
       `python scripts/hexcore_surface.py --find <name>`.
 
