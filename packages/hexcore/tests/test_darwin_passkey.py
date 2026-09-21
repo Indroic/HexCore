@@ -935,7 +935,7 @@ class TestPlugin:
         plugin = PasskeyPlugin(rp_id="localhost", origins=["http://localhost:3000"])
 
         with caplog.at_level(logging.WARNING, logger="hexcore.darwin.passkey"):
-            asyncio.run(plugin.startup_steps()[0]())
+            asyncio.run(plugin.startup_steps()[0].start())
 
         assert "sólo funciona en desarrollo" in caplog.text
 
@@ -945,7 +945,7 @@ class TestPlugin:
         plugin = PasskeyPlugin(rp_id="mi-app.com", origins=["https://mi-app.com"])
 
         with caplog.at_level(logging.WARNING, logger="hexcore.darwin.passkey"):
-            asyncio.run(plugin.startup_steps()[0]())
+            asyncio.run(plugin.startup_steps()[0].start())
 
         assert caplog.text == ""
 

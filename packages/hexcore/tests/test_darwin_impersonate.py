@@ -921,7 +921,7 @@ class TestPlugin:
             with caplog.at_level(
                 logging.WARNING, logger="hexcore.darwin.impersonate"
             ):
-                asyncio.run(plugin.startup_steps()[0]())
+                asyncio.run(plugin.startup_steps()[0].start())
 
             assert "no va a quedar registrada" in caplog.text
         finally:
@@ -931,7 +931,7 @@ class TestPlugin:
         import logging
 
         with caplog.at_level(logging.WARNING, logger="hexcore.darwin.impersonate"):
-            asyncio.run(plugin.startup_steps()[0]())
+            asyncio.run(plugin.startup_steps()[0].start())
 
         assert caplog.text == ""
 

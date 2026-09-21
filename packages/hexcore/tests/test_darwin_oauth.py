@@ -1091,7 +1091,7 @@ class TestPlugin:
         paso = plugin.startup_steps()[0]
 
         with caplog.at_level(logging.WARNING, logger="hexcore.darwin.oauth"):
-            asyncio.run(paso())
+            asyncio.run(paso.start())
 
         assert "allowlist" in caplog.text
 
@@ -1104,7 +1104,7 @@ class TestPlugin:
         )
 
         with caplog.at_level(logging.WARNING, logger="hexcore.darwin.oauth"):
-            asyncio.run(plugin.startup_steps()[0]())
+            asyncio.run(plugin.startup_steps()[0].start())
 
         assert caplog.text == ""
 
