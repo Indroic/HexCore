@@ -689,7 +689,7 @@ wheels = [
 
 [[package]]
 name = "hexcore"
-version = "11.0.0"
+version = "11.0.1"
 source = { editable = "packages/hexcore" }
 dependencies = [
     { name = "croniter" },

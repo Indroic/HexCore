@@ -1,3 +1,9 @@
+## hexcore-v11.0.1 (2026-09-21)
+
+### Fix
+
+- **darwin**: los startup steps de los plugins rompían el arranque
+
 ## hexcore-v11.0.0 (2026-09-18)
 
 ### Feat
