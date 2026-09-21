@@ -1,3 +1,9 @@
+## hexcore-v11.0.2 (2026-09-21)
+
+### Fix
+
+- **deprecations**: ejecutar en el código las remociones que 11.0 ya anunció
+
 ## hexcore-v11.0.1 (2026-09-21)
 
 ### Fix
