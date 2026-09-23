@@ -705,6 +705,10 @@ def test_the_removed_api_table_matches_reality():
         ("hexcore.domain.cqrs.middleware", "IMiddleware"),
         ("hexcore.domain.cqrs.serializer", "ISerializer"),
         ("hexcore.domain.events", "IEventDispatcher"),
+        # Removidos en 11.0, en la fecha que cada aviso anunció.
+        ("hexcore.domain.events", "EventBus"),
+        ("hexcore", "PermissionsRegistry"),
+        ("hexcore", "TokenClaims"),
     ]
 
     sobrevivientes = [
@@ -725,7 +729,7 @@ def test_the_removed_api_table_matches_reality():
         ("hexcore.domain.cqrs", "AbstractQueryHandler"),
         ("hexcore.domain.cqrs", "AbstractMiddleware"),
         ("hexcore.domain.cqrs", "AbstractSerializer"),
-        ("hexcore.domain.events", "EventBus"),
+        ("hexcore.domain.cqrs.buses", "AbstractEventBus"),
     ]
     faltantes = [
         f"{module_path}.{name}"

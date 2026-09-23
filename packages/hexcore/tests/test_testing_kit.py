@@ -694,7 +694,7 @@ class TestCableadoSinBase:
         await create_test_user(contenedor, "ana@ejemplo.com")
 
         usuario, sesion, par = await contenedor.identity_service().sign_in(
-            email="ana@ejemplo.com", password="una frase larga y buena"
+            identifier="ana@ejemplo.com", password="una frase larga y buena"
         )
 
         assert usuario.email == "ana@ejemplo.com"
@@ -709,7 +709,7 @@ class TestCableadoSinBase:
         """
         await create_test_user(contenedor, "ana@ejemplo.com")
         _, _, par = await contenedor.identity_service().sign_in(
-            email="ana@ejemplo.com", password="una frase larga y buena"
+            identifier="ana@ejemplo.com", password="una frase larga y buena"
         )
 
         ctx = await contenedor.session_service().authenticate(
@@ -723,7 +723,7 @@ class TestCableadoSinBase:
     async def test_la_rotacion_de_refresh_funciona(self, contenedor):
         await create_test_user(contenedor, "ana@ejemplo.com")
         _, _, par = await contenedor.identity_service().sign_in(
-            email="ana@ejemplo.com", password="una frase larga y buena",
+            identifier="ana@ejemplo.com", password="una frase larga y buena",
             transport="bearer",
         )
 
@@ -743,7 +743,7 @@ class TestCableadoSinBase:
 
         await create_test_user(contenedor, "ana@ejemplo.com")
         _, _, par = await contenedor.identity_service().sign_in(
-            email="ana@ejemplo.com", password="una frase larga y buena",
+            identifier="ana@ejemplo.com", password="una frase larga y buena",
             transport="bearer",
         )
         await contenedor.session_service().refresh(
@@ -771,7 +771,7 @@ class TestCableadoSinBase:
         try:
             with pytest.raises(InvalidCredentialsError):
                 await cont.identity_service().sign_in(
-                    email="ana@ejemplo.com", password="cualquiera"
+                    identifier="ana@ejemplo.com", password="cualquiera"
                 )
         finally:
             limpiar()
@@ -791,7 +791,7 @@ class TestCableadoSinBase:
         try:
             usuario = await create_test_user(contenedor, "ana@ejemplo.com")
             _, _, par = await contenedor.identity_service().sign_in(
-                email="ana@ejemplo.com",
+                identifier="ana@ejemplo.com",
                 password="una frase larga y buena",
                 transport="bearer",
             )
@@ -848,7 +848,7 @@ class TestCableadoSinBase:
 
         await create_test_user(contenedor, "ana@ejemplo.com")
         _, _, par = await contenedor.identity_service().sign_in(
-            email="ana@ejemplo.com", password="una frase larga y buena",
+            identifier="ana@ejemplo.com", password="una frase larga y buena",
             transport="bearer",
         )
 

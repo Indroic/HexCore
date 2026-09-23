@@ -69,13 +69,17 @@ REMOVED_IN_7: dict[str, str] = {
     "reset_sqlalchemy_engine": "dispose_engine",
 }
 
-#: Deprecated in 9.0, removed in 10.0. Read from the installed package when
-#: `hexcore_surface.py` sits next to this file; this is the fallback.
-DEPRECATED_IN_9: dict[str, str] = {
+#: Deprecated in 9.0/10.0 and **removed in 11.0**, on the version each warning named. Read
+#: from the installed package when `hexcore_surface.py` sits next to this file; this is the
+#: fallback, and it stays because a project still on 10.x needs the mapping to migrate.
+REMOVED_IN_11: dict[str, str] = {
     "EventBus": "hexcore.domain.cqrs.buses.AbstractEventBus",
     "PermissionsRegistry": "hexcore.darwin.RoleRegistry",
     "TokenClaims": "hexcore.darwin.AccessTokenClaims",
 }
+
+#: Kept under the old name so an out-of-tree caller that imported it does not break.
+DEPRECATED_IN_9 = REMOVED_IN_11
 
 #: The base CRUD a generic repository already implements. Overriding one is almost always a
 #: misunderstanding of what the base class gives you.
@@ -307,28 +311,28 @@ class Auditor:
                 "removed-api",
                 path,
                 line,
-                name + " was removed in 7.0 and does not exist in 9.x",
+                name + " was removed in 7.0 and does not exist in 9.x or later",
                 "use " + REMOVED_IN_7[name],
                 "references/removed-api.md",
             )
         elif name in self.deprecated:
             self.add(
-                "medium",
-                "deprecated-api",
+                "critical",
+                "removed-api",
                 path,
                 line,
-                name + " is deprecated and is removed in 10.0",
+                name + " was removed in 11.0, after a full major of warnings",
                 "use " + self.deprecated[name],
                 "references/removed-api.md",
             )
 
         if module.startswith("hexcore.infrastructure.events"):
             self.add(
-                "medium",
-                "deprecated-module",
+                "critical",
+                "removed-module",
                 path,
                 line,
-                "the whole hexcore.infrastructure.events package is removed in 10.0",
+                "the whole hexcore.infrastructure.events package was removed in 11.0",
                 "import the bus from hexcore.cqrs instead",
                 "references/removed-api.md",
             )
@@ -581,7 +585,7 @@ class Auditor:
                 "removed-api",
                 path,
                 node.lineno,
-                name + " was removed in 7.0 and does not exist in 9.x",
+                name + " was removed in 7.0 and does not exist in 9.x or later",
                 "use " + REMOVED_IN_7[name],
                 "references/removed-api.md",
             )

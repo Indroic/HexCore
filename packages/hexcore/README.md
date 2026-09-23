@@ -187,8 +187,9 @@ Both generate a root `config.py` and leave Alembic configured. See
 
 | Series | Status | What it means |
 | :-- | :-- | :-- |
-| **10.x** | ✅ **Active** | The only supported one. Receives features and fixes. Darwin gains username sign-in, an optional email, a resolver for roles and scopes, a persisted key store, and startup checks that refuse the development defaults in production. |
-| **9.x** | ⛔ **Deprecated** | Adds the event store and Event Sourcing, and leaves a single event bus port. Migrating to 10.x is mechanical: `sign_in(email=...)` still resolves and warns, and the sign-in body still accepts `email`. The schema change is not: see the storage guide. |
+| **11.x** | ✅ **Active** | The only supported one. Receives features and fixes. Removes everything 11.0 had promised to remove — see the table below — and fixes the plugin startup steps that broke boot. |
+| **10.x** | ⛔ **Deprecated** | Darwin gains username sign-in, an optional email, a resolver for roles and scopes, a persisted key store, and startup checks that refuse the development defaults in production. Migrating to 11.x means dropping the names removed there; the deprecation warnings named each replacement. |
+| **9.x** | ⛔ **Deprecated** | Adds the event store and Event Sourcing, and leaves a single event bus port. The schema change is not mechanical: see the storage guide. |
 | **8.x** | ⛔ **Deprecated** | Ships Darwin. Migrating to 9.x is mechanical: the two deprecated names still resolve and warn. |
 | **7.x** | ⛔ **Deprecated** | Removes the pre-5.0 surface and fixes the CORS and rate-limiting defects. No Darwin: it shipped before the module landed on `master`. |
 | **6.x** | ⛔ **Deprecated** | No longer receives fixes. Contains the CORS and rate-limiting security defects fixed in 7.0, and the pre-5.0 aliases still present. |
@@ -214,14 +215,32 @@ The v1/v2 aliases were deprecated since 5.0 — two full majors of notice — an
 | `ICommandHandler`, `IQueryHandler` | `AbstractCommandHandler`, `AbstractQueryHandler` |
 | `IMiddleware` | `AbstractMiddleware` |
 | `ISerializer` | `AbstractSerializer` |
-| `IEventDispatcher` | `EventBus` |
-| `EventBus.register()` / `.dispatch()` | `EventBus.subscribe()` / `.publish()` |
+| `IEventDispatcher` | `AbstractEventBus` |
+| `EventBus.register()` / `.dispatch()` | `AbstractEventBus.subscribe()` / `.publish()` |
 | `ServerConfig.event_dispatcher` | `ServerConfig.event_bus` |
 | `SQLAlchemyCommonImplementationsRepo` | `SqlAlchemyRepository` |
 | `BeanieODMCommonImplementationsRepo` | `BeanieRepository` |
 | `NoSqlUnitOfWork` | `BeanieUnitOfWork` |
 | `reset_sqlalchemy_engine()` | `dispose_engine()` |
 | `MiddlewareConfig` | **Removed in 3.0.** It was dead code: never read. |
+
+The 9.0 and 10.0 deprecations were removed in 11.0, on the schedule each warning announced.
+The replacement is mechanical in every case: the old name kept working, and warned, for a full
+major.
+
+| Removed in 11.0 | Use instead | Deprecated since |
+| :-- | :-- | :-- |
+| `hexcore.domain.events.EventBus` | `hexcore.domain.cqrs.buses.AbstractEventBus` | 9.0 |
+| `hexcore.infrastructure.events.events_backends.memory.InMemoryEventBus` | `hexcore.cqrs.InMemoryEventBus` | 9.0 |
+| `hexcore.domain.auth` (the whole package) | `hexcore.darwin` | 10.0 |
+| `hexcore.domain.auth.PermissionsRegistry`, `hexcore.PermissionsRegistry` | `hexcore.darwin.RoleRegistry` | 10.0 |
+| `hexcore.domain.auth.TokenClaims`, `hexcore.TokenClaims` | `hexcore.darwin.AccessTokenClaims` | 10.0 |
+| `IdentityService.sign_in(email=...)` | `IdentityService.sign_in(identifier=...)` | 10.0 |
+
+`TokenClaims` and `AccessTokenClaims` were never interchangeable — different fields, different
+invariants, and `TokenClaims` had no `sid`, so a session issued with it could not be revoked.
+That is why the old name returned the old object and warned instead of aliasing to the new one,
+and it is why porting is a rewrite of the claims you build, not a rename.
 
 Passing `event_dispatcher=` to `ServerConfig` **fails with an error that says what to use**,
 rather than being silently ignored: pydantic discards keyword arguments it does not know, and

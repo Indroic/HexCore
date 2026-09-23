@@ -4,8 +4,6 @@ from datetime import datetime, UTC
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, ConfigDict, computed_field
 
-from hexcore._deprecation import deprecated_lazy_names
-
 from .base import BaseEntity
 
 T = t.TypeVar("T", bound=BaseEntity)
@@ -66,41 +64,3 @@ class EntityDeletedEvent(DomainEvent):
 
 
 EventHandler = t.Callable[[DomainEvent], t.Awaitable[None]]
-
-
-# ── EventBus: deprecado en 9.0 ────────────────────────────────────────────────
-#
-# HexCore tenía **dos** puertos de bus de eventos, incompatibles entre sí: éste, que usaban
-# `ServerConfig`, los Unit of Work y Darwin, y `hexcore.domain.cqrs.buses.AbstractEventBus`,
-# que usaba todo el camino de CQRS. Los dos declaraban `subscribe`/`publish` con la misma
-# forma, los dos tenían una implementación llamada `InMemoryEventBus`, y no había ninguna
-# herencia entre ellos — así que un bus escrito contra uno no servía para el otro y los dos
-# grafos de handlers convivían sin verse.
-#
-# En 9.0 queda uno solo: `AbstractEventBus`, que es el que tiene pipeline de middlewares y
-# Smart Routing hacia las colas. Este nombre pasa a ser un alias suyo.
-#
-# Se aliasa **al reemplazo** (a diferencia de `hexcore.domain.auth`, que devuelve el objeto
-# viejo): los dos ABCs son estructuralmente idénticos, así que devolver el nuevo no rompe a
-# nadie en la línea siguiente. Lo único que cambia es que `issubclass(MiBus, AbstractEventBus)`
-# pasa de `False` a `True`, que es la corrección, no el daño.
-#
-# El alias es perezoso porque `hexcore.domain.cqrs.buses` importa `DomainEvent` **de este
-# módulo**: un `from ... import AbstractEventBus` arriba sería un ciclo de imports.
-if t.TYPE_CHECKING:
-    pass
-
-
-def _cargar_event_bus() -> t.Any:
-    from hexcore.domain.cqrs.buses import AbstractEventBus
-
-    return AbstractEventBus
-
-
-__getattr__ = deprecated_lazy_names(
-    __name__,
-    {"EventBus": "hexcore.domain.cqrs.buses.AbstractEventBus"},
-    {"EventBus": _cargar_event_bus},
-    since="9.0",
-)
-
