@@ -1,3 +1,13 @@
+## hexcore-v11.1.0 (2026-09-23)
+
+### Feat
+
+- **darwin-client**: refresco de sesión en segundo plano, sin matar la sesión por un fallo transitorio
+
+### Fix
+
+- **darwin**: eliminar el round-trip redundante en la rotación de refresh
+
 ## hexcore-v11.0.3 (2026-09-23)
 
 ### Fix
