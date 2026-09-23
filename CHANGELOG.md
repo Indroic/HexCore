@@ -1,3 +1,9 @@
+## hexcore-v11.0.3 (2026-09-23)
+
+### Fix
+
+- **darwin**: un kid desconocido o retirado daba 500 en vez de 401
+
 ## hexcore-v11.0.2 (2026-09-21)
 
 ### Fix
