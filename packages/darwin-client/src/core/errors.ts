@@ -88,6 +88,28 @@ export function isSessionDead(err: unknown): err is DarwinError {
 }
 
 /**
+ * Códigos que este cliente inventa cuando **no hubo veredicto del servidor** sobre el refresh
+ * token: `fetch` mismo falló, o contestó algo que no es el envelope de Darwin. Un balanceador
+ * que devolvió basura una vez, o un blip de red al volver de que la laptop estuvo suspendida,
+ * no son una respuesta del servidor diciendo que el token es inválido.
+ */
+const CODIGOS_SIN_VEREDICTO: ReadonlySet<string> = new Set([
+  "NetworkError",
+  "NonJsonResponse",
+]);
+
+/**
+ * Si el error es un veredicto real del servidor sobre la validez del refresh token, y no un
+ * fallo de transporte. Usado para decidir si un refresh fallido deja la sesión
+ * permanentemente muerta (`RefreshController`) o si vale la pena reintentar: tratar un
+ * `NetworkError` como "sesión muerta" apagaría sesiones válidas por una falla transitoria que
+ * no tiene nada que ver con el refresh token.
+ */
+export function isDefinitiveAuthFailure(err: unknown): err is DarwinError {
+  return err instanceof DarwinError && !CODIGOS_SIN_VEREDICTO.has(err.code);
+}
+
+/**
  * Si el motor de autorización (`AuthorizationEngine`, Fase F0 de rbac/drbac) denegó la
  * acción. Angosta `payload` a `{ required: string }` — la acción pedida, sin la razón de la
  * política (ver el docstring de `AccessDeniedError` del lado Python).

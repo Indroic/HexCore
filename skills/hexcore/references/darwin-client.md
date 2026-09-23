@@ -157,6 +157,15 @@ the list the client's plugin array has to be a subset of.
 refreshable 401, under a single-flight lock. See below for why replacing that with your own
 refresh is how sessions start dying under load.
 
+The proactive refresh also runs **in the background**, on a timer — not only when the app makes
+a `$fetch` call — so a tab left idle past `access_ttl` self-heals instead of dying on the next
+request. `visibilitychange`/`online` listeners catch up when a browser throttled that timer for a
+backgrounded tab. A refresh that fails for a transient reason (a network blip, a proxy that
+returned garbage once) does **not** kill the session — only a real verdict from the server
+(the refresh token itself is invalid, revoked, or the session hit its ceiling) does. Call
+`client.dispose()` when tearing the client down (unmounting the provider, hot reload, tests) to
+stop that timer and remove the listeners.
+
 ---
 
 ## Transports — the one decision that is a security decision

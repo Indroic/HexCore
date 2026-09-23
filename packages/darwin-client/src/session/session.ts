@@ -1,4 +1,4 @@
-import { DarwinError, isTwoFactorRequired } from "../core/errors";
+import { DarwinError, isDefinitiveAuthFailure, isTwoFactorRequired } from "../core/errors";
 import type { RequestOptions } from "../core/fetcher";
 import { createFetcher } from "../core/fetcher";
 import type {
@@ -19,6 +19,13 @@ import { createStore } from "./store";
  * termine de resolver del otro lado con el token ya vencido.
  */
 const MARGEN_DE_SEGURIDAD_MS = 5_000;
+
+/**
+ * Cuánto esperar antes de reintentar un refresh de fondo que falló de forma transitoria (red,
+ * proxy roto). Corto a propósito: el refresh token sigue siendo válido, así que no hay razón
+ * para esperar a que la app dispare otro request — sólo dar tiempo a que la red se recupere.
+ */
+const REINTENTO_CORTO_MS = 5_000;
 
 export interface Session {
   $fetch: <T>(path: string, init?: RequestOptions) => Promise<T>;
@@ -41,6 +48,13 @@ export interface Session {
    * un callback de OAuth, `passkey.authenticate()`) no lo reimplemente cada uno por su cuenta.
    */
   completeAuthentication: (session: SessionResponse) => Promise<SignInResult>;
+  /**
+   * Da de baja el timer de refresh en segundo plano y los listeners de `visibilitychange`/
+   * `online`. Sin esto, una app que crea y destruye clientes (hot reload, tests, un SPA que
+   * desmonta el provider) deja timers/listeners huérfanos corriendo contra un store que ya
+   * nadie observa.
+   */
+  dispose: () => void;
 }
 
 export function createSession(options: DarwinClientOptions): Session {
@@ -56,6 +70,7 @@ export function createSession(options: DarwinClientOptions): Session {
 
   let accessExpiresAt: number | null = null;
   let meEnVuelo: Promise<MeResponse> | null = null;
+  let ttlTimer: ReturnType<typeof setTimeout> | null = null;
 
   function shouldRefreshProactively(): boolean {
     return (
@@ -63,8 +78,40 @@ export function createSession(options: DarwinClientOptions): Session {
     );
   }
 
+  function detenerRefreshDeFondo(): void {
+    if (ttlTimer !== null) {
+      clearTimeout(ttlTimer);
+      ttlTimer = null;
+    }
+  }
+
+  /**
+   * Programa un refresh que corre solo, sin que la app tenga que hacer ningún `$fetch` —
+   * mismo patrón que `programarTtl` en `authz/store.ts`. Es lo que evita que una pestaña
+   * inactiva más tiempo que `access_ttl` se quede sin refrescar hasta el próximo request.
+   *
+   * Si ese refresh falla de forma transitoria, `onFailure` no toca el store (sigue
+   * "authenticated"), así que acá se reprograma un reintento corto en vez de esperar a que
+   * algo más lo dispare. Un fallo definitivo ya puso el store en "unauthenticated" — nada que
+   * reintentar.
+   */
+  function programarRefreshDeFondo(demoraMs: number): void {
+    detenerRefreshDeFondo();
+    ttlTimer = setTimeout(() => {
+      ttlTimer = null;
+      void refreshController.refresh().catch(() => {
+        if (store.getSnapshot().status === "authenticated") {
+          programarRefreshDeFondo(REINTENTO_CORTO_MS);
+        }
+      });
+    }, demoraMs);
+  }
+
   function trackExpiry(session: SessionResponse): void {
     accessExpiresAt = Date.now() + session.expires_in * 1000;
+    programarRefreshDeFondo(
+      Math.max(0, session.expires_in * 1000 - MARGEN_DE_SEGURIDAD_MS),
+    );
   }
 
   function tokensDe(session: SessionResponse): DarwinTokens {
@@ -99,7 +146,13 @@ export function createSession(options: DarwinClientOptions): Session {
       await options.transport.persist(tokensDe(session));
     },
     onFailure: (error) => {
+      // Fallo transitorio (red, proxy roto): no hubo veredicto del servidor sobre el refresh
+      // token, así que no hay motivo para cerrarle la sesión al usuario. El store queda como
+      // estaba, y `programarRefreshDeFondo` ya se encarga de reintentar en corto.
+      if (!isDefinitiveAuthFailure(error)) return;
+
       accessExpiresAt = null;
+      detenerRefreshDeFondo();
       const razon =
         error instanceof DarwinError && error.code === "TokenRevokedError"
           ? "revoked"
@@ -140,6 +193,7 @@ export function createSession(options: DarwinClientOptions): Session {
       await fetcher.$fetch("/auth/sign-out", { method: "POST" });
     } finally {
       accessExpiresAt = null;
+      detenerRefreshDeFondo();
       await options.transport.clear();
       store.setState({ status: "unauthenticated", reason: "signed-out" });
     }
@@ -177,6 +231,37 @@ export function createSession(options: DarwinClientOptions): Session {
     void hidratar();
   }
 
+  // `visibilitychange`/`online` sólo si el runtime los tiene: en un worker, en SSR, o en React
+  // Native no existen, y no son un requisito — son el atajo para cuando el navegador throttleó
+  // o pausó `ttlTimer` por tener la pestaña oculta (los timers de fondo no son confiables por
+  // sí solos ahí). Mismo patrón que `authz/store.ts`.
+  let quitarVisibilidad: (() => void) | undefined;
+  let quitarOnline: (() => void) | undefined;
+
+  if (typeof document !== "undefined") {
+    const alCambiarVisibilidad = () => {
+      if (document.visibilityState !== "visible") return;
+      if (shouldRefreshProactively()) void refreshController.refresh().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", alCambiarVisibilidad);
+    quitarVisibilidad = () =>
+      document.removeEventListener("visibilitychange", alCambiarVisibilidad);
+  }
+
+  if (typeof window !== "undefined") {
+    const alVolverOnline = () => {
+      if (shouldRefreshProactively()) void refreshController.refresh().catch(() => {});
+    };
+    window.addEventListener("online", alVolverOnline);
+    quitarOnline = () => window.removeEventListener("online", alVolverOnline);
+  }
+
+  function dispose(): void {
+    detenerRefreshDeFondo();
+    quitarVisibilidad?.();
+    quitarOnline?.();
+  }
+
   return {
     $fetch: fetcher.$fetch,
     subscribe: store.subscribe,
@@ -188,5 +273,6 @@ export function createSession(options: DarwinClientOptions): Session {
     refresh: () => refreshController.refresh(),
     me,
     completeAuthentication,
+    dispose,
   };
 }

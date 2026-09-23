@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { DarwinError } from "../../src/core/errors";
 import type { SessionResponse } from "../../src/core/types";
 import { createRefreshController } from "../../src/session/refresh";
 
@@ -46,9 +47,13 @@ describe("createRefreshController — single-flight", () => {
     expect(doRefresh).toHaveBeenCalledTimes(2);
   });
 
-  it("tras un fallo, la sesión queda marcada muerta: no vuelve a pegarle a la red", async () => {
+  it("tras un fallo DEFINITIVO del servidor, la sesión queda marcada muerta: no vuelve a pegarle a la red", async () => {
     const doRefresh = vi.fn(async () => {
-      throw new Error("refresh token vencido");
+      throw new DarwinError({
+        code: "TokenRevokedError",
+        status: 401,
+        detail: "Se detectó el reuso de un token de refresco.",
+      });
     });
     const onFailure = vi.fn();
     const controller = createRefreshController({
@@ -66,9 +71,39 @@ describe("createRefreshController — single-flight", () => {
     expect(doRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("tras un fallo TRANSITORIO (red), la sesión NO queda muerta: el próximo refresh reintenta solo", async () => {
+    const doRefresh = vi.fn(async () => {
+      throw new DarwinError({
+        code: "NetworkError",
+        status: null,
+        detail:
+          "The request never completed (no connection, CORS, or the server did not answer).",
+      });
+    });
+    const onFailure = vi.fn();
+    const controller = createRefreshController({
+      doRefresh,
+      onSuccess: vi.fn(),
+      onFailure,
+    });
+
+    await expect(controller.refresh()).rejects.toThrow();
+    expect(doRefresh).toHaveBeenCalledTimes(1);
+    expect(onFailure).toHaveBeenCalledTimes(1);
+
+    // Sin necesitar markAlive(): un blip de red no marca la sesión muerta, así que el próximo
+    // refresh vuelve a pegarle a la red en vez de rechazar con "marked dead".
+    await expect(controller.refresh()).rejects.toThrow();
+    expect(doRefresh).toHaveBeenCalledTimes(2);
+  });
+
   it("markAlive() limpia la marca de muerta", async () => {
     const doRefresh = vi.fn<() => Promise<SessionResponse>>(async () => {
-      throw new Error("primero falla");
+      throw new DarwinError({
+        code: "TokenRevokedError",
+        status: 401,
+        detail: "primero falla",
+      });
     });
     const controller = createRefreshController({
       doRefresh,
