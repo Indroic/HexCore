@@ -18,6 +18,8 @@ Darwin Fase 7: el borde HTTP, contra la app real.
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -543,6 +545,45 @@ def test_el_refresh_rota_el_token(client, contenedor):
 
     assert r.status_code == 200, r.text
     assert r.json()["access_token"] != par["access_token"]
+
+
+def test_el_refresh_con_kid_desconocido_da_401_no_500(client, contenedor):
+    """
+    Regresión de incidente: un `kid` que el almacén no reconoce tiene que traducirse a un 401
+    de `TokenMalformedError` vía `IDENTITY_EXCEPTION_STATUS_MAP`, no reventar como 500 —
+    `UnknownKeyError` hereda de `TokenMalformedError` para eso.
+    """
+    _alta(client)
+    par = _sign_in_bearer(client).json()
+    _cabecera, payload, firma = par["refresh_token"].split(".")
+    cabecera_forjada = base64.urlsafe_b64encode(
+        json.dumps({"alg": "Ed25519", "kid": "3u0X2GDLJR_3abGs"}).encode()
+    ).rstrip(b"=").decode()
+
+    r = client.post(
+        "/auth/refresh",
+        headers={
+            TRANSPORT_HEADER: "bearer",
+            "X-Refresh-Token": f"{cabecera_forjada}.{payload}.{firma}",
+        },
+    )
+
+    assert r.status_code == 401, r.text
+
+
+def test_el_refresh_con_kid_retirado_da_401_no_500(client, contenedor):
+    """Mismo contrato que arriba, pero para una clave que existió y ya fue retirada."""
+    _alta(client)
+    par = _sign_in_bearer(client).json()
+
+    asyncio.run(contenedor.key_store().retire("k1"))
+
+    r = client.post(
+        "/auth/refresh",
+        headers={TRANSPORT_HEADER: "bearer", "X-Refresh-Token": par["refresh_token"]},
+    )
+
+    assert r.status_code == 401, r.text
 
 
 def test_el_sign_out_borra_las_cookies_y_revoca(client, contenedor):

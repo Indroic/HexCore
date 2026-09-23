@@ -24,7 +24,7 @@ import threading
 import typing as t
 from datetime import datetime
 
-from hexcore.darwin.domain.exceptions import IdentityError
+from hexcore.darwin.domain.exceptions import IdentityError, TokenMalformedError
 
 __all__ = [
     "KeyStatus",
@@ -51,12 +51,25 @@ DEFAULT_ALGORITHM = "Ed25519"
 KeyStatus = t.Literal["active", "verify_only", "retired"]
 
 
-class UnknownKeyError(IdentityError):
-    """El `kid` del token no existe en el almacén."""
+class UnknownKeyError(TokenMalformedError):
+    """
+    El `kid` del token no existe en el almacén.
+
+    Hereda de `TokenMalformedError` (no de `IdentityError` a secas) para llegar a 401 vía
+    `IDENTITY_EXCEPTION_STATUS_MAP`, cumpliendo el contrato que `JoserfcTokenVerifier.verify()`
+    ya documentaba. Colgar directo de `IdentityError` —excluida del mapa a propósito— hacía
+    que un `kid` ajeno o inventado saliera como 500 en vez de 401.
+    """
 
 
-class RetiredKeyError(IdentityError):
-    """El `kid` existe pero su clave ya está retirada."""
+class RetiredKeyError(TokenMalformedError):
+    """
+    El `kid` existe pero su clave ya está retirada.
+
+    Misma razón que `UnknownKeyError`: hereda de `TokenMalformedError` para que el borde HTTP
+    lo traduzca a 401. Se mantiene como tipo aparte de `UnknownKeyError` porque el mensaje
+    ayuda a diagnosticar del lado del servidor, no por el cliente.
+    """
 
 
 class NoActiveKeyError(IdentityError):

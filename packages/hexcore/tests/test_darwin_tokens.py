@@ -353,8 +353,9 @@ async def test_un_kid_desconocido_se_rechaza(emisor, verificador, contexto, alma
         json.dumps({"alg": "Ed25519", "kid": "inventado"}).encode()
     ).rstrip(b"=").decode()
 
-    with pytest.raises(UnknownKeyError):
+    with pytest.raises(UnknownKeyError) as excinfo:
         await verificador.verify(f"{otra}.{payload}.{firma}", transport="cookie")
+    assert isinstance(excinfo.value, TokenMalformedError)
 
 
 @pytest.mark.anyio
@@ -391,8 +392,9 @@ async def test_una_clave_retirada_no_verifica(emisor, verificador, contexto, alm
     token = await emisor.issue_access(contexto, session_id=uuid4())
     await almacen.retire("k1")
 
-    with pytest.raises(RetiredKeyError):
+    with pytest.raises(RetiredKeyError) as excinfo:
         await verificador.verify(token, transport="cookie")
+    assert isinstance(excinfo.value, TokenMalformedError)
 
 
 # ── Rotación ──────────────────────────────────────────────────────────────────
@@ -496,7 +498,5 @@ async def test_un_token_corrupto_no_explota_con_500(verificador, basura):
     401. Una excepción sin mapear sería un 500, y un 500 en el camino de auth es un canal de
     información además de una caída.
     """
-    from hexcore.darwin import IdentityError
-
-    with pytest.raises(IdentityError):
+    with pytest.raises(TokenMalformedError):
         await verificador.verify(basura, transport="cookie")
