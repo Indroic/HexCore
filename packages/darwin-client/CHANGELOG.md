@@ -1,3 +1,15 @@
+## darwin-client-v1.5.0 (2026-09-23)
+
+### Feat
+
+- **darwin-client**: refresco de sesión en segundo plano, sin matar la sesión por un fallo transitorio
+
+### Fix
+
+- **deprecations**: ejecutar en el código las remociones que 11.0 ya anunció
+- **darwin**: un kid desconocido o retirado daba 500 en vez de 401
+- **darwin**: los startup steps de los plugins rompían el arranque
+
 ## darwin-client-v1.4.0 (2026-09-18)
 
 ### Feat
