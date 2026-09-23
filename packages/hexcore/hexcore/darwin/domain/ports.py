@@ -202,12 +202,22 @@ class AbstractSessionRepository(abc.ABC):
         self, session_id: UUID, *, at: datetime
     ) -> "IdentitySession | None":
         """
-        Marca la sesión como consumida y la devuelve, o `None` si ya estaba consumida.
+        Marca la sesión como consumida y la devuelve, o `None` si no se pudo: ya estaba
+        consumida, revocada, o es una sesión impersonada.
 
         **Tiene que ser una sola sentencia atómica** del tipo
-        ``UPDATE ... WHERE consumed_at IS NULL RETURNING``. Con leer-y-después-escribir, dos
-        refresh concurrentes con el mismo token pasan los dos y la detección de reuso —que es
-        el único mecanismo que detecta un token robado— no dispara nunca.
+        ``UPDATE ... WHERE consumed_at IS NULL AND revoked_at IS NULL AND actor_user_id =
+        subject_user_id RETURNING``. Con leer-y-después-escribir, dos refresh concurrentes con
+        el mismo token pasan los dos y la detección de reuso —que es el único mecanismo que
+        detecta un token robado— no dispara nunca.
+
+        Las tres condiciones en el `WHERE` —y no sólo `consumed_at`— son lo que le permite a
+        `SessionService.refresh()` intentar la rotación **sin leer la fila antes**: en el
+        camino feliz (la inmensa mayoría de los refresh) esta es la única consulta de sesión
+        del rotado entero, en vez de un `get()` seguido de este mismo `UPDATE`. La condición de
+        impersonación tiene que ir acá y no sólo chequearse en la aplicación *después* de leer,
+        porque una vez consumida la fila queda inutilizable por lo que le queda de vida — si el
+        chequeo llegara tarde, una sesión impersonada perdería la suya por el intento.
         """
         raise NotImplementedError
 

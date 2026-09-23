@@ -277,13 +277,22 @@ class FakeSessionRepository(AbstractSessionRepository):
         """
         Consume la sesión para rotar, **en un solo paso**.
 
-        `None` si ya estaba consumida. Sin la atomicidad, dos rotaciones concurrentes con el
-        mismo token pasarían las dos y la detección de reuso —el único mecanismo que detecta un
-        refresh robado— no dispararía nunca.
+        `None` si no se pudo: no existe, ya estaba consumida, revocada, o es una sesión
+        impersonada. Las tres últimas condiciones tienen que quedar acá adentro —no chequeadas
+        antes por el llamador— para que el fake reproduzca lo mismo que los backends reales: el
+        camino feliz de `SessionService.refresh()` es un único `consume_for_rotation`, sin un
+        `get()` previo. Sin la atomicidad, dos rotaciones concurrentes con el mismo token
+        pasarían las dos y la detección de reuso —el único mecanismo que detecta un refresh
+        robado— no dispararía nunca.
         """
         with self._lock:
             sesion = self._por_id.get(session_id)
-            if sesion is None or sesion.consumed_at is not None:
+            if (
+                sesion is None
+                or sesion.consumed_at is not None
+                or sesion.revoked_at is not None
+                or sesion.is_impersonated
+            ):
                 return None
             consumida = sesion.model_copy(update={"consumed_at": at})
             self._por_id[session_id] = consumida
