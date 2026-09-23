@@ -267,15 +267,22 @@ class BeanieSessionRepository(_BaseBeanieRepository, AbstractSessionRepository):
         """
         Consume la sesión para rotar, en **un solo `findOneAndUpdate`**.
 
-        ⚠️ El `consumed_at: None` va **en el filtro**. Con leer-comprobar-escribir, dos rotaciones
-        concurrentes con el mismo token pasan las dos y la detección de reuso no dispara nunca —
-        y en Mongo esa versión es más fácil de escribir por accidente que en SQL.
+        ⚠️ `consumed_at`, `revoked_at` y `actor_user_id == subject_user_id` van **en el
+        filtro**, no chequeados aparte. Con leer-comprobar-escribir, dos rotaciones
+        concurrentes con el mismo token pasan las dos y la detección de reuso no dispara nunca
+        — y en Mongo esa versión es más fácil de escribir por accidente que en SQL. La
+        condición de impersonación en particular es la que le permite a
+        `SessionService.refresh()` intentar la rotación sin leer la fila antes: una vez
+        consumida queda inutilizable por lo que le queda de vida, así que el chequeo no puede
+        llegar después del `UPDATE`.
 
-        `None` si ya estaba consumida.
+        `None` si no se pudo: ya estaba consumida, revocada, o es una sesión impersonada.
         """
         doc = await self._doc.find_one(
             self._doc.entity_id == session_id,
             self._doc.consumed_at == None,  # noqa: E711
+            self._doc.revoked_at == None,  # noqa: E711
+            {"$expr": {"$eq": ["$actor_user_id", "$subject_user_id"]}},
         ).update(
             {"$set": {"consumed_at": at, "updated_at": datetime.now(UTC)}},
             response_type=UpdateResponse.NEW_DOCUMENT,

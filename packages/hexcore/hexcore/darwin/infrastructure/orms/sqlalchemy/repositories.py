@@ -247,12 +247,18 @@ class SqlAlchemySessionRepository(_BaseIdentityRepository, AbstractSessionReposi
         self, session_id: UUID, *, at: datetime
     ) -> IdentitySession | None:
         """
-        Marca la sesión consumida y la devuelve, o `None` si ya lo estaba.
+        Marca la sesión consumida y la devuelve, o `None` si no se pudo.
 
-        **Una sola sentencia**: el `WHERE consumed_at IS NULL` y el `UPDATE` son atómicos, así
-        que de dos refresh concurrentes con el mismo token exactamente uno gana y el otro
-        recibe `None` — que es lo que dispara la detección de reuso. Con
-        leer-y-después-escribir pasarían los dos y el mecanismo no serviría para nada.
+        **Una sola sentencia**: el `WHERE` y el `UPDATE` son atómicos, así que de dos refresh
+        concurrentes con el mismo token exactamente uno gana y el otro recibe `None` — que es
+        lo que dispara la detección de reuso. Con leer-y-después-escribir pasarían los dos y el
+        mecanismo no serviría para nada.
+
+        `actor_user_id == subject_user_id` en el `WHERE` —comparando dos columnas, no un
+        valor— es lo que hace que una sesión impersonada nunca se consuma acá: sin eso,
+        `SessionService.refresh()` tendría que leer la fila y chequearlo *antes* de llamar a
+        este método, porque una vez consumida queda inutilizable por lo que le queda de vida.
+        Con la condición en el `WHERE`, el camino feliz de `refresh()` es esta única consulta.
         """
         async with self._session_scope() as session:
             resultado = await session.execute(
@@ -261,6 +267,7 @@ class SqlAlchemySessionRepository(_BaseIdentityRepository, AbstractSessionReposi
                     self._model.id == session_id,
                     self._model.consumed_at.is_(None),
                     self._model.revoked_at.is_(None),
+                    self._model.actor_user_id == self._model.subject_user_id,
                 )
                 .values(consumed_at=at)
                 .returning(self._model)

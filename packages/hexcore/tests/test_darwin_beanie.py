@@ -380,10 +380,12 @@ class TestLosFiltrosSonAtomicos:
 
         resultado = await repo.consume_for_rotation(uuid4(), at=AHORA)
 
-        assert resultado is None, "sin documento devuelto, la sesión ya estaba consumida"
+        assert resultado is None, "sin documento devuelto, la sesión no se pudo consumir"
         assert len(espia.filtros) == 1, "una sola consulta, no leer-y-después-escribir"
-        assert len(espia.filtros[0]) == 2, (
-            "dos condiciones: el id y `consumed_at is None`"
+        assert len(espia.filtros[0]) == 4, (
+            "cuatro condiciones: el id, `consumed_at is None`, `revoked_at is None` y "
+            "`actor_user_id == subject_user_id` — las tres últimas son las que le permiten a "
+            "`SessionService.refresh()` intentar la rotación sin leer la fila antes"
         )
         assert espia.updates == [
             {"$set": {"consumed_at": AHORA, "updated_at": espia.updates[0]["$set"]["updated_at"]}}

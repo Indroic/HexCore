@@ -388,54 +388,41 @@ class SessionService:
         """
         Rota el refresh token. Detecta el reuso.
 
-        El flujo: verificar el token → consumir la fila **atómicamente** → crear la sesión
-        siguiente en la misma familia → emitir el par nuevo.
+        El flujo: verificar el token (sin tocar la base) → consumir la fila
+        **atómicamente** → crear la sesión siguiente en la misma familia → emitir el par
+        nuevo. **Una sola consulta de sesión**, y no dos: antes se leía la fila con `get()`
+        para chequear revocación e impersonación, y *después* se llamaba a
+        `consume_for_rotation` —la misma fila, dos round-trips a la base por cada refresh, en
+        el camino más transitado de todo el módulo. Ahora esas dos condiciones viven en el
+        `WHERE` atómico de `consume_for_rotation` (ver su docstring), así que esta única
+        llamada alcanza para el camino feliz.
 
-        Si `consume_for_rotation` devuelve `None`, el token ya estaba consumido. Eso es, o un
-        reintento benigno dentro de la ventana de gracia, o **un token robado**. No hay forma de
-        distinguirlos, así que fuera de la ventana se revoca la familia entera y se publica
-        `SessionReuseDetectedEvent` — una de las pocas señales inequívocas de compromiso que un
-        sistema de auth puede emitir.
+        Si `consume_for_rotation` devuelve `None`, no se pudo consumir — y hay tres motivos
+        posibles (reuso, revocación, impersonación) que sí importa distinguir para el error y
+        la auditoría. Diagnosticarlos **cuesta la lectura que el camino feliz se ahorró**, pero
+        sólo se paga en el camino de error, que no es el que un cliente sano ejecuta cada
+        `access_ttl`.
 
         Raises:
             TokenRevokedError: reuso detectado, o sesión ya revocada.
             TokenMalformedError: token inválido, o el sujeto ya no existe.
+            ImpersonationNotPermittedError: la sesión es impersonada.
         """
         claims = await self._verifier.verify(
             refresh_token, transport=transport, expected_typ="rt+jwt"
         )
         ahora = self._clock.now()
 
-        anterior = await self._sessions.get(claims.sid)
-        if anterior is None:
-            raise TokenMalformedError("La sesión del token no existe.")
-
-        if anterior.revoked_at is not None:
-            raise TokenRevokedError("La sesión fue revocada.")
-
-        # ⚠️ Una sesión impersonada **no se rota**, y ese es el mecanismo que hace que el techo
-        # de 60 minutos sea real. Si se pudiera refrescar, el operador extendería la sesión
-        # indefinidamente sin volver a pedir permiso ni dejar un segundo registro de auditoría:
-        # el techo pasaría a ser "60 minutos por refresh", o sea ninguno.
-        #
-        # Se chequea **antes** de `consume_for_rotation` a propósito: consumir la fila y después
-        # rechazar dejaría la sesión inutilizable por lo que queda de su hora.
-        if anterior.is_impersonated:
-            raise ImpersonationNotPermittedError(
-                "Una sesión impersonada no se puede refrescar. Su techo de vida es duro: "
-                "cuando vence, hay que volver a pedir la impersonación."
-            )
-
         consumida = await self._sessions.consume_for_rotation(claims.sid, at=ahora)
         if consumida is None:
-            return await self._manejar_reuso(anterior, ahora, transport)
+            return await self._diagnosticar_fallo_de_rotacion(claims.sid, ahora, transport)
 
-        if ahora >= anterior.expires_at:
+        if ahora >= consumida.expires_at:
             raise TokenExpiredError(
                 "La sesión alcanzó su techo de vida. Volvé a iniciar sesión."
             )
 
-        actor = await self._users.get_by_id(anterior.actor_user_id)
+        actor = await self._users.get_by_id(consumida.actor_user_id)
         if actor is None:
             raise TokenMalformedError("El actor de la sesión ya no existe.")
 
@@ -463,7 +450,37 @@ class SessionService:
                 "La cuenta está bloqueada. La sesión no se puede renovar."
             )
 
-        return await self._rotar(anterior, actor, ahora, transport)
+        return await self._rotar(consumida, actor, ahora, transport)
+
+    async def _diagnosticar_fallo_de_rotacion(
+        self, session_id: UUID, ahora: datetime, transport: Transport
+    ) -> tuple[IdentitySession, TokenPair]:
+        """
+        Por qué `consume_for_rotation` devolvió `None`. Sólo se ejecuta acá, nunca en el
+        camino feliz: es la lectura que `refresh()` ya no paga por adelantado.
+
+        Distingue, en este orden, sesión inexistente, revocada, impersonada, y —si ninguna de
+        las anteriores explica el `None`— ya estaba consumida, que es el caso que dispara la
+        detección de reuso.
+        """
+        anterior = await self._sessions.get(session_id)
+        if anterior is None:
+            raise TokenMalformedError("La sesión del token no existe.")
+
+        if anterior.revoked_at is not None:
+            raise TokenRevokedError("La sesión fue revocada.")
+
+        # ⚠️ Una sesión impersonada **no se rota**, y ese es el mecanismo que hace que el techo
+        # de 60 minutos sea real. Si se pudiera refrescar, el operador extendería la sesión
+        # indefinidamente sin volver a pedir permiso ni dejar un segundo registro de auditoría:
+        # el techo pasaría a ser "60 minutos por refresh", o sea ninguno.
+        if anterior.is_impersonated:
+            raise ImpersonationNotPermittedError(
+                "Una sesión impersonada no se puede refrescar. Su techo de vida es duro: "
+                "cuando vence, hay que volver a pedir la impersonación."
+            )
+
+        return await self._manejar_reuso(anterior, ahora, transport)
 
     async def _manejar_reuso(
         self, sesion: IdentitySession, ahora: datetime, transport: Transport
