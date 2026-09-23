@@ -1,3 +1,4 @@
+import { isDefinitiveAuthFailure } from "../core/errors";
 import type { SessionResponse } from "../core/types";
 
 export interface RefreshControllerOptions {
@@ -21,9 +22,13 @@ export interface RefreshController {
    * token y la detección de reuso del servidor mata la familia entera — diez refreshes en
    * paralelo con el access vencido es un auto-logout garantizado, no una carrera inofensiva.
    *
-   * Si un refresh anterior ya falló, esta llamada rechaza **sin pegarle a la red**: la sesión
-   * quedó marcada muerta (`markAlive()` la limpia en el próximo `signIn` exitoso), y sin esa
-   * marca cada request de la app reintentaría un refresh que ya se sabe caído.
+   * Si un refresh anterior ya falló **con un veredicto real del servidor**
+   * (`isDefinitiveAuthFailure`) — el refresh token es inválido, fue revocado, o la sesión
+   * llegó a su techo — esta llamada rechaza **sin pegarle a la red**: la sesión quedó marcada
+   * muerta (`markAlive()` la limpia en el próximo `signIn` exitoso). Un fallo transitorio
+   * (`NetworkError`, `NonJsonResponse` — no hubo veredicto, sólo un problema de transporte)
+   * **no** marca la sesión muerta: no hay motivo para forzar un re-login por un blip de red
+   * cuando el refresh token en sí puede seguir siendo válido.
    */
   refresh: () => Promise<void>;
   /** Limpia la marca de muerta. Se llama tras un `signIn`/`signOut` exitoso. */
@@ -63,7 +68,7 @@ export function createRefreshController(
       const session = await options.doRefresh();
       await options.onSuccess(session);
     } catch (error) {
-      muerta = true;
+      if (isDefinitiveAuthFailure(error)) muerta = true;
       options.onFailure(error);
       throw error;
     }

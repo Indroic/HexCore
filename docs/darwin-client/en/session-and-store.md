@@ -26,6 +26,19 @@ Without `reason`, all three collapse into a silent logout, and the third one —
 that might mean somebody else has the user's token — is exactly the one you do not want to be
 silent.
 
+## Background refresh
+
+The client keeps the access token fresh **without needing any request from your app**: it
+tracks the token's expiry and schedules a refresh a few seconds ahead of it, and it revalidates
+on `visibilitychange`/`online` so a tab that was backgrounded (where browsers throttle timers)
+catches up as soon as it becomes active again. A refresh that fails for a transient reason —
+the network dropped, a proxy answered with garbage once — does not tear the session down; only
+a real answer from the server (the refresh token is invalid, revoked, or the session reached
+its ceiling) moves the store to `"unauthenticated"`.
+
+Call `client.dispose()` when you are done with a client — unmounting the app, a hot reload, a
+test's teardown — to stop that timer and remove the listeners.
+
 ## React
 
 `client.session` exposes `subscribe`, `getSnapshot` and `getServerSnapshot` — the exact

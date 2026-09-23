@@ -24,6 +24,12 @@ export interface DarwinClient {
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   me: () => Promise<MeResponse>;
+  /**
+   * Da de baja el timer de refresh en segundo plano y los listeners de `visibilitychange`/
+   * `online` de la sesión. Llamalo al desmontar la app (o entre tests) para no dejar timers
+   * huérfanos corriendo contra un cliente que ya nadie usa.
+   */
+  dispose: () => void;
 }
 
 export interface DarwinClientOptionsWithPlugins<
@@ -60,6 +66,7 @@ export function createDarwinClient<
     signOut: session.signOut,
     refresh: session.refresh,
     me: session.me,
+    dispose: session.dispose,
   };
 
   const plugins = options.plugins ?? ([] as unknown as TPlugins);

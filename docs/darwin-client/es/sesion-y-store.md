@@ -25,6 +25,19 @@ mensaje distinto:
 Sin `reason`, las tres colapsan en un logout mudo, y la tercera — la única que puede significar
 que alguien más tiene el token del usuario — es justo la que no querés que sea muda.
 
+## Refresco en segundo plano
+
+El cliente mantiene el access token fresco **sin que tu app tenga que hacer ningún request**:
+trackea el vencimiento del token y programa un refresh unos segundos antes, y revalida ante
+`visibilitychange`/`online` para que una pestaña que estuvo en segundo plano (donde el navegador
+throttlea los timers) se ponga al día apenas vuelve a estar activa. Un refresh que falla por un
+motivo transitorio — se cayó la red, un proxy contestó basura una vez — no tira abajo la sesión;
+sólo una respuesta real del servidor (el refresh token es inválido, fue revocado, o la sesión
+llegó a su techo) mueve el store a `"unauthenticated"`.
+
+Llamá a `client.dispose()` cuando termines con un cliente — al desmontar la app, en un hot
+reload, en el teardown de un test — para frenar ese timer y sacar los listeners.
+
 ## React
 
 `client.session` expone `subscribe`, `getSnapshot` y `getServerSnapshot` — el contrato exacto de
