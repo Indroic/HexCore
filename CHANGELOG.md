@@ -1,3 +1,13 @@
+## hexcore-v11.2.0 (2026-09-26)
+
+### Feat
+
+- **darwin**: permitir un predicado de origen dinámico en trusted_origins
+
+### Fix
+
+- **packaging**: declarar sqlalchemy[asyncio] en sql/darwin-sqlalchemy/all
+
 ## hexcore-v11.1.0 (2026-09-23)
 
 ### Feat
