@@ -407,6 +407,26 @@ class IdentityConfig(BaseModel):
     #: que uno herede del otro significa que relajar CORS relaja CSRF sin que nadie lo note.
     trusted_origins: tuple[str, ...] = ()
 
+    #: Segunda forma de confiar en un origen para el mismo chequeo, cuando el conjunto no es
+    #: enumerable de antemano — el caso típico es un subdominio por tenant creado en caliente
+    #: (`https://{tenant}.ejemplo.com`), donde `trusted_origins` obligaría a redesplegar por
+    #: cada alta. `CsrfMiddleware` lo consulta **sólo** cuando el origen no está ya en
+    #: `trusted_origins`, así que declarar los dos no duplica trabajo — el predicado cubre lo
+    #: que la tupla no enumera.
+    #:
+    #: Recibe el origen tal cual llega en el header `Origin`/`Referer`
+    #: (`"https://a.ejemplo.com"`, con esquema y sin barra final) y devuelve si se confía en él.
+    #: Si el callable lanza, se trata como `False` y se loguea — el mismo criterio que
+    #: `AuthorizationProvider`: un chequeo de confianza que revienta nunca decide "confío" por
+    #: default.
+    #:
+    #: `None` (el default) dejar el chequeo tal como era antes de este campo: sólo
+    #: `trusted_origins`. Sigue rigiendo `_el_csrf_no_acepta_comodin` de abajo — un predicado
+    #: que sólo devuelve `True` no esquiva esa validación, que mira la tupla, pero construir uno
+    #: que equivalga a `"*"` (aceptar cualquier origen) anula el propósito del control igual que
+    #: el comodín; la responsabilidad de no hacerlo es de quien lo escribe.
+    trusted_origin_predicate: t.Callable[[str], bool] | None = None
+
     #: Vida del sobre firmado que cruza la cola. Un payload capturado de una dead-letter queue
     #: no se puede reproducir un mes después.
     worker_context_ttl: timedelta = timedelta(hours=24)
