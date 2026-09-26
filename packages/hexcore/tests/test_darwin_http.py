@@ -73,7 +73,12 @@ def anyio_backend():
     return "asyncio"
 
 
-def _configurar(*, secure_cookies: bool = False, verified: bool = False):
+def _configurar(
+    *,
+    secure_cookies: bool = False,
+    verified: bool = False,
+    trusted_origin_predicate=None,
+):
     """
     Cablea Darwin contra SQLite en memoria.
 
@@ -102,6 +107,7 @@ def _configurar(*, secure_cookies: bool = False, verified: bool = False):
             tokens=TokenConfig(issuer="https://api.test"),
             cookies=CookieConfig(secure=secure_cookies),
             trusted_origins=(ORIGEN,),
+            trusted_origin_predicate=trusted_origin_predicate,
             require_verified_email=not verified,
         ),
         clock=FixedClock(AHORA),
@@ -432,6 +438,101 @@ def test_un_valor_de_csrf_forjado_se_rechaza(client, contenedor):
     )
 
     assert r.status_code == 403
+
+
+@pytest.fixture
+def contenedor_con_predicado():
+    """Como `contenedor`, pero con `trusted_origin_predicate` para un tenant dinámico
+    (`https://{sub}.tenant.test`) — el caso que `trusted_origins` (tupla fija) no cubre."""
+    yield _configurar(
+        verified=True,
+        trusted_origin_predicate=lambda origen: origen.endswith(".tenant.test"),
+    )
+    reset_identity()
+    asyncio.run(dispose_engine())
+
+
+@pytest.fixture
+def app_con_predicado(contenedor_con_predicado):
+    return create_app(
+        features=AppFeatures(auth_context=True, csrf=True, health=False),
+        routers=[build_identity_router()],
+    )
+
+
+@pytest.fixture
+def client_con_predicado(app_con_predicado):
+    return TestClient(app_con_predicado, raise_server_exceptions=False)
+
+
+def test_un_post_de_un_origen_aceptado_por_el_predicado_pasa(
+    client_con_predicado, contenedor_con_predicado
+):
+    _alta(client_con_predicado)
+    client_con_predicado.post(
+        "/auth/sign-in", json={"email": MAIL, "password": PASS}, headers={"Origin": ORIGEN}
+    )
+
+    origen_dinamico = "https://a.tenant.test"
+    r = client_con_predicado.post(
+        "/auth/sign-out",
+        headers={
+            "Origin": origen_dinamico,
+            CSRF_HEADER: client_con_predicado.cookies.get("csrf") or "",
+        },
+    )
+
+    assert r.status_code == 200, r.text
+
+
+def test_un_post_de_un_origen_que_el_predicado_rechaza_sigue_403(
+    client_con_predicado, contenedor_con_predicado
+):
+    _alta(client_con_predicado)
+    client_con_predicado.post(
+        "/auth/sign-in", json={"email": MAIL, "password": PASS}, headers={"Origin": ORIGEN}
+    )
+
+    r = client_con_predicado.post(
+        "/auth/sign-out",
+        headers={
+            "Origin": "https://evil.test",
+            CSRF_HEADER: client_con_predicado.cookies.get("csrf") or "",
+        },
+    )
+
+    assert r.status_code == 403
+
+
+def test_un_predicado_que_lanza_se_trata_como_no_confiable(contenedor):
+    """El mismo criterio que un `AuthorizationProvider` que revienta: nunca decide "confío"."""
+    from starlette.requests import Request
+
+    from hexcore.darwin.infrastructure.api.middlewares import CsrfMiddleware
+    from hexcore.darwin.domain.exceptions import CsrfValidationError
+
+    def _predicado_roto(origen: str) -> bool:
+        raise RuntimeError("boom")
+
+    config = contenedor.config.model_copy(
+        update={"trusted_origin_predicate": _predicado_roto}
+    )
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/x",
+            "headers": [
+                (b"origin", b"https://cualquiera.test"),
+                (b"x-csrf-token", b"t"),
+                (b"cookie", b"__Host-csrf=t"),
+            ],
+        }
+    )
+
+    middleware = CsrfMiddleware(app=object())
+    with pytest.raises(CsrfValidationError):
+        middleware._verificar(request, config)
 
 
 def test_un_get_esta_exento_de_csrf(client, contenedor):

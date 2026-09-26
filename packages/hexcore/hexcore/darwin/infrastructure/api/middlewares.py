@@ -162,8 +162,11 @@ class CsrfMiddleware(BaseHTTPMiddleware):
     Dos chequeos, y hay que pasar **los dos**:
 
     1. **Origen.** El `Origin` (o `Referer`, si no vino `Origin`) tiene que estar en
-       `trusted_origins`. Es lo que ataja el caso normal, porque el navegador pone `Origin`
-       en toda petición que cambia estado y una página atacante no puede falsificarlo.
+       `trusted_origins`, o que `IdentityConfig.trusted_origin_predicate` lo acepte si se
+       declaró uno (para un conjunto de orígenes no enumerable de antemano, como un
+       subdominio por tenant). Es lo que ataja el caso normal, porque el navegador pone
+       `Origin` en toda petición que cambia estado y una página atacante no puede
+       falsificarlo.
     2. **Double-submit.** El header `X-CSRF-Token` tiene que coincidir con la cookie de CSRF.
        Ataja el caso donde `Origin` no viene (clientes viejos, algunos proxies) sin dejar el
        hueco abierto.
@@ -237,10 +240,13 @@ class CsrfMiddleware(BaseHTTPMiddleware):
     def _verificar(self, request: Request, config: "IdentityConfig") -> None:
         origen = self._origen(request)
         if origen is not None:
-            if origen not in config.trusted_origins:
+            if origen not in config.trusted_origins and not self._confia_por_predicado(
+                origen, config
+            ):
                 raise CsrfValidationError(
-                    f"El origen '{origen}' no está en `trusted_origins`, así que esta "
-                    f"petición con cookie de sesión se rechaza."
+                    f"El origen '{origen}' no está en `trusted_origins` ni lo aceptó "
+                    f"`trusted_origin_predicate`, así que esta petición con cookie de sesión "
+                    f"se rechaza."
                 )
         elif not config.trusted_origins:
             # Ni `Origin` ni orígenes declarados: no hay forma de decidir, y en la duda se
@@ -265,6 +271,27 @@ class CsrfMiddleware(BaseHTTPMiddleware):
             raise CsrfValidationError(
                 "El valor anti-CSRF del header no coincide con el de la cookie."
             )
+
+    @staticmethod
+    def _confia_por_predicado(origen: str, config: "IdentityConfig") -> bool:
+        """`trusted_origin_predicate(origen)`, o `False` sin uno declarado o si revienta.
+
+        Mismo criterio que `AuthorizationEngine` con un `AuthorizationProvider` que lanza: un
+        chequeo de confianza que explota nunca decide "confío" por default — se loguea y se
+        sigue como si hubiera dicho que no.
+        """
+        predicado = config.trusted_origin_predicate
+        if predicado is None:
+            return False
+        try:
+            return bool(predicado(origen))
+        except Exception:
+            logger.exception(
+                "trusted_origin_predicate lanzó evaluando el origen %r; se lo trata como no "
+                "confiable.",
+                origen,
+            )
+            return False
 
     @staticmethod
     def _origen(request: Request) -> str | None:

@@ -71,7 +71,10 @@ Issues = "https://github.com/Indroic/HexCore/issues"
 api = ["fastapi>=0.116.1"]
 redis = ["redis>=6.4.0"]
 mongo = ["beanie>=2.0.0"]
-sql = ["sqlalchemy>=2.0.43", "alembic>=1.16.5", "asyncpg>=0.30.0", "aiosqlite>=0.21.0"]
+# `[asyncio]` y no sólo `sqlalchemy`: sin él, `greenlet` no se instala y
+# `hexcore.sql.init_engine`/cualquier sesión async revientan al primer uso con
+# `ImportError` — recién en la máquina del consumidor, que instaló este extra solo.
+sql = ["sqlalchemy[asyncio]>=2.0.43", "alembic>=1.16.5", "asyncpg>=0.30.0", "aiosqlite>=0.21.0"]
 rabbitmq = ["aio-pika>=9.4.0", "pika>=1.3.2"]
 procrastinate = ["procrastinate>=3.0.0"]
 celery = ["celery>=5.4.0"]
@@ -135,7 +138,7 @@ darwin = [
 # tablas de identidad son parte de este backend.
 darwin-sqlalchemy = [
     "hexcore[darwin]",
-    "sqlalchemy>=2.0.43",
+    "sqlalchemy[asyncio]>=2.0.43",
     "alembic>=1.16.5",
     "asyncpg>=0.30.0",
     "aiosqlite>=0.21.0",
@@ -181,7 +184,7 @@ all = [
     "fastapi>=0.116.1",
     "redis>=6.4.0",
     "beanie>=2.0.0",
-    "sqlalchemy>=2.0.43", 
+    "sqlalchemy[asyncio]>=2.0.43", 
     "alembic>=1.16.5", 
     "asyncpg>=0.30.0", 
     "aiosqlite>=0.21.0",
