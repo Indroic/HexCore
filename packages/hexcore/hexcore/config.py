@@ -78,6 +78,26 @@ class ServerConfig(BaseModel):
     allow_methods: list[str] = ["*"]
     allow_headers: list[str] = ["*"]
 
+    # CORS para una SPA en otro origen con la cookie de sesión. Los tres van con el prefijo
+    # `cors_` porque `max_age` y `expose_headers` a secas, en una config que también tiene
+    # cookies y TTLs, se leen como otra cosa.
+    #
+    # `cors_origin_predicate` cubre los orígenes que `allow_origins` no puede enumerar —un
+    # subdominio por tenant creado en caliente—, igual que
+    # `IdentityConfig.trusted_origin_predicate` hace con el CSRF. **Se suma** a `allow_origins`,
+    # no lo reemplaza. Es síncrono, recibe el origen tal cual llega en el header `Origin`
+    # (`"https://a.ejemplo.com"`) y si lanza se trata como «no confiable».
+    #
+    # `cors_expose_headers`: las cabeceras de la respuesta que el JS puede leer entre orígenes.
+    # Sin declararlas, el navegador sólo deja leer las «seguras» (`Content-Type`, etc.).
+    #
+    # `cors_max_age`: cuántos segundos el navegador cachea el preflight. Sin caché, toda
+    # escritura JSON con un header propio (`X-CSRF-Token`) cuesta un `OPTIONS` previo. 600 es el
+    # default de Starlette; Chrome topea en 7200.
+    cors_origin_predicate: t.Callable[[str], bool] | None = None
+    cors_expose_headers: list[str] = Field(default_factory=list)
+    cors_max_age: int = Field(default=600, ge=0)
+
     # caching
     cache_backend: ICache = (
         MemoryCache()
@@ -171,6 +191,9 @@ class ServerConfig(BaseModel):
         1. Si no pasaste `allow_origins`, se completa: en `debug` queda `["*"]` (comodidad
            de desarrollo, que era la intención original), y fuera de `debug` queda
            `["http://localhost:<port>"]`. Un valor explícito —incluso `[]`— se respeta.
+           **Con un `cors_origin_predicate` declarado queda `[]`**: el predicado es la lista, y
+           derivar `["*"]` bajaría `allow_credentials` a `False` en silencio y las cookies
+           dejarían de funcionar sin que nadie lo pidiera.
         2. **`"*"` con `allow_credentials=True` nunca es válido, y el invariante vale
            siempre, no sólo fuera de `debug`.** Es que `debug` viene en `True` por
            defecto, así que condicionarlo al entorno dejaba la combinación peligrosa
@@ -194,9 +217,12 @@ class ServerConfig(BaseModel):
         lo_pidio_el_usuario = "allow_origins" in self.model_fields_set
 
         if not lo_pidio_el_usuario and not self.allow_origins:
-            self.allow_origins = (
-                ["*"] if self.debug else [f"http://localhost:{self.port}"]
-            )
+            if self.cors_origin_predicate is not None:
+                self.allow_origins = []
+            else:
+                self.allow_origins = (
+                    ["*"] if self.debug else [f"http://localhost:{self.port}"]
+                )
 
         if "*" not in self.allow_origins or not self.allow_credentials:
             return self

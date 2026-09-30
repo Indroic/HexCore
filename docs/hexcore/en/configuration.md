@@ -123,6 +123,32 @@ config = ServerConfig(
 )
 ```
 
+#### A SPA on another origin, with the session cookie
+
+Three more fields cover the case where the frontend lives on a different origin from the API and
+authenticates with a cookie. All three are optional and change nothing if you do not set them:
+
+| Field | Default | What it does |
+| :-- | :-- | :-- |
+| `cors_origin_predicate` | `None` | `Callable[[str], bool]` for the origins `allow_origins` cannot list — a subdomain per tenant created on the fly. It **adds to** `allow_origins`, it does not replace it |
+| `cors_expose_headers` | `[]` | The response headers the frontend's JS may read cross-origin (`X-Request-ID`, `Retry-After`…) |
+| `cors_max_age` | `600` | Seconds the browser caches the preflight. Without a cache, every JSON write with a custom header (`X-CSRF-Token`) costs an extra `OPTIONS`; Chrome caps it at `7200` |
+
+```python
+config = ServerConfig(
+    allow_origins=[],                                   # the predicate is the list
+    cors_origin_predicate=lambda origin: origin.endswith(".tenant.example.com"),
+    cors_max_age=7200,
+)
+```
+
+The predicate receives the origin exactly as it arrives in the `Origin` header
+(`"https://a.tenant.example.com"`) and is synchronous. **If it raises, the origin is treated as
+untrusted** and the error is logged on `hexcore.api.cors`: a trust check that blows up never
+decides "trust". With a predicate declared and no explicit `allow_origins`, the default is `[]`
+and not `["*"]` — deriving `["*"]` would silently lower `allow_credentials` to `False` and the
+cookies would stop working without anyone asking for it.
+
 ### Injectable infrastructure
 
 | Field | Default | Port |

@@ -67,6 +67,15 @@ app = create_app(
 The last two default to off because they only make sense with identity wired up: enabling them
 without `configure_identity()` would be middleware looking at a container that does not exist.
 
+**Order, from the outside in:** `RequestIDMiddleware` → CORS → `AuthContextMiddleware` →
+`CsrfMiddleware` → `TimingMiddleware`. The CORS wraps the authentication and the CSRF check on
+purpose: a middleware can only add headers to what answers *inside* it, so with the CORS further
+in, a cross-origin `POST` rejected for a missing CSRF token came out without
+`Access-Control-Allow-Origin` and the browser turned it into an opaque network error — the app
+could not read *why* it failed. For origins you cannot list, see `cors_origin_predicate` in
+[Configuration](configuration.md#a-spa-on-another-origin-with-the-session-cookie); it swaps the
+middleware for `PredicateCORSMiddleware`.
+
 ---
 
 ## `build_lifespan()`

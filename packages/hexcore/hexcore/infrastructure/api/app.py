@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from .exception_handlers import HeadersFactory, PayloadFactory, register_exception_handlers
 from .health import Probe, ResponseFactory, register_health_routes
-from .middlewares import RequestIDMiddleware, TimingMiddleware
+from .middlewares import PredicateCORSMiddleware, RequestIDMiddleware, TimingMiddleware
 from .routing import MountableRouter, mount_routers
 
 __all__ = ["AppFeatures", "HealthRoutes", "create_app"]
@@ -163,13 +163,23 @@ def create_app(
     # en vez de dejarle leer a la app *por qué* falló (y reintentar con un token nuevo). Y
     # el preflight se contesta acá, antes de gastar la resolución de la credencial.
     if resolved_features.cors:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=list(getattr(config, "allow_origins", ["*"])),
-            allow_credentials=bool(getattr(config, "allow_credentials", True)),
-            allow_methods=list(getattr(config, "allow_methods", ["*"])),
-            allow_headers=list(getattr(config, "allow_headers", ["*"])),
-        )
+        cors_kwargs: dict[str, t.Any] = {
+            "allow_origins": list(getattr(config, "allow_origins", ["*"])),
+            "allow_credentials": bool(getattr(config, "allow_credentials", True)),
+            "allow_methods": list(getattr(config, "allow_methods", ["*"])),
+            "allow_headers": list(getattr(config, "allow_headers", ["*"])),
+            "expose_headers": list(getattr(config, "cors_expose_headers", [])),
+            "max_age": int(getattr(config, "cors_max_age", 600)),
+        }
+        origin_predicate = getattr(config, "cors_origin_predicate", None)
+        if origin_predicate is None:
+            # Sin predicado, la clase es la de Starlette tal cual: nada cambia para quien no
+            # lo pide.
+            app.add_middleware(CORSMiddleware, **cors_kwargs)
+        else:
+            app.add_middleware(
+                PredicateCORSMiddleware, origin_predicate=origin_predicate, **cors_kwargs
+            )
 
     if resolved_features.request_id:
         app.add_middleware(RequestIDMiddleware)

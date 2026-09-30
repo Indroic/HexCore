@@ -54,6 +54,13 @@ app = hx.create_app(
 The last two default off because they only make sense with identity wired up: enabling them
 without `configure_identity()` is middleware looking at a container that does not exist.
 
+**Order, outside in:** request-id → CORS → auth context → CSRF → timing. The CORS wraps the CSRF on
+purpose: a cross-origin 403 from the CSRF check has to carry `Access-Control-Allow-Origin`, or the
+browser turns it into an opaque network error. For origins you cannot list (a subdomain per tenant),
+set `ServerConfig(cors_origin_predicate=...)` — it adds to `allow_origins`, fails closed if it raises,
+and with no explicit `allow_origins` the default becomes `[]`, not `["*"]`. `cors_max_age` (Chrome caps
+at 7200) saves a preflight per JSON write with `X-CSRF-Token`; `cors_expose_headers` lists what the JS may read.
+
 ---
 
 ## `build_lifespan()`
