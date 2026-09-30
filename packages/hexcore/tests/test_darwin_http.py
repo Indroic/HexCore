@@ -35,6 +35,7 @@ from fastapi import Depends  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
+from hexcore.config import ServerConfig  # noqa: E402
 from hexcore.darwin import (  # noqa: E402
     AuthContext,
     CSRF_HEADER,
@@ -438,6 +439,32 @@ def test_un_valor_de_csrf_forjado_se_rechaza(client, contenedor):
     )
 
     assert r.status_code == 403
+
+
+def test_el_403_de_csrf_lleva_las_cabeceras_de_cors(contenedor, monkeypatch):
+    """
+    Una SPA en otro origen tiene que poder **leer** el 403 del CSRF: sin
+    `Access-Control-Allow-Origin` el navegador lo convierte en un error de red opaco, y la
+    app no puede saber que hay que pedir un token nuevo. Pasaba porque `create_app` registraba
+    el CORS *por dentro* del CSRF.
+    """
+    config = ServerConfig(allow_origins=[ORIGEN], allow_credentials=True)
+    monkeypatch.setattr("hexcore.infrastructure.api.app._config", lambda: config)
+    aplicacion = create_app(
+        features=AppFeatures(auth_context=True, csrf=True, health=False),
+        routers=[build_identity_router()],
+    )
+    client = TestClient(aplicacion, raise_server_exceptions=False)
+    _alta(client)
+    _sign_in_cookie(client)
+
+    r = client.post("/auth/sign-out", headers={"Origin": ORIGEN})
+
+    assert r.status_code == 403
+    assert r.json()["error"] == "CsrfValidationError"
+    assert r.headers["access-control-allow-origin"] == ORIGEN
+    assert r.headers["access-control-allow-credentials"] == "true"
+    assert r.headers["X-Request-ID"]  # el request-id sigue envolviéndolo todo
 
 
 @pytest.fixture
