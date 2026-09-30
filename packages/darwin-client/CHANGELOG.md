@@ -1,3 +1,18 @@
+## darwin-client-v1.6.0 (2026-09-30)
+
+### Feat
+
+- **darwin-client**: token CSRF en memoria y un reintento ante el 403 de CSRF
+- **darwin**: GET /auth/csrf y X-CSRF-Token en las respuestas que emiten la cookie
+- **api**: cors_origin_predicate, cors_expose_headers y cors_max_age
+- **darwin**: permitir un predicado de origen dinámico en trusted_origins
+
+### Fix
+
+- **api**: el CORS de create_app envuelve a la auth y al CSRF
+- **packaging**: declarar sqlalchemy[asyncio] en sql/darwin-sqlalchemy/all
+- **darwin**: eliminar el round-trip redundante en la rotación de refresh
+
 ## darwin-client-v1.5.0 (2026-09-23)
 
 ### Feat
