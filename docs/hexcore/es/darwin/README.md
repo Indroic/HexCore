@@ -128,8 +128,9 @@ permita (`create_app` expone la cabecera con `AppFeatures(csrf=True)`):
   cliente Bearer no hace CSRF— y `Cache-Control: no-store`.
 
 Es seguro darlo: sólo un origen que el CORS permita puede leer la respuesta, y el valor no sirve sin
-la cookie de sesión que el navegador ya tiene. En el cliente, guardalo **en memoria**, nunca en
-`localStorage`.
+la cookie de sesión que el navegador ya tiene. `@hexcore-js/darwin-client` lo guarda **en memoria**
+(nunca en `localStorage`) y reintenta una escritura una vez cuando el servidor responde 403
+`CsrfValidationError`.
 
 ---
 

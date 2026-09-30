@@ -20,6 +20,9 @@ const CSRF_POR_DEFECTO = "csrf";
  */
 const PREFIJO_HOST = "__Host-";
 
+/** La cabecera que el cliente devuelve en cada escritura, y que el servidor repite en las respuestas que emiten la cookie. */
+const CABECERA_CSRF = "X-CSRF-Token";
+
 /**
  * Los nombres bajo los que buscar la cookie CSRF, en orden de preferencia.
  *
@@ -64,15 +67,25 @@ export interface CookieTransportOptions {
  * El transporte de cookie: `HttpOnly` para el access y el refresh, con CSRF double-submit en
  * los métodos que mutan.
  *
- * `persist` y `clear` son no-ops a propósito: el navegador ya escribió (o borró) las cookies
- * vía `Set-Cookie`/`Set-Cookie` con `Max-Age=0` — no hay ningún estado del lado del cliente
- * que este transporte tenga que administrar.
+ * `persist` es un no-op a propósito: el navegador ya escribió las cookies vía `Set-Cookie` — no
+ * hay ningún estado de **sesión** del lado del cliente que este transporte tenga que administrar.
+ *
+ * Sí guarda **un** dato en memoria: el token CSRF. Con la API en otro origen que la página
+ * (`app.ejemplo.com` → `api.ejemplo.com`) la cookie de CSRF es del host de la API y
+ * `document.cookie` no la ve, así que el jar vuelve vacío. El servidor entrega el mismo valor en
+ * la cabecera `X-CSRF-Token` de las respuestas que emiten la cookie (`onResponse` la guarda) y en
+ * `GET /auth/csrf` (`setCsrfToken`, lo llama el fetcher al recuperarse de un 403). **Nunca en
+ * `localStorage`**: es de la sesión, y guardarlo lo dejaría al alcance de cualquier script del
+ * origen y lo haría sobrevivir al cierre de sesión. Se pierde al recargar y se recupera con
+ * `GET /auth/csrf`. Si la cookie **sí** es legible (mismo origen) manda el jar, que es lo que el
+ * servidor compara.
  */
 export class CookieTransport implements Transport {
   readonly name = "cookie" as const;
 
   private readonly csrfCookieNames: readonly string[];
   private readonly jar: CookieJar;
+  private csrfEnMemoria: string | undefined;
 
   constructor(options: CookieTransportOptions = {}) {
     this.csrfCookieNames = nombresCandidatos(options.csrfCookieName ?? CSRF_POR_DEFECTO);
@@ -103,9 +116,14 @@ export class CookieTransport implements Transport {
     for (const nombre of this.csrfCookieNames) {
       const csrf = await this.jar.get(nombre);
       if (csrf) {
-        headers["X-CSRF-Token"] = csrf;
-        break;
+        headers[CABECERA_CSRF] = csrf;
+        return headers;
       }
+    }
+
+    // La cookie no se puede leer (otro origen): el que entregó el servidor, si lo hay.
+    if (this.csrfEnMemoria) {
+      headers[CABECERA_CSRF] = this.csrfEnMemoria;
     }
 
     return headers;
@@ -116,6 +134,17 @@ export class CookieTransport implements Transport {
   }
 
   clear(): void {
-    // No-op: ver el docstring de la clase.
+    // El token CSRF era de la sesión que se cierra.
+    this.csrfEnMemoria = undefined;
+  }
+
+  onResponse(response: Response): void {
+    const token = response.headers.get(CABECERA_CSRF);
+    // Una respuesta sin la cabecera (cualquier GET) no borra el que ya se tenía.
+    if (token) this.csrfEnMemoria = token;
+  }
+
+  setCsrfToken(token: string | undefined): void {
+    this.csrfEnMemoria = token || undefined;
   }
 }

@@ -30,15 +30,45 @@ export interface Fetcher {
   $fetch<T>(path: string, init?: RequestOptions): Promise<T>;
 }
 
+/** Los métodos que el CSRF no protege: un rechazo de CSRF no puede venir de ellos. */
+const METODOS_SEGUROS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/** Ruta relativa a `baseUrl` de `GET /auth/csrf` (ver `build_identity_router`). */
+const RUTA_CSRF = "/auth/csrf";
+
 export function createFetcher(options: FetcherOptions): Fetcher {
   async function $fetch<T>(path: string, init: RequestOptions = {}): Promise<T> {
-    return doFetch<T>(path, init, 0);
+    return doFetch<T>(path, init, 0, false);
+  }
+
+  /**
+   * Pide el token CSRF de la sesión por cookie en curso. **Nunca lanza**: sin sesión (401), sin
+   * red o con una respuesta inesperada devuelve `undefined`, y quien lo pidió responde con el
+   * rechazo de CSRF original, que sí dice qué pasó.
+   */
+  async function pedirTokenCsrf(): Promise<string | undefined> {
+    try {
+      const respuesta = await options.fetchImpl(joinUrl(options.baseUrl, RUTA_CSRF), {
+        method: "GET",
+        // La cookie de sesión es lo que identifica de qué sesión es el token.
+        credentials: "include",
+        headers: { Accept: "application/json", "X-Darwin-Transport": "cookie" },
+      });
+      if (!respuesta.ok) return undefined;
+      const cuerpo = (await respuesta.json()) as { csrf_token?: unknown };
+      return typeof cuerpo.csrf_token === "string" && cuerpo.csrf_token
+        ? cuerpo.csrf_token
+        : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   async function doFetch<T>(
     path: string,
     init: RequestOptions,
     retryCount: number,
+    csrfReintentado: boolean,
   ): Promise<T> {
     if (!init.skipProactiveRefresh && options.shouldRefreshProactively()) {
       await options.refresh();
@@ -88,11 +118,36 @@ export function createFetcher(options: FetcherOptions): Fetcher {
       });
     }
 
+    // Antes de leer el cuerpo y también en los errores: un 401 o un 403 no traen la cabecera,
+    // pero un refresh que sí la trae puede llegar por cualquier camino.
+    options.transport.onResponse?.(response);
+
     if (response.ok) {
       return leerCuerpoExitoso<T>(response);
     }
 
     const error = await darwinErrorFromResponse(response);
+
+    // Un 403 `CsrfValidationError` en una escritura por cookie: el token que se mandó no vale
+    // (la página se recargó y ya no lo tiene en memoria, o la sesión rotó). Se pide el vigente y
+    // se reintenta **una sola vez**. Es seguro reintentar: el middleware de CSRF rechaza antes de
+    // que corra el handler, así que el efecto de lado del request original no ocurrió. Si el
+    // token nuevo es el mismo que ya se mandó, reintentar no lo arreglaría: el rechazo es de otra
+    // causa (un origen que el servidor no confía) y se devuelve tal cual.
+    if (
+      options.transport.name === "cookie" &&
+      !csrfReintentado &&
+      response.status === 403 &&
+      error.code === "CsrfValidationError" &&
+      !METODOS_SEGUROS.has(method) &&
+      esReenviable(init.body)
+    ) {
+      const fresco = await pedirTokenCsrf();
+      if (fresco !== undefined && fresco !== headers.get("X-CSRF-Token")) {
+        options.transport.setCsrfToken?.(fresco);
+        return doFetch<T>(path, init, retryCount, true);
+      }
+    }
 
     // Reintentar es seguro exactamente cuando: (1) es un 401 con un código refrescable, (2) es
     // el primer intento (nunca un segundo reintento — un refresh que sigue fallando no se
@@ -119,7 +174,7 @@ export function createFetcher(options: FetcherOptions): Fetcher {
       }
 
       await options.refresh();
-      return doFetch<T>(path, init, retryCount + 1);
+      return doFetch<T>(path, init, retryCount + 1, csrfReintentado);
     }
 
     throw error;

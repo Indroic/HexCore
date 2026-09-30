@@ -90,6 +90,14 @@ The `challenge` is what `twoFactor().complete()` exchanges to finish the login.
 Neither side validates the other, and every one of the four fails somewhere other than where
 the mistake is.
 
+### 0. The API on another origin than the page
+
+The CSRF cookie belongs to the API's host, so `document.cookie` cannot see it and every write 403s.
+`CookieTransport` handles it: it keeps the token from the `X-CSRF-Token` **response header** of what
+emits the cookie (in memory, never `localStorage`), and on a 403 `CsrfValidationError` it asks
+`GET /auth/csrf` and retries the write **once**. The server's CORS has to expose the header
+(`create_app` does with `csrf=True`). The jar wins when the cookie *is* readable.
+
 ### 1. The CSRF cookie name
 
 `csrfCookieName` defaults to `"csrf"`, matching the server's `CookieConfig.csrf_name`. It is

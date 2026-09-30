@@ -134,8 +134,9 @@ it (`create_app` exposes the header when `AppFeatures(csrf=True)`):
   session — a Bearer client does no CSRF — and `Cache-Control: no-store`.
 
 It is safe to give: only an origin the CORS allows can read the response, and the value is useless
-without the session cookie the browser already holds. Keep it **in memory** on the client, never in
-`localStorage`.
+without the session cookie the browser already holds. `@hexcore-js/darwin-client` keeps it **in
+memory** (never in `localStorage`) and retries a write once when the server answers 403
+`CsrfValidationError`.
 
 The `sign_in_rate_limit` default uses `on_backend_error="deny"` — the opposite of the framework's
 `rate_limit` default, and on purpose: a downed Redis should not turn into unlimited credential

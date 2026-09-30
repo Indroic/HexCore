@@ -116,6 +116,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Csrf
+         * @description El valor anti-CSRF de la sesión por cookie en curso.
+         *
+         *     Para el cliente que **no puede leer la cookie de CSRF**: una SPA en otro origen que la
+         *     API (`document.cookie` sólo ve las cookies de su propio host). Lo pide al abrir la
+         *     página con una sesión ya existente y lo guarda **en memoria** — nunca en
+         *     `localStorage`—; el sign-in y el refresh lo entregan además en la cabecera
+         *     `X-CSRF-Token`, así que sólo hace falta acá cuando la página se recarga.
+         *
+         *     Es seguro darlo: sólo un origen que el CORS permita puede leer la respuesta, y el valor
+         *     no sirve sin la cookie de sesión que el navegador ya tiene. Es `HMAC(secreto, sid)`, el
+         *     mismo cálculo que `emit_tokens`.
+         *
+         *     **401 sin sesión por cookie.** Un cliente Bearer no hace CSRF —adjunta su token a
+         *     propósito— y pedirlo es un error de uso, no algo que haya que contestar.
+         */
+        get: operations["csrf_auth_csrf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/drbac/bindings": {
         parameters: {
             query?: never;
@@ -1351,6 +1384,17 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * CsrfTokenResponse
+         * @description La respuesta de `GET /auth/csrf`: el valor anti-CSRF de la sesión en curso.
+         *
+         *     Es el mismo que trae la cookie de CSRF —`HMAC(secreto, sid)`, ver `derive_csrf_token`— y
+         *     que las respuestas que la emiten repiten en la cabecera `X-CSRF-Token`.
+         */
+        CsrfTokenResponse: {
+            /** Csrf Token */
+            csrf_token: string;
+        };
         /** DisableBody */
         DisableBody: {
             /** Code */
@@ -2289,6 +2333,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnrollmentResponse"];
+                };
+            };
+        };
+    };
+    csrf_auth_csrf_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CsrfTokenResponse"];
                 };
             };
         };

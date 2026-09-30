@@ -107,6 +107,28 @@ todas las escrituras fallan", que se lee como un bug de permisos y no lo es.
 Pasar un nombre ya prefijado también funciona, y entonces se usa exactamente ese y nada más.
 ⚠️ Igual hay que cambiarlo si el despliegue configuró un `CookieConfig.csrf_name` propio.
 
+### La API en otro origen (`app.ejemplo.com` → `api.ejemplo.com`)
+
+La cookie de CSRF pertenece al host de la API, así que `document.cookie` de la página **no la
+ve**: el jar vuelve vacío, no se manda el header, y toda escritura responde 403
+`CsrfValidationError` mientras las lecturas siguen andando. El transporte lo cubre sin configurar
+nada:
+
+- guarda el token de la **cabecera de respuesta `X-CSRF-Token`** que el servidor manda con todo lo
+  que emite la cookie (`signIn`, `refresh`, impersonación…) y lo devuelve en las escrituras. La
+  cabecera sólo es legible si el CORS del servidor la expone — `create_app` lo hace con
+  `AppFeatures(csrf=True)`;
+- cuando una escritura se rechaza con 403 `CsrfValidationError` —la página se recargó y el token
+  ya no está en memoria, o la sesión rotó— el cliente pide el vigente a `GET /auth/csrf` y
+  **reintenta la escritura una vez**. Reintentar es seguro: el chequeo de CSRF rechaza antes de que
+  corra el handler. Si el token que vuelve es el que ya se mandó, no reintenta: la causa es otra y
+  se lanza el error original;
+- **nunca toca `localStorage`.** El token es de la sesión; vive en una variable del transporte,
+  `clear()` (sign-out) lo olvida, y una recarga lo recupera con `GET /auth/csrf`.
+
+Cuando la cookie **sí** es legible (mismo origen) manda el jar sobre el token en memoria, porque
+es el valor que el servidor compara.
+
 ⚠️ **Un transporte de cookie en un despliegue cross-site también necesita el servidor
 configurado en consecuencia.** `SameSite`, `Secure` y el header CORS
 `Access-Control-Allow-Credentials` se setean del lado de Darwin; equivocarse aparece como una
