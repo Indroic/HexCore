@@ -9,7 +9,7 @@
 #
 # Existe porque la fachada resuelve sus exports con `__getattr__` y declara
 # `__all__ = sorted(_EXPORTS)`: las dos son expresiones de runtime, así que sin este stub
-# los 48 símbolos de `hexcore.fastapi` tipan `Any`. El runtime no cambia — Python usa
+# los 49 símbolos de `hexcore.fastapi` tipan `Any`. El runtime no cambia — Python usa
 # el `.py` y el checker usa el `.pyi`, así que la carga perezosa se mantiene.
 
 
@@ -42,6 +42,7 @@ from hexcore.infrastructure.api.lifespan import ProcrastinateStep as Procrastina
 from hexcore.infrastructure.api.lifespan import SqlEngineStep as SqlEngineStep
 from hexcore.infrastructure.api.lifespan import StartupStep as StartupStep
 from hexcore.infrastructure.api.lifespan import build_lifespan as build_lifespan
+from hexcore.infrastructure.api.middlewares import PredicateCORSMiddleware as PredicateCORSMiddleware
 from hexcore.infrastructure.api.middlewares import RequestIDLogFilter as RequestIDLogFilter
 from hexcore.infrastructure.api.middlewares import RequestIDMiddleware as RequestIDMiddleware
 from hexcore.infrastructure.api.middlewares import TimingMiddleware as TimingMiddleware
@@ -74,6 +75,7 @@ __all__ = [
     "EventBusStep",
     "HealthReport",
     "HealthRoutes",
+    "PredicateCORSMiddleware",
     "Probe",
     "ProcrastinateStep",
     "RequestIDLogFilter",

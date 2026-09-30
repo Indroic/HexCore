@@ -42,6 +42,7 @@ import hexcore.fastapi as hx
 | :-- | :-- |
 | `RequestIDMiddleware` | Publica y reusa `X-Request-ID` |
 | `TimingMiddleware` | Agrega `X-Response-Time` |
+| `PredicateCORSMiddleware` | El `CORSMiddleware` de Starlette que además acepta los orígenes que apruebe un `cors_origin_predicate` |
 | `get_request_id()` | El id del request en curso |
 | `install_request_id_logging(logger=None, *, fmt=None)` | Inyecta el id en cada línea de log |
 | `RequestIDLogFilter` | El filtro, por si armás el logging a mano |

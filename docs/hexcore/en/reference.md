@@ -42,6 +42,7 @@ import hexcore.fastapi as hx
 | :-- | :-- |
 | `RequestIDMiddleware` | Publishes and reuses `X-Request-ID` |
 | `TimingMiddleware` | Adds `X-Response-Time` |
+| `PredicateCORSMiddleware` | Starlette's `CORSMiddleware` that also accepts the origins a `cors_origin_predicate` approves |
 | `get_request_id()` | The current request's ID |
 | `install_request_id_logging(logger=None, *, fmt=None)` | Injects the ID into every log line |
 | `RequestIDLogFilter` | The filter, if you build logging by hand |

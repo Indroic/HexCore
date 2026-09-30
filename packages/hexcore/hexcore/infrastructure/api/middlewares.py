@@ -15,12 +15,16 @@ import uuid
 import warnings
 from contextvars import ContextVar
 
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import Message, Receive, Scope, Send
 
 __all__ = [
     "REQUEST_ID",
+    "PredicateCORSMiddleware",
     "RequestIDMiddleware",
     "TimingMiddleware",
     "RequestIDLogFilter",
@@ -100,6 +104,66 @@ class TimingMiddleware(BaseHTTPMiddleware):
         elapsed_ms = (time.perf_counter() - start) * 1000
         response.headers[self.header_name] = f"{elapsed_ms:.2f}"
         return response
+
+
+cors_logger = logging.getLogger("hexcore.api.cors")
+
+
+class PredicateCORSMiddleware(CORSMiddleware):
+    """
+    `CORSMiddleware` que además acepta los orígenes que un predicado apruebe.
+
+    `allow_origins` es una lista fija, y un subdominio por tenant creado en caliente no se puede
+    enumerar de antemano: sin esto hay que redesplegar por cada alta, o abrir `"*"` — que con
+    credenciales no es válido. El predicado se consulta **sólo** cuando el origen no está ya en
+    la lista, así que declarar los dos no duplica trabajo.
+
+    Dos decisiones que no son obvias:
+
+    * **Falla cerrado.** Un predicado que lanza se trata como «no confiable» y se loguea en
+      `hexcore.api.cors`: un chequeo de confianza que explota nunca decide «confío» por default.
+      El log importa porque el síntoma —un origen legítimo sin CORS— no apunta a ninguna causa.
+    * **`Vary: Origin` siempre.** Con orígenes dinámicos la respuesta depende del `Origin`
+      también cuando se rechaza; sin `Vary`, una caché compartida podría servirle a un origen
+      aceptado la respuesta que guardó sin `Access-Control-Allow-Origin`. Starlette sólo lo
+      agrega cuando el origen es aceptado.
+    """
+
+    def __init__(
+        self,
+        app: t.Any,
+        *,
+        origin_predicate: t.Callable[[str], bool],
+        **kwargs: t.Any,
+    ) -> None:
+        super().__init__(app, **kwargs)
+        self._origin_predicate = origin_predicate
+
+    def is_allowed_origin(self, origin: str) -> bool:
+        if super().is_allowed_origin(origin):
+            return True
+        try:
+            return bool(self._origin_predicate(origin))
+        except Exception:
+            cors_logger.exception(
+                "cors_origin_predicate lanzó evaluando el origen %r; se lo trata como no "
+                "confiable.",
+                origin,
+            )
+            return False
+
+    async def simple_response(
+        self, scope: Scope, receive: Receive, send: Send, request_headers: Headers
+    ) -> None:
+        async def con_vary(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                message.setdefault("headers", [])
+                headers = MutableHeaders(scope=message)
+                if "origin" not in headers.get("vary", "").lower():
+                    headers.add_vary_header("Origin")
+            await send(message)
+
+        await super().simple_response(scope, receive, con_vary, request_headers)
 
 
 class RequestIDLogFilter(logging.Filter):

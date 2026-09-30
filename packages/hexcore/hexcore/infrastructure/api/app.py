@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from .exception_handlers import HeadersFactory, PayloadFactory, register_exception_handlers
 from .health import Probe, ResponseFactory, register_health_routes
-from .middlewares import RequestIDMiddleware, TimingMiddleware
+from .middlewares import PredicateCORSMiddleware, RequestIDMiddleware, TimingMiddleware
 from .routing import MountableRouter, mount_routers
 
 __all__ = ["AppFeatures", "HealthRoutes", "create_app"]
@@ -139,14 +139,6 @@ def create_app(
     # Los middlewares de Starlette se ejecutan en orden inverso al de registro, así que
     # el request-id se añade último para que envuelva a todo lo demás y su ContextVar
     # esté disponible en el resto de la pila.
-    if resolved_features.cors:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=list(getattr(config, "allow_origins", ["*"])),
-            allow_credentials=bool(getattr(config, "allow_credentials", True)),
-            allow_methods=list(getattr(config, "allow_methods", ["*"])),
-            allow_headers=list(getattr(config, "allow_headers", ["*"])),
-        )
     if resolved_features.timing:
         app.add_middleware(TimingMiddleware)
 
@@ -163,6 +155,39 @@ def create_app(
         from hexcore.darwin.infrastructure.api.middlewares import AuthContextMiddleware
 
         app.add_middleware(AuthContextMiddleware)
+
+    # El CORS va **después** de los de Darwin —o sea, por fuera de ellos— y antes del
+    # request-id. Un middleware sólo le agrega cabeceras a lo que responde por dentro de él:
+    # con el CORS más adentro que el CSRF, el 403 de un `POST` cross-origin sin token salía
+    # sin `Access-Control-Allow-Origin`, y el navegador lo convertía en un error de red opaco
+    # en vez de dejarle leer a la app *por qué* falló (y reintentar con un token nuevo). Y
+    # el preflight se contesta acá, antes de gastar la resolución de la credencial.
+    if resolved_features.cors:
+        expose_headers = list(getattr(config, "cors_expose_headers", []))
+        if resolved_features.csrf:
+            # Darwin entrega el token anti-CSRF también en esta cabecera (para la SPA en otro
+            # origen, que no puede leer la cookie): sin exponerla, el JS no la ve.
+            from hexcore.darwin.infrastructure.api.middlewares import CSRF_HEADER
+
+            if CSRF_HEADER.lower() not in (h.lower() for h in expose_headers):
+                expose_headers.append(CSRF_HEADER)
+        cors_kwargs: dict[str, t.Any] = {
+            "allow_origins": list(getattr(config, "allow_origins", ["*"])),
+            "allow_credentials": bool(getattr(config, "allow_credentials", True)),
+            "allow_methods": list(getattr(config, "allow_methods", ["*"])),
+            "allow_headers": list(getattr(config, "allow_headers", ["*"])),
+            "expose_headers": expose_headers,
+            "max_age": int(getattr(config, "cors_max_age", 600)),
+        }
+        origin_predicate = getattr(config, "cors_origin_predicate", None)
+        if origin_predicate is None:
+            # Sin predicado, la clase es la de Starlette tal cual: nada cambia para quien no
+            # lo pide.
+            app.add_middleware(CORSMiddleware, **cors_kwargs)
+        else:
+            app.add_middleware(
+                PredicateCORSMiddleware, origin_predicate=origin_predicate, **cors_kwargs
+            )
 
     if resolved_features.request_id:
         app.add_middleware(RequestIDMiddleware)

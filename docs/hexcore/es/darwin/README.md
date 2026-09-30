@@ -33,10 +33,10 @@ app = create_app(
 )
 ```
 
-Eso monta ocho rutas bajo `/auth`:
+Eso monta nueve rutas bajo `/auth`:
 
 `POST /sign-up` · `POST /verify-email` · `POST /sign-in` · `POST /refresh` · `POST /sign-out` ·
-`POST /sign-out-everywhere` · `GET /me` · `GET /sessions`
+`POST /sign-out-everywhere` · `GET /me` · `GET /sessions` · `GET /csrf`
 
 > ⚠️ **`POST /sign-up` es un oráculo de enumeración si lo dejás público tal cual**: responde 409
 > cuando el mail ya existe. Sirve el caso administrativo; el público conviene escribirlo en tu
@@ -110,6 +110,27 @@ Duplicar las rutas duplicaría también los chequeos de seguridad, y la copia qu
 es la que se explota.
 
 Cookies: `__Host-` + `HttpOnly` + `Secure` + `SameSite=Lax`, más chequeo anti-CSRF explícito.
+
+#### El token anti-CSRF cuando el frontend está en otro origen
+
+El chequeo es un **doble envío**: el JS del cliente lee la cookie de CSRF (que no es `HttpOnly`) y la
+devuelve en `X-CSRF-Token`. Con la SPA en `app.ejemplo.com` y la API en `api.ejemplo.com`, esa
+cookie pertenece al host de la API: `document.cookie` de la página **no la ve**, y toda escritura con
+la cookie de sesión responde 403 sin que nada apunte a la causa.
+
+Darwin entrega el mismo valor por dos caminos que la página sí puede leer, siempre que el CORS lo
+permita (`create_app` expone la cabecera con `AppFeatures(csrf=True)`):
+
+- la **cabecera de respuesta `X-CSRF-Token`** de todo lo que emite la cookie (`sign-in`, `refresh`,
+  impersonación…);
+- **`GET /auth/csrf`**, que devuelve `{"csrf_token": ...}` para la sesión por cookie en curso, para
+  recuperarlo al abrir la página con una sesión que ya existe. `401` sin sesión por cookie —un
+  cliente Bearer no hace CSRF— y `Cache-Control: no-store`.
+
+Es seguro darlo: sólo un origen que el CORS permita puede leer la respuesta, y el valor no sirve sin
+la cookie de sesión que el navegador ya tiene. `@hexcore-js/darwin-client` lo guarda **en memoria**
+(nunca en `localStorage`) y reintenta una escritura una vez cuando el servidor responde 403
+`CsrfValidationError`.
 
 ---
 

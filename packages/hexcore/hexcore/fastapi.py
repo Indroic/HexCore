@@ -37,6 +37,10 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "RequestIDMiddleware",
     ),
     "TimingMiddleware": ("hexcore.infrastructure.api.middlewares", "TimingMiddleware"),
+    "PredicateCORSMiddleware": (
+        "hexcore.infrastructure.api.middlewares",
+        "PredicateCORSMiddleware",
+    ),
     "RequestIDLogFilter": (
         "hexcore.infrastructure.api.middlewares",
         "RequestIDLogFilter",

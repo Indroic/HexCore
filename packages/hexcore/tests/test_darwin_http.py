@@ -35,6 +35,7 @@ from fastapi import Depends  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
+from hexcore.config import ServerConfig  # noqa: E402
 from hexcore.darwin import (  # noqa: E402
     AuthContext,
     CSRF_HEADER,
@@ -346,6 +347,143 @@ def test_el_valor_de_csrf_es_derivado_del_sid(client, contenedor):
     assert client.cookies.get("csrf") == derive_csrf_token(sid, CLAVE)
 
 
+# ── 2b. El token CSRF sin depender de la cookie legible ───────────────────────
+#
+# Con la SPA en otro origen que la API (`app.ejemplo.com` → `api.ejemplo.com`), la cookie de
+# CSRF es del host de la API y `document.cookie` de la página **no la ve**: el cliente no puede
+# hacer el double-submit y toda escritura con cookie responde 403 — sin ningún error que apunte
+# a la causa. El servidor entrega el mismo valor por otros dos caminos que sí se pueden leer
+# cuando el CORS lo permite: la cabecera de las respuestas que emiten la cookie, y
+# `GET /auth/csrf` para recuperarlo al abrir la página con una sesión que ya existe.
+def test_el_sign_in_por_cookie_entrega_el_token_csrf_tambien_en_una_cabecera(client, contenedor):
+    _alta(client)
+    r = _sign_in_cookie(client)
+    sid = r.json()["session_id"]
+
+    assert r.headers[CSRF_HEADER] == derive_csrf_token(sid, CLAVE)
+    assert r.headers[CSRF_HEADER] == client.cookies.get("csrf")
+
+
+def test_el_sign_in_bearer_no_lleva_el_token_csrf(client, contenedor):
+    """Un cliente Bearer adjunta su token a propósito: no hace CSRF y no tiene qué guardar."""
+    _alta(client)
+    r = _sign_in_bearer(client)
+
+    assert CSRF_HEADER not in r.headers
+
+
+def test_el_refresh_por_cookie_tambien_entrega_el_token_csrf(client, contenedor):
+    _alta(client)
+    _sign_in_cookie(client)
+
+    r = client.post("/auth/refresh", headers=_csrf_headers(client))
+
+    assert r.status_code == 200, r.text
+    assert r.headers[CSRF_HEADER] == client.cookies.get("csrf")
+
+
+def test_auth_csrf_devuelve_el_valor_derivado_de_la_sesion(client, contenedor):
+    _alta(client)
+    r = _sign_in_cookie(client)
+    sid = r.json()["session_id"]
+
+    r = client.get("/auth/csrf")
+
+    assert r.status_code == 200, r.text
+    assert r.json() == {"csrf_token": derive_csrf_token(sid, CLAVE)}
+    assert r.json()["csrf_token"] == client.cookies.get("csrf")
+
+
+def test_auth_csrf_no_se_cachea(client, contenedor):
+    """El valor es de la sesión: una caché compartida no puede guardarlo."""
+    _alta(client)
+    _sign_in_cookie(client)
+
+    assert client.get("/auth/csrf").headers["cache-control"] == "no-store"
+
+
+def test_el_token_de_auth_csrf_sirve_para_escribir_sin_leer_la_cookie(client, contenedor):
+    """El flujo de una SPA cross-origin: pide el token y lo manda, sin tocar `document.cookie`."""
+    _alta(client)
+    _sign_in_cookie(client)
+    token = client.get("/auth/csrf").json()["csrf_token"]
+
+    r = client.post("/auth/sign-out", headers={"Origin": ORIGEN, CSRF_HEADER: token})
+
+    assert r.status_code == 200, r.text
+
+
+def test_auth_csrf_sin_sesion_da_401(client, contenedor):
+    r = client.get("/auth/csrf")
+
+    assert r.status_code == 401
+    assert "WWW-Authenticate" in r.headers
+
+
+def test_auth_csrf_por_bearer_da_401(client, contenedor):
+    """Un cliente Bearer no hace CSRF: pedirlo es un error de uso y no devuelve nada."""
+    _alta(client)
+    token = _sign_in_bearer(client).json()["access_token"]
+
+    r = client.get(
+        "/auth/csrf",
+        headers={"Authorization": f"Bearer {token}", TRANSPORT_HEADER: "bearer"},
+    )
+
+    assert r.status_code == 401
+
+
+def _app_con_cors(monkeypatch, **features):
+    config = ServerConfig(allow_origins=[ORIGEN], allow_credentials=True)
+    monkeypatch.setattr("hexcore.infrastructure.api.app._config", lambda: config)
+    return TestClient(
+        create_app(
+            features=AppFeatures(auth_context=True, health=False, **features),
+            routers=[build_identity_router()],
+        ),
+        raise_server_exceptions=False,
+    )
+
+
+def test_con_csrf_prendido_el_cors_expone_la_cabecera_del_token(contenedor, monkeypatch):
+    """Sin `Access-Control-Expose-Headers` el JS de otro origen no puede leerla."""
+    client = _app_con_cors(monkeypatch, csrf=True)
+    _alta(client)
+
+    r = _sign_in_cookie(client)
+
+    assert "x-csrf-token" in r.headers["access-control-expose-headers"].lower()
+
+
+def test_sin_csrf_el_cors_no_expone_nada_de_mas(contenedor, monkeypatch):
+    client = _app_con_cors(monkeypatch, csrf=False)
+    _alta(client)
+
+    r = _sign_in_cookie(client)
+
+    assert "access-control-expose-headers" not in r.headers
+
+
+def test_la_cabecera_del_token_no_se_duplica_si_ya_estaba_declarada(contenedor, monkeypatch):
+    config = ServerConfig(
+        allow_origins=[ORIGEN], allow_credentials=True, cors_expose_headers=["x-csrf-token"]
+    )
+    monkeypatch.setattr("hexcore.infrastructure.api.app._config", lambda: config)
+    client = TestClient(
+        create_app(
+            features=AppFeatures(auth_context=True, csrf=True, health=False),
+            routers=[build_identity_router()],
+        ),
+        raise_server_exceptions=False,
+    )
+    _alta(client)
+
+    r = _sign_in_cookie(client)
+
+    expuestas = [h.strip().lower() for h in r.headers["access-control-expose-headers"].split(",")]
+    assert expuestas.count("x-csrf-token") == 1
+
+
 # ── 3. El token va atado a su transporte ──────────────────────────────────────
 def test_una_cookie_replayeada_como_bearer_se_rechaza(client, contenedor):
     """
@@ -438,6 +576,32 @@ def test_un_valor_de_csrf_forjado_se_rechaza(client, contenedor):
     )
 
     assert r.status_code == 403
+
+
+def test_el_403_de_csrf_lleva_las_cabeceras_de_cors(contenedor, monkeypatch):
+    """
+    Una SPA en otro origen tiene que poder **leer** el 403 del CSRF: sin
+    `Access-Control-Allow-Origin` el navegador lo convierte en un error de red opaco, y la
+    app no puede saber que hay que pedir un token nuevo. Pasaba porque `create_app` registraba
+    el CORS *por dentro* del CSRF.
+    """
+    config = ServerConfig(allow_origins=[ORIGEN], allow_credentials=True)
+    monkeypatch.setattr("hexcore.infrastructure.api.app._config", lambda: config)
+    aplicacion = create_app(
+        features=AppFeatures(auth_context=True, csrf=True, health=False),
+        routers=[build_identity_router()],
+    )
+    client = TestClient(aplicacion, raise_server_exceptions=False)
+    _alta(client)
+    _sign_in_cookie(client)
+
+    r = client.post("/auth/sign-out", headers={"Origin": ORIGEN})
+
+    assert r.status_code == 403
+    assert r.json()["error"] == "CsrfValidationError"
+    assert r.headers["access-control-allow-origin"] == ORIGEN
+    assert r.headers["access-control-allow-credentials"] == "true"
+    assert r.headers["X-Request-ID"]  # el request-id sigue envolviéndolo todo
 
 
 @pytest.fixture

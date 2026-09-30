@@ -37,6 +37,20 @@ export interface Transport {
    */
   persist(tokens: DarwinTokens): void | Promise<void>;
 
-  /** Limpia cualquier estado local (sign-out). En cookie también es un no-op. */
+  /** Limpia cualquier estado local (sign-out). En cookie olvida el token CSRF en memoria. */
   clear(): void | Promise<void>;
+
+  /**
+   * Se llama con **cada** respuesta, antes de leer el cuerpo. El transporte de cookie la usa para
+   * guardar el token CSRF que trae la cabecera `X-CSRF-Token` de lo que emite la cookie (sign-in,
+   * refresh…): con la API en otro origen la cookie no se puede leer y esa cabecera es la única
+   * forma de enterarse. Opcional: un transporte que no la necesita no la implementa.
+   */
+  onResponse?(response: Response): void;
+
+  /**
+   * Guarda el token CSRF que entregó `GET /auth/csrf` (`undefined` lo olvida). Sólo lo llama el
+   * fetcher, al recuperarse de un rechazo de CSRF. Opcional, como `onResponse`.
+   */
+  setCsrfToken?(token: string | undefined): void;
 }

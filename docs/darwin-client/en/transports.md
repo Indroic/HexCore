@@ -106,6 +106,27 @@ all fail", which looks like a permissions bug and is not one.
 Passing an already-prefixed name works too, and then that exact name is the only one tried.
 ⚠️ You still have to change this if the deployment set a custom `CookieConfig.csrf_name`.
 
+### The API on another origin (`app.example.com` → `api.example.com`)
+
+The CSRF cookie belongs to the API's host, so `document.cookie` on the page **cannot see it**: the
+jar comes back empty, no header is sent, and every write answers 403 `CsrfValidationError` while
+the reads keep working. The transport covers it without any configuration:
+
+- it keeps the token from the **`X-CSRF-Token` response header** that the server sends with
+  everything that emits the cookie (`signIn`, `refresh`, impersonation…) and echoes it on the
+  writes. The header is readable only if the server's CORS exposes it — `create_app` does with
+  `AppFeatures(csrf=True)`;
+- when a write is rejected with 403 `CsrfValidationError` — the page was reloaded and the token
+  is gone from memory, or the session rotated — the client asks `GET /auth/csrf` for the current
+  one and **retries the write once**. Retrying is safe: the CSRF check rejects the request before
+  the handler runs. If the token it gets back is the one that was already sent, it does not
+  retry: the cause is something else and the original error is thrown;
+- **it never touches `localStorage`.** The token belongs to the session; it lives in a variable of
+  the transport, `clear()` (sign-out) forgets it, and a reload recovers it with `GET /auth/csrf`.
+
+When the cookie *is* readable (same origin) the jar wins over the token in memory, because that is
+the value the server compares.
+
 ⚠️ **A cookie transport in a cross-site deployment also needs the server configured to match.**
 `SameSite`, `Secure` and the CORS `Access-Control-Allow-Credentials` header are set on the
 Darwin side; getting them wrong shows up as a session that silently never authenticates rather

@@ -671,6 +671,20 @@
         "title": "CreateRoleBody",
         "type": "object"
       },
+      "CsrfTokenResponse": {
+        "description": "La respuesta de `GET /auth/csrf`: el valor anti-CSRF de la sesión en curso.\n\nEs el mismo que trae la cookie de CSRF —`HMAC(secreto, sid)`, ver `derive_csrf_token`— y\nque las respuestas que la emiten repiten en la cabecera `X-CSRF-Token`.",
+        "properties": {
+          "csrf_token": {
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrf_token"
+        ],
+        "title": "CsrfTokenResponse",
+        "type": "object"
+      },
       "DisableBody": {
         "properties": {
           "code": {
@@ -3143,6 +3157,36 @@
         "tags": [
           "auth",
           "2fa"
+        ]
+      }
+    },
+    "/auth/csrf": {
+      "get": {
+        "description": "El valor anti-CSRF de la sesión por cookie en curso.\n\nPara el cliente que **no puede leer la cookie de CSRF**: una SPA en otro origen que la\nAPI (`document.cookie` sólo ve las cookies de su propio host). Lo pide al abrir la\npágina con una sesión ya existente y lo guarda **en memoria** — nunca en\n`localStorage`—; el sign-in y el refresh lo entregan además en la cabecera\n`X-CSRF-Token`, así que sólo hace falta acá cuando la página se recarga.\n\nEs seguro darlo: sólo un origen que el CORS permita puede leer la respuesta, y el valor\nno sirve sin la cookie de sesión que el navegador ya tiene. Es `HMAC(secreto, sid)`, el\nmismo cálculo que `emit_tokens`.\n\n**401 sin sesión por cookie.** Un cliente Bearer no hace CSRF —adjunta su token a\npropósito— y pedirlo es un error de uso, no algo que haya que contestar.",
+        "operationId": "csrf_auth_csrf_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsrfTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "darwinBearer": []
+          },
+          {
+            "darwinCookie": []
+          }
+        ],
+        "summary": "Csrf",
+        "tags": [
+          "auth"
         ]
       }
     },

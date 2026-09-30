@@ -31,6 +31,7 @@ from hexcore.darwin.infrastructure.api.dependencies import (
     provide_auth,
     require_not_impersonated,
 )
+from hexcore.darwin.infrastructure.api.middlewares import CSRF_HEADER
 
 if t.TYPE_CHECKING:
     from hexcore.darwin.application.config import IdentityConfig
@@ -42,6 +43,7 @@ __all__ = [
     "VerifyEmailRequest",
     "SignInRequest",
     "SessionResponse",
+    "CsrfTokenResponse",
     "MeResponse",
     "SignedOutResponse",
     "RevokedResponse",
@@ -120,6 +122,17 @@ class SignInRequest(BaseModel):
     def credential(self) -> str:
         """El identificador, venga con el nombre que venga. El validador garantiza que hay uno."""
         return t.cast(str, self.identifier or self.email or self.username)
+
+
+class CsrfTokenResponse(BaseModel):
+    """
+    La respuesta de `GET /auth/csrf`: el valor anti-CSRF de la sesión en curso.
+
+    Es el mismo que trae la cookie de CSRF —`HMAC(secreto, sid)`, ver `derive_csrf_token`— y
+    que las respuestas que la emiten repiten en la cabecera `X-CSRF-Token`.
+    """
+
+    csrf_token: str
 
 
 class SessionResponse(BaseModel):
@@ -212,6 +225,14 @@ def emit_tokens(
     a propósito: el cliente tiene que poder leerla para devolverla en el header
     `X-CSRF-Token`. Que sea legible es lo que obliga a que su valor sea derivado del `sid` y
     no aleatorio — ver `derive_csrf_token`.
+
+    **Además va en la cabecera de la respuesta** (`X-CSRF-Token`, la misma que el cliente
+    devuelve en cada escritura). Una SPA en otro origen que la API —`app.ejemplo.com` contra
+    `api.ejemplo.com`— no puede leer esa cookie con `document.cookie`, porque pertenece al host
+    de la API: sin la cabecera no tiene de dónde sacar el valor, y toda escritura responde 403 sin
+    que nada apunte a la causa. La cabecera es legible cross-origin sólo si el CORS la expone
+    (`create_app` lo hace cuando `AppFeatures(csrf=True)`), o sea que no se la regala a un origen
+    que el CORS no permite; y el valor no sirve sin la cookie de sesión que el navegador ya tiene.
     """
     transport.emit(response, tokens)
 
@@ -234,15 +255,17 @@ def emit_tokens(
     #
     # El valor es un HMAC del `sid`, así que es válido mientras viva la sesión: alinearlo con
     # el refresh es lo coherente, y es el mismo número que la cookie de refresh.
+    valor = derive_csrf_token(str(tokens.session_id), clave.get_secret_value())
     response.set_cookie(
         config.cookies.name_for("csrf"),
-        derive_csrf_token(str(tokens.session_id), clave.get_secret_value()),
+        valor,
         max_age=int(config.tokens.refresh_ttl.total_seconds()),
         httponly=False,
         secure=config.cookies.secure,
         samesite=config.cookies.same_site,
         path=config.cookies.path,
     )
+    response.headers[CSRF_HEADER] = valor
 
 
 def session_response_body(
@@ -463,6 +486,44 @@ def build_identity_router(
         respuesta = JSONResponse({"revoked": revocadas})
         transport.clear(respuesta)
         return respuesta
+
+    @router.get("/csrf", response_model=CsrfTokenResponse)
+    async def csrf(
+        response: Response,
+        auth: "AuthContext[t.Any]" = Depends(provide_auth),
+    ) -> CsrfTokenResponse:
+        """
+        El valor anti-CSRF de la sesión por cookie en curso.
+
+        Para el cliente que **no puede leer la cookie de CSRF**: una SPA en otro origen que la
+        API (`document.cookie` sólo ve las cookies de su propio host). Lo pide al abrir la
+        página con una sesión ya existente y lo guarda **en memoria** — nunca en
+        `localStorage`—; el sign-in y el refresh lo entregan además en la cabecera
+        `X-CSRF-Token`, así que sólo hace falta acá cuando la página se recarga.
+
+        Es seguro darlo: sólo un origen que el CORS permita puede leer la respuesta, y el valor
+        no sirve sin la cookie de sesión que el navegador ya tiene. Es `HMAC(secreto, sid)`, el
+        mismo cálculo que `emit_tokens`.
+
+        **401 sin sesión por cookie.** Un cliente Bearer no hace CSRF —adjunta su token a
+        propósito— y pedirlo es un error de uso, no algo que haya que contestar.
+        """
+        from hexcore.darwin.application.container import get_identity_container
+        from hexcore.darwin.domain.exceptions import UnauthenticatedError
+        from hexcore.darwin.infrastructure.hashing import derive_csrf_token
+
+        config = get_identity_container().config
+        session_id = getattr(auth.actor, "session_id", None)
+        if auth.transport != "cookie" or session_id is None or config.secret_key is None:
+            raise UnauthenticatedError(
+                "El token anti-CSRF sólo existe para una sesión por cookie: un cliente Bearer "
+                "no hace CSRF."
+            )
+
+        response.headers["Cache-Control"] = "no-store"
+        return CsrfTokenResponse(
+            csrf_token=derive_csrf_token(str(session_id), config.secret_key.get_secret_value())
+        )
 
     @router.get("/me", response_model=MeResponse)
     async def me(auth: "AuthContext[t.Any]" = Depends(provide_auth)) -> MeResponse:
