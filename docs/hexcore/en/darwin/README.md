@@ -33,10 +33,10 @@ app = create_app(
 )
 ```
 
-That mounts eight routes under `/auth`:
+That mounts nine routes under `/auth`:
 
 `POST /sign-up` · `POST /verify-email` · `POST /sign-in` · `POST /refresh` · `POST /sign-out` ·
-`POST /sign-out-everywhere` · `GET /me` · `GET /sessions`
+`POST /sign-out-everywhere` · `GET /me` · `GET /sessions` · `GET /csrf`
 
 `identity_startup_steps()` returns the steps to unpack into `build_lifespan`: `IdentityStep` —
 which validates configuration, resolves the storage backend and brings up the signing keys — and
@@ -116,6 +116,26 @@ Duplicating the routes would duplicate the security checks too, and the copy tha
 the one that gets exploited.
 
 Cookies: `__Host-` + `HttpOnly` + `Secure` + `SameSite=Lax`, plus an explicit anti-CSRF check.
+
+#### The anti-CSRF token when the frontend is on another origin
+
+The check is a **double submit**: the CSRF cookie (not `HttpOnly`) is read by the client's JS and
+sent back in `X-CSRF-Token`. With the SPA on `app.example.com` and the API on `api.example.com`
+that cookie belongs to the API's host, so `document.cookie` on the page **cannot see it** — and
+every write with the session cookie answers 403 without anything pointing at the cause.
+
+Darwin hands the same value over through two paths the page *can* read, provided the CORS allows
+it (`create_app` exposes the header when `AppFeatures(csrf=True)`):
+
+- the **`X-CSRF-Token` response header** of everything that emits the cookie (`sign-in`, `refresh`,
+  impersonation…);
+- **`GET /auth/csrf`**, which returns `{"csrf_token": ...}` for the current cookie session, to
+  recover it when the page loads with a session that already exists. `401` without a cookie
+  session — a Bearer client does no CSRF — and `Cache-Control: no-store`.
+
+It is safe to give: only an origin the CORS allows can read the response, and the value is useless
+without the session cookie the browser already holds. Keep it **in memory** on the client, never in
+`localStorage`.
 
 The `sign_in_rate_limit` default uses `on_backend_error="deny"` — the opposite of the framework's
 `rate_limit` default, and on purpose: a downed Redis should not turn into unlimited credential

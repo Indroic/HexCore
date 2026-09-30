@@ -163,12 +163,20 @@ def create_app(
     # en vez de dejarle leer a la app *por qué* falló (y reintentar con un token nuevo). Y
     # el preflight se contesta acá, antes de gastar la resolución de la credencial.
     if resolved_features.cors:
+        expose_headers = list(getattr(config, "cors_expose_headers", []))
+        if resolved_features.csrf:
+            # Darwin entrega el token anti-CSRF también en esta cabecera (para la SPA en otro
+            # origen, que no puede leer la cookie): sin exponerla, el JS no la ve.
+            from hexcore.darwin.infrastructure.api.middlewares import CSRF_HEADER
+
+            if CSRF_HEADER.lower() not in (h.lower() for h in expose_headers):
+                expose_headers.append(CSRF_HEADER)
         cors_kwargs: dict[str, t.Any] = {
             "allow_origins": list(getattr(config, "allow_origins", ["*"])),
             "allow_credentials": bool(getattr(config, "allow_credentials", True)),
             "allow_methods": list(getattr(config, "allow_methods", ["*"])),
             "allow_headers": list(getattr(config, "allow_headers", ["*"])),
-            "expose_headers": list(getattr(config, "cors_expose_headers", [])),
+            "expose_headers": expose_headers,
             "max_age": int(getattr(config, "cors_max_age", 600)),
         }
         origin_predicate = getattr(config, "cors_origin_predicate", None)

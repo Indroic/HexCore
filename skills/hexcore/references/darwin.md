@@ -38,8 +38,11 @@ app = create_app(
 )
 ```
 
-That mounts eight routes under `/auth`: `POST /sign-up`, `/verify-email`, `/sign-in`,
-`/refresh`, `/sign-out`, `/sign-out-everywhere`, and `GET /me`, `/sessions`.
+That mounts nine routes under `/auth`: `POST /sign-up`, `/verify-email`, `/sign-in`,
+`/refresh`, `/sign-out`, `/sign-out-everywhere`, and `GET /me`, `/sessions`, `/csrf`. With the SPA on
+another origin than the API it cannot read the CSRF cookie: everything that emits it also sends the
+value in the `X-CSRF-Token` response header (exposed by CORS when `csrf=True`), and `GET /auth/csrf`
+recovers it on page load (401 without a cookie session).
 
 `identity_startup_steps()` returns `IdentityStep` — validates configuration, resolves the
 storage backend, brings up the signing keys — and `SessionReaperStep`, which purges expired
