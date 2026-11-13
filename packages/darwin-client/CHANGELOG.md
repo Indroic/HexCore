@@ -1,3 +1,9 @@
+## darwin-client-v1.8.0 (2026-11-13)
+
+### Feat
+
+- **darwin**: los eventos de identidad llevan la IP y el navegador del cliente
+
 ## darwin-client-v1.7.0 (2026-11-13)
 
 ### Feat
