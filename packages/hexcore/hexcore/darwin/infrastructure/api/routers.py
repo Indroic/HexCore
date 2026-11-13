@@ -235,6 +235,9 @@ def emit_tokens(
     que nada apunte a la causa. La cabecera es legible cross-origin sólo si el CORS la expone
     (`create_app` lo hace cuando `AppFeatures(csrf=True)`), o sea que no se la regala a un origen
     que el CORS no permite; y el valor no sirve sin la cookie de sesión que el navegador ya tiene.
+    `IdentityConfig.expose_csrf_header=False` la apaga (y deja de exponerla en el CORS).
+
+    Sólo la llevan las respuestas que emiten la cookie: el sign-out, que la borra, no.
     """
     transport.emit(response, tokens)
 
@@ -267,7 +270,8 @@ def emit_tokens(
         samesite=config.cookies.same_site,
         path=config.cookies.path,
     )
-    response.headers[CSRF_HEADER] = valor
+    if config.expose_csrf_header:
+        response.headers[CSRF_HEADER] = valor
 
 
 def session_response_body(

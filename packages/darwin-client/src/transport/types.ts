@@ -53,4 +53,14 @@ export interface Transport {
    * fetcher, al recuperarse de un rechazo de CSRF. Opcional, como `onResponse`.
    */
   setCsrfToken?(token: string | undefined): void;
+
+  /**
+   * Si, **antes** de mandar una petición con este método, conviene pedir el token con
+   * `GET /auth/csrf`: el transporte lo necesita (API en otro origen, `crossOrigin`), no lo tiene en
+   * memoria y no sabe que falte la sesión. El fetcher lo consulta, pide el token una sola vez
+   * aunque haya varias escrituras en paralelo, y se lo entrega con `setCsrfToken` (`undefined` si
+   * no hubo sesión). Opcional: sin ella no se pide nada por adelantado y se recupera después, ante
+   * el 403.
+   */
+  needsCsrfToken?(method: string): boolean;
 }

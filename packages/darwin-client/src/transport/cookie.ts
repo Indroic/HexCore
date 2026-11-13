@@ -61,6 +61,20 @@ export interface CookieTransportOptions {
    * tests, no como modo de producción.
    */
   cookieJar?: CookieJar;
+
+  /**
+   * La API está en **otro host** que la página (`app.ejemplo.com` → `api.ejemplo.com`): la
+   * cookie CSRF es del host de la API y `document.cookie` no la ve nunca.
+   *
+   * Con `true` el transporte no intenta leerla —no hace falta `cookieJar`, y tampoco falla al
+   * construirse fuera de un navegador— y trabaja sólo con el token **en memoria**: lo toma de la
+   * cabecera `X-CSRF-Token` de lo que emite la cookie (sign-in, refresh) y, si la página se
+   * recargó y no lo tiene, el cliente lo pide con `GET /auth/csrf` **antes de la primera
+   * escritura** en vez de provocar un 403 para recuperarse después.
+   *
+   * Por defecto `false`: el transporte lee la cookie si puede y usa la memoria de respaldo.
+   */
+  crossOrigin?: boolean;
 }
 
 /**
@@ -85,12 +99,24 @@ export class CookieTransport implements Transport {
 
   private readonly csrfCookieNames: readonly string[];
   private readonly jar: CookieJar;
+  private readonly crossOrigin: boolean;
   private csrfEnMemoria: string | undefined;
+  /**
+   * Ya se preguntó y no había sesión (`GET /auth/csrf` dio 401), o se cerró la sesión: pedir otra
+   * vez antes de cada escritura anónima sería un 401 de más por cada una. Se levanta apenas hay
+   * señal de sesión nueva (`persist`) o llega un token (`onResponse`, `setCsrfToken`).
+   */
+  private sinSesionConocida = false;
 
   constructor(options: CookieTransportOptions = {}) {
     this.csrfCookieNames = nombresCandidatos(options.csrfCookieName ?? CSRF_POR_DEFECTO);
+    this.crossOrigin = options.crossOrigin === true;
 
-    if (options.cookieJar) {
+    if (this.crossOrigin) {
+      // Cross-origin la cookie no se puede leer, así que un jar sólo devolvería `undefined`
+      // (o, peor, una cookie homónima de la propia página). No se consulta.
+      this.jar = { get: () => undefined };
+    } else if (options.cookieJar) {
       this.jar = options.cookieJar;
     } else if (typeof document !== "undefined") {
       this.jar = documentCookieJar();
@@ -130,21 +156,38 @@ export class CookieTransport implements Transport {
   }
 
   persist(_tokens: DarwinTokens): void {
-    // No-op: ver el docstring de la clase.
+    // El navegador ya guardó las cookies: aquí sólo se anota que hay sesión (nueva), para que
+    // una escritura sin token en memoria lo pida en vez de darlo por perdido.
+    this.sinSesionConocida = false;
   }
 
   clear(): void {
-    // El token CSRF era de la sesión que se cierra.
+    // El token CSRF era de la sesión que se cierra, y ya no hay a quién pedírselo.
     this.csrfEnMemoria = undefined;
+    this.sinSesionConocida = true;
   }
 
   onResponse(response: Response): void {
     const token = response.headers.get(CABECERA_CSRF);
     // Una respuesta sin la cabecera (cualquier GET) no borra el que ya se tenía.
-    if (token) this.csrfEnMemoria = token;
+    if (token) {
+      this.csrfEnMemoria = token;
+      this.sinSesionConocida = false;
+    }
   }
 
   setCsrfToken(token: string | undefined): void {
     this.csrfEnMemoria = token || undefined;
+    // `undefined` es «lo pedí y no hay»; un valor, que hay sesión.
+    this.sinSesionConocida = !this.csrfEnMemoria;
+  }
+
+  needsCsrfToken(method: string): boolean {
+    return (
+      this.crossOrigin &&
+      !METODOS_SEGUROS.has(method.toUpperCase()) &&
+      this.csrfEnMemoria === undefined &&
+      !this.sinSesionConocida
+    );
   }
 }

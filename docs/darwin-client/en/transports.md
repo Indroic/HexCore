@@ -157,6 +157,26 @@ The default is `true`. It does not affect the resend after a refresh triggered b
 When the cookie *is* readable (same origin) the jar wins over the token in memory, because that is
 the value the server compares.
 
+#### `crossOrigin: true`
+
+```ts
+new CookieTransport({ crossOrigin: true });
+```
+
+Declares that the API is on another host, so the cookie can never be read. The transport then:
+
+- **does not look at any cookie** — no `cookieJar` is needed, and it can be built outside a
+  browser;
+- works only with the token **in memory** (from the `X-CSRF-Token` header, or `GET /auth/csrf`);
+- **asks for the token before the first write** when the page was reloaded and has none, instead
+  of causing a 403 to recover from afterwards. One `GET /auth/csrf` even if several writes start
+  at once; reads never ask. Without a session (401) the write goes out without a token and the
+  client does not ask again until a sign-in happens.
+
+`csrfRecovery` stays as the safety net for the rest (session rotated by another tab, for
+example). The server needs `IdentityConfig.expose_csrf_header` on (the default) so the sign-in and
+refresh headers reach the page.
+
 ⚠️ **A cookie transport in a cross-site deployment also needs the server configured to match.**
 `SameSite`, `Secure` and the CORS `Access-Control-Allow-Credentials` header are set on the
 Darwin side; getting them wrong shows up as a session that silently never authenticates rather

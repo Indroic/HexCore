@@ -164,7 +164,9 @@ def create_app(
     # el preflight se contesta acá, antes de gastar la resolución de la credencial.
     if resolved_features.cors:
         expose_headers = list(getattr(config, "cors_expose_headers", []))
-        if resolved_features.csrf:
+        # `IdentityConfig.expose_csrf_header=False` apaga la cabecera y su exposición a la vez:
+        # exponer una cabecera que el servidor no emite sólo ensancharía el CORS sin motivo.
+        if resolved_features.csrf and _expone_cabecera_csrf(config):
             # Darwin entrega el token anti-CSRF también en esta cabecera (para la SPA en otro
             # origen, que no puede leer la cookie): sin exponerla, el JS no la ve.
             from hexcore.darwin.infrastructure.api.middlewares import CSRF_HEADER
@@ -320,3 +322,24 @@ def _config() -> t.Any:
     from hexcore.config import LazyConfig
 
     return LazyConfig.get_config()
+
+
+def _expone_cabecera_csrf(config: t.Any) -> bool:
+    """
+    `IdentityConfig.expose_csrf_header` de la configuración que Darwin va a usar, o `True`.
+
+    Se lee de `ServerConfig.darwin` y, si no está, del contenedor **si ya está configurado**.
+    `create_app` suele correr antes que `configure_identity` (que va en el lifespan), y el CORS
+    de Starlette se arma una sola vez: en ese caso no hay config que leer, y se queda con el
+    default (`True`), que sólo expone de más una cabecera que el servidor no emite. Quien apaga el
+    flag y quiere que el CORS también lo refleje lo declara en `ServerConfig.darwin`.
+    """
+    identidad = getattr(config, "darwin", None)
+    if identidad is None:
+        from hexcore.darwin.application.container import get_identity_container
+
+        try:
+            identidad = get_identity_container().config
+        except RuntimeError:
+            return True
+    return bool(getattr(identidad, "expose_csrf_header", True))

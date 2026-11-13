@@ -427,6 +427,21 @@ class IdentityConfig(BaseModel):
     #: el comodín; la responsabilidad de no hacerlo es de quien lo escribe.
     trusted_origin_predicate: t.Callable[[str], bool] | None = None
 
+    #: Si las respuestas que emiten la cookie de CSRF (sign-in, refresh, magic-link…) repiten su
+    #: valor en la cabecera `X-CSRF-Token`, y si `create_app` la incluye en
+    #: `Access-Control-Expose-Headers` cuando el CORS es el de HexCore y `AppFeatures(csrf=True)`.
+    #:
+    #: Es lo que permite a una SPA con la API en **otro host** (`app.ejemplo.com` contra
+    #: `api.ejemplo.com`) firmar sus escrituras: la cookie de CSRF es del host de la API y
+    #: `document.cookie` de la página no la ve, así que sin la cabecera no tiene de dónde sacar el
+    #: valor. `True` por defecto, que es lo que Darwin ya hacía antes de que existiera el flag.
+    #:
+    #: Apagarlo **no** cambia la cookie ni el chequeo, y tampoco quita `GET /auth/csrf` (que sigue
+    #: dando el valor a quien tiene sesión). No expone nada nuevo: la cookie ya es legible por el
+    #: JS del mismo host, y el valor no sirve sin la cookie de sesión. Apagalo sólo si el frontend
+    #: está en el mismo origen y no querés la cabecera en la respuesta.
+    expose_csrf_header: bool = True
+
     #: Proxies inversos delante de la app: IPs sueltas o redes CIDR (`"10.0.0.0/8"`,
     #: `"172.18.0.5"`). Determina de dónde sale la IP del cliente que Darwin guarda en la sesión,
     #: lleva en los eventos de identidad y usa como clave del límite de intentos de sign-in.

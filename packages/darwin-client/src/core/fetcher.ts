@@ -51,6 +51,23 @@ export function createFetcher(options: FetcherOptions): Fetcher {
    * red o con una respuesta inesperada devuelve `undefined`, y quien lo pidió responde con el
    * rechazo de CSRF original, que sí dice qué pasó.
    */
+  /** El `GET /auth/csrf` en curso, compartido por las escrituras que lo necesitan a la vez. */
+  let precargaEnVuelo: Promise<void> | undefined;
+
+  /**
+   * Pide el token por adelantado y se lo da al transporte. Un solo `GET` aunque N escrituras lo
+   * pidan a la vez: cada una esperaría lo mismo, y sin esto la ráfaga de la primera carga de la
+   * página sería N peticiones iguales.
+   */
+  function precargarTokenCsrf(): Promise<void> {
+    precargaEnVuelo ??= pedirTokenCsrf()
+      .then((token) => options.transport.setCsrfToken?.(token))
+      .finally(() => {
+        precargaEnVuelo = undefined;
+      });
+    return precargaEnVuelo;
+  }
+
   async function pedirTokenCsrf(): Promise<string | undefined> {
     try {
       const respuesta = await options.fetchImpl(joinUrl(options.baseUrl, RUTA_CSRF), {
@@ -80,6 +97,12 @@ export function createFetcher(options: FetcherOptions): Fetcher {
     }
 
     const method = (init.method ?? "GET").toUpperCase();
+    // Cookie cross-origin y página recién recargada: el token se pide antes de la primera
+    // escritura, no se aprende de un 403. Si falla (sin sesión, sin red) se sigue sin él y el
+    // servidor decide; el camino de recuperación de abajo cubre el resto.
+    if (options.transport.needsCsrfToken?.(method)) {
+      await precargarTokenCsrf();
+    }
     const transportHeaders = await options.transport.requestHeaders(method);
 
     const headers = new Headers(init.headers);
