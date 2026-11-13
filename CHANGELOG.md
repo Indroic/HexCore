@@ -1,3 +1,10 @@
+## hexcore-v11.4.0 (2026-11-13)
+
+### Feat
+
+- **darwin-client**: csrfRecovery configurable y tests de la secuencia CSRF con rotación
+- **darwin**: el 403 de CSRF distingue el token de una sesión anterior de uno inválido
+
 ## hexcore-v11.3.0 (2026-09-30)
 
 ### Feat
