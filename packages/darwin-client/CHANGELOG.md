@@ -1,3 +1,9 @@
+## darwin-client-v1.9.0 (2026-11-13)
+
+### Feat
+
+- **darwin**: `expose_csrf_header` y modo `crossOrigin` del cliente para la API en otro host
+
 ## darwin-client-v1.8.0 (2026-11-13)
 
 ### Feat
