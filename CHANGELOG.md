@@ -1,3 +1,9 @@
+## hexcore-v11.6.0 (2026-11-13)
+
+### Feat
+
+- **darwin**: `expose_csrf_header` y modo `crossOrigin` del cliente para la API en otro host
+
 ## hexcore-v11.5.0 (2026-11-13)
 
 ### Feat
