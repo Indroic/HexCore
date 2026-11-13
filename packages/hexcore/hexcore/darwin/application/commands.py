@@ -116,6 +116,8 @@ class RefreshSession(Command):
 
     refresh_token: str
     transport: Transport = "cookie"
+    ip_address: str | None = None
+    user_agent: str | None = None
 
 
 class SignOut(Command):
@@ -277,7 +279,10 @@ class RefreshSessionHandler(
 ):
     async def handle(self, command: RefreshSession) -> RefreshResult:
         sesion, par = await self.service.refresh(
-            command.refresh_token, transport=command.transport
+            command.refresh_token,
+            transport=command.transport,
+            ip_address=command.ip_address,
+            user_agent=command.user_agent,
         )
         return RefreshResult(session=sesion, tokens=par)
 

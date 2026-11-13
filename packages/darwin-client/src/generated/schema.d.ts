@@ -1912,6 +1912,8 @@ export interface components {
             impersonated: boolean;
             /** Ip Address */
             ip_address: string | null;
+            /** Last Seen At */
+            last_seen_at?: string | null;
             /** Session Id */
             session_id: string;
             /** Transport */

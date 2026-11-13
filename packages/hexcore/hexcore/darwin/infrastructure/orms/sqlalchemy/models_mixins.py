@@ -222,6 +222,10 @@ class SessionMixin(TimestampMixin):
 
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    #: Cuándo se creó o rotó por última vez. Nullable: las filas anteriores a la columna no lo tienen.
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     #: Redundante con `actor != subject` a propósito: el motivo y quién autorizó no se
     #: pueden deducir de los ids, y sin ellos la auditoría no responde nada.

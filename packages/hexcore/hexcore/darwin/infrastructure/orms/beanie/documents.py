@@ -158,6 +158,7 @@ class SessionDocument(_Base):
 
     ip_address: str | None = None
     user_agent: str | None = None
+    last_seen_at: datetime | None = None
 
     impersonation_reason: str | None = None
     impersonation_granted_by: UUID | None = None

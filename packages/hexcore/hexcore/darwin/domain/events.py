@@ -64,6 +64,13 @@ class _IdentityEventFields(DomainEvent):
     impersonated: bool = False
     #: Correlación con el `REQUEST_ID` de la capa HTTP, para cruzar logs con auditoría.
     request_id: str | None = None
+    #: La IP del cliente de la petición que originó el evento, ya resuelta con
+    #: `IdentityConfig.trusted_proxies`. `None` fuera de una petición HTTP (un job, un CLI, un
+    #: test que llama al servicio directo) o si quien llamó no la pasó. En un evento de reuso de
+    #: refresh es la IP de **quien presentó el token consumido**, no la del dueño de la sesión.
+    client_ip: str | None = None
+    #: El `User-Agent` de esa misma petición, truncado a 1024 caracteres.
+    user_agent: str | None = None
 
 
 # ── Usuario ──────────────────────────────────────────────────────────────────

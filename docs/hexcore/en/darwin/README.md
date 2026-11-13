@@ -174,6 +174,43 @@ The `sign_in_rate_limit` default uses `on_backend_error="deny"` — the opposite
 `rate_limit` default, and on purpose: a downed Redis should not turn into unlimited credential
 stuffing.
 
+#### Client IP and browser in the identity events
+
+`UserSignedInEvent`, `UserSignInFailedEvent`, `SessionCreatedEvent`, `SessionRefreshedEvent`,
+`SessionReuseDetectedEvent` and the impersonation events carry **`client_ip`** and **`user_agent`**
+(both `str | None`), taken from the request that originated them. An alert or audit handler no
+longer has to rebuild them outside the framework. They are `None` outside an HTTP request (a job,
+the CLI, a test calling the service directly).
+
+Where the IP comes from is decided by `IdentityConfig.trusted_proxies`:
+
+| `trusted_proxies` | `client_ip` |
+| :-- | :-- |
+| `()` (default) | `request.client.host`. `X-Forwarded-For` is **ignored**: the client writes it |
+| `("10.0.0.0/8", "172.18.0.5")` and the TCP peer is **in** the list | the last address in `X-Forwarded-For` that is **not** a trusted proxy, reading right to left |
+| the same, but the TCP peer is **not** in the list | `request.client.host`: a client that arrives directly cannot choose its IP |
+
+Entries are IPs or CIDR ranges; a malformed one fails at configure time. A missing, malformed or
+all-proxies header falls back to the peer's IP.
+
+The same IP is used for the session row, the events and the **sign-in rate-limit key**. Behind a
+proxy with `trusted_proxies=()` every client shares the proxy's IP and therefore one bucket;
+declaring the proxy gives each client its own. The same applies to the `oauth`, `passkey`,
+`magic_link`, `two_factor` and `impersonate` routes, which used to key on the peer's IP.
+
+- **On reuse** (`SessionReuseDetectedEvent`) the IP and browser are those of **whoever presented
+  the consumed token**, not of the session's owner: the useful datum when investigating a theft.
+- **`SessionService.refresh`** takes `ip_address=` and `user_agent=` (optional). The rotated
+  session **keeps** the origin's `ip_address` and `user_agent` and sets `last_seen_at` to the
+  moment of the rotation; the request's own values only travel in the events.
+- **`GET /auth/sessions`** adds `last_seen_at`, for a "My sessions" screen.
+- **Impersonation.** `ImpersonationService` now **publishes** `ImpersonationStartedEvent` and
+  `ImpersonationEndedEvent` (`ended_by="manual"`) on the event bus, in addition to writing the
+  audit sink. Until now both were declared but never published.
+- `IdentitySession.last_seen_at` is new and nullable. Migration: see
+  [Migrating: `last_seen_at`](storage.md#migrating-last_seen_at-on-the-session).
+
+
 ---
 
 ## The actor crosses the queue
@@ -200,6 +237,7 @@ IdentityConfig(
     session_model=None,              # same for the other five tables
     storage=None,                    # "sqlalchemy" | "beanie" | None (detects)
     trusted_origins=(),
+    trusted_proxies=(),
     worker_context_ttl=timedelta(hours=24),
     require_verified_email=True,
     max_verification_attempts=5,
@@ -213,6 +251,7 @@ IdentityConfig(
 | `session_model`, `account_model`, `verification_model`, `audit_model`, `jwks_model` | `None` | Same for the other five tables. **Rarely needed**: if you declare your models, Darwin finds them (see below) |
 | `storage` | `None` | `"sqlalchemy"`, `"beanie"`, or detection |
 | `trusted_origins` | `()` | Valid origins for the anti-CSRF check |
+| `trusted_proxies` | `()` | Reverse proxies (IPs or CIDR) whose `X-Forwarded-For` is honored. Empty: the header is ignored |
 | `worker_context_ttl` | 24 h | Window in which the actor envelope remains redeemable |
 | `require_verified_email` | `True` | Whether sign-in requires a verified email. **Does not apply to an account with no email**: requiring it there would be a permanent 403 |
 | `usernames` | `None` | The `UsernamePolicy`, or `None` if this app has no usernames |

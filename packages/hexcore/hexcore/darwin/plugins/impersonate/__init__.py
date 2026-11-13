@@ -144,6 +144,7 @@ class ImpersonatePlugin(DarwinPlugin):
                     clock=contenedor.clock(),
                     policy=self._policy,
                     audit=_sink_de(contenedor),
+                    events=contenedor.events(),
                 )
             return self._service
 
