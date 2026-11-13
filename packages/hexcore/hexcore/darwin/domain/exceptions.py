@@ -36,6 +36,8 @@ __all__ = [
     "EmailNotVerifiedError",
     "ImpersonationNotPermittedError",
     "CsrfValidationError",
+    "CSRF_CODE_INVALID",
+    "CSRF_CODE_PREVIOUS_SESSION",
     # ── Estado (409 / 423) ──
     "EmailAlreadyRegisteredError",
     "UsernameAlreadyTakenError",
@@ -164,13 +166,34 @@ class ImpersonationNotPermittedError(AuthorizationError):
     """
 
 
+#: `code` de un rechazo de CSRF cuyo token no verifica contra la sesión en curso ni contra
+#: ninguna anterior de su familia: lo mandó alguien que no lo recibió del servidor.
+CSRF_CODE_INVALID = "CsrfTokenInvalid"
+
+#: `code` de un rechazo de CSRF cuyo token **sí** fue válido, pero de una sesión anterior de la
+#: misma familia de rotación: el cliente firmó antes de que un refresh rotara el `sid`. Es el
+#: caso que se arregla pidiendo el token vigente (`GET /auth/csrf`) y reintentando.
+CSRF_CODE_PREVIOUS_SESSION = "CsrfTokenFromPreviousSession"
+
+
 class CsrfValidationError(AuthorizationError):
     """
     Falló el chequeo anti-CSRF del transporte por cookie.
 
     Sólo aplica al camino de cookie: un cliente Bearer manda el token a propósito en cada
     petición, así que no hay nada que falsificar desde otro origen.
+
+    `code` distingue, **cuando el rechazo es por el token**, entre `CSRF_CODE_INVALID` y
+    `CSRF_CODE_PREVIOUS_SESSION`; viaja en el cuerpo del 403 junto a `error`
+    (`CsrfValidationError`, que sigue siendo el discriminante). Es `None` cuando el rechazo
+    no es por el token (un origen en el que no se confía), porque ahí no hay nada que
+    recuperar. No revela nada útil a un atacante: sólo se llega a `CSRF_CODE_PREVIOUS_SESSION`
+    mandando un token que el servidor ya emitió para esa misma familia de sesiones.
     """
+
+    def __init__(self, *args: object, code: str | None = None) -> None:
+        super().__init__(*args)
+        self.code = code
 
 
 # ── Estado del recurso ────────────────────────────────────────────────────────

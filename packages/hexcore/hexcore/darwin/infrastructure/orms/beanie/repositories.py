@@ -245,6 +245,18 @@ class BeanieSessionRepository(_BaseBeanieRepository, AbstractSessionRepository):
             {"$set": {"revoked_at": at, "updated_at": datetime.now(UTC)}}
         )
 
+    async def list_family_session_ids(
+        self, family_id: UUID, *, limit: int = 100
+    ) -> list[UUID]:
+        """Los `id` de la familia, las más recientes primero. Ver el puerto."""
+        docs = (
+            await self._doc.find(self._doc.family_id == family_id)
+            .sort("-created_at")
+            .limit(limit)
+            .to_list()
+        )
+        return [doc.entity_id for doc in docs]
+
     async def revoke_family(
         self, family_id: UUID, *, at: datetime, reason: str
     ) -> int:

@@ -381,6 +381,20 @@ class SessionService:
             impersonation=impersonacion,
         )
 
+    async def previous_session_ids(self, session_id: UUID, *, limit: int = 100) -> list[UUID]:
+        """
+        Los `sid` de las sesiones **anteriores** de la familia de `session_id` (sin incluirla).
+
+        Existe para que `CsrfMiddleware` reconozca un token anti-CSRF que fue válido para la
+        sesión que el refresh acaba de reemplazar. Lee la base, pero sólo en el camino de
+        rechazo y con tope: el camino feliz de un request no lo llama.
+        """
+        sesion = await self._sessions.get(session_id)
+        if sesion is None:
+            return []
+        ids = await self._sessions.list_family_session_ids(sesion.family_id, limit=limit)
+        return [sid for sid in ids if sid != session_id]
+
     # ── Rotar ─────────────────────────────────────────────────────────────────
     async def refresh(
         self, refresh_token: str, *, transport: Transport

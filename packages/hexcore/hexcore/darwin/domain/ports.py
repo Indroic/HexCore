@@ -187,6 +187,26 @@ class AbstractSessionRepository(abc.ABC):
     async def revoke(self, session_id: UUID, *, at: datetime, reason: str) -> None:
         raise NotImplementedError
 
+    async def list_family_session_ids(
+        self, family_id: UUID, *, limit: int = 100
+    ) -> "list[UUID]":
+        """
+        Los `id` de las sesiones de una familia de rotación, las **más recientes primero**, con
+        tope de `limit`.
+
+        Sólo lo usa `CsrfMiddleware` para clasificar un rechazo de CSRF: reconocer que el token
+        que llegó era de una sesión anterior de la familia (el cliente firmó antes de que un
+        refresh rotara el `sid`). Incluye revocadas y consumidas: justamente las anteriores lo
+        están.
+
+        **No es abstracto a propósito**: es un puerto agregado después, y volverlo abstracto
+        rompería a todo repositorio propio ya escrito. La implementación por defecto devuelve
+        `[]`, y entonces el rechazo se clasifica siempre como token inválido: el comportamiento
+        (403) no cambia, sólo se pierde el `code` más específico.
+        """
+        del family_id, limit
+        return []
+
     @abc.abstractmethod
     async def revoke_family(self, family_id: UUID, *, at: datetime, reason: str) -> int:
         """
