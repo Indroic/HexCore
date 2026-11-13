@@ -124,6 +124,36 @@ the reads keep working. The transport covers it without any configuration:
 - **it never touches `localStorage`.** The token belongs to the session; it lives in a variable of
   the transport, `clear()` (sign-out) forgets it, and a reload recovers it with `GET /auth/csrf`.
 
+### CSRF and session rotation
+
+The refresh rotates the session, and the CSRF token is `HMAC(sid)`: it **changes on every
+refresh**. The client handles it like this, with no configuration:
+
+- **After a refresh, the retried request is signed again with the current token.** A refreshable
+  401 refreshes and resends; the resend reads the token from the transport again, which the refresh
+  has just updated from the `X-CSRF-Token` header of its response. The old signature is never
+  resent.
+- **A 403 `CsrfValidationError` triggers a single recovery** (`GET /auth/csrf`) and a single
+  retry. It covers the request that went out signed just before another tab refreshed. If the retry
+  is rejected as well, the error is thrown: there is no third attempt.
+- **A concurrent burst with an expired access token does a single refresh.** The other requests
+  wait for that same refresh and resend with the new token (the server revokes the family if it
+  sees two refreshes with the same token, so this is not optional).
+
+The 403 carries the server's `code` in `error.payload.code`: `CsrfTokenFromPreviousSession` (the
+token was from an earlier session of the family) or `CsrfTokenInvalid`. The client does not decide
+with it: it recovers on any `CsrfValidationError`, and the current token that comes back from
+`GET /auth/csrf` tells whether retrying was worthwhile. It is there for your app to log.
+
+To turn off the 403 recovery and see the rejection as is:
+
+```ts
+createDarwinClient({ baseUrl, transport, csrfRecovery: false });
+```
+
+The default is `true`. It does not affect the resend after a refresh triggered by a 401, which is
+**always** signed again. On the server side, see *CSRF and rotation* in the Darwin guide.
+
 When the cookie *is* readable (same origin) the jar wins over the token in memory, because that is
 the value the server compares.
 

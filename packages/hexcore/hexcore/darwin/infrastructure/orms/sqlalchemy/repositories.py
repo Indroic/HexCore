@@ -221,6 +221,19 @@ class SqlAlchemySessionRepository(_BaseIdentityRepository, AbstractSessionReposi
             )
             await session.commit()
 
+    async def list_family_session_ids(
+        self, family_id: UUID, *, limit: int = 100
+    ) -> list[UUID]:
+        """Los `id` de la familia, las más recientes primero. Ver el puerto."""
+        async with self._session_scope() as session:
+            resultado = await session.execute(
+                select(self._model.id)
+                .where(self._model.family_id == family_id)
+                .order_by(self._model.created_at.desc())
+                .limit(limit)
+            )
+            return list(resultado.scalars().all())
+
     async def revoke_family(
         self, family_id: UUID, *, at: datetime, reason: str
     ) -> int:

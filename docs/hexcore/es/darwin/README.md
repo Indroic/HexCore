@@ -132,6 +132,39 @@ la cookie de sesión que el navegador ya tiene. `@hexcore-js/darwin-client` lo g
 (nunca en `localStorage`) y reintenta una escritura una vez cuando el servidor responde 403
 `CsrfValidationError`.
 
+#### CSRF y rotación
+
+El refresh **rota la sesión**: crea una con `sid` nuevo, y el token anti-CSRF es
+`HMAC(secreto, sid)`. Por lo tanto **cambia en cada refresh**. Una petición firmada *antes* del
+refresh —un reintento tras un 401, o una escritura que salió justo antes de que otra pestaña
+refrescara— llega con el token de la sesión anterior y se rechaza con 403, aunque el usuario no
+haya hecho nada mal.
+
+- **`POST /auth/refresh` siempre entrega el token nuevo** en la cabecera `X-CSRF-Token` (y en la
+  cookie de CSRF), igual que `sign-in`. Es lo que permite a un cliente que no lee la cookie
+  firmar con el vigente sin pedirlo aparte.
+- **El 403 dice qué pasó.** El cuerpo conserva `error: "CsrfValidationError"` y agrega `code`:
+
+  | `code` | Significa | Qué hacer |
+  | :-- | :-- | :-- |
+  | `CsrfTokenFromPreviousSession` | El token fue válido, pero de una sesión anterior de la misma familia de rotación | Pedir el vigente (`GET /auth/csrf`) y repetir |
+  | `CsrfTokenInvalid` | No verifica contra ninguna sesión de la familia, o no vino | No es recuperable: un token inventado o ajeno |
+
+  Un rechazo por **origen** (`trusted_origins`) no lleva `code`: no hay token que recuperar.
+- **Sin pistas para un atacante.** Ambos son 403 con el mismo `error`. Sólo se llega a
+  `CsrfTokenFromPreviousSession` mandando un token que el servidor ya emitió para *esa misma
+  familia* con la cookie de sesión de la víctima; un valor inventado o de otra cuenta da
+  `CsrfTokenInvalid`.
+- **Costo.** La clasificación lee la base (las sesiones de la familia, con tope de 100) y sólo
+  corre al **rechazar**; el camino feliz de un request no cambia. Es de mejor esfuerzo: si la
+  lectura falla, el rechazo sale como `CsrfTokenInvalid`, nunca como un 500.
+- **Backends propios.** `AbstractSessionRepository.list_family_session_ids` es un método nuevo
+  **no abstracto**: sin implementarlo todo sigue andando y el rechazo es siempre
+  `CsrfTokenInvalid`. Los repositorios de SQLAlchemy y Beanie ya lo implementan.
+
+El cliente (`@hexcore-js/darwin-client`) lo resuelve solo: ver
+[CSRF y rotación en el cliente](../../../darwin-client/es/transportes.md#csrf-y-rotación-de-la-sesión).
+
 ---
 
 ## El actor cruza la cola

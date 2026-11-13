@@ -259,6 +259,15 @@ class FakeSessionRepository(AbstractSessionRepository):
                 )
                 self.reasons[session_id] = reason
 
+    async def list_family_session_ids(
+        self, family_id: UUID, *, limit: int = 100
+    ) -> list[UUID]:
+        """Los `id` de la familia, las más recientes primero. Ver el puerto."""
+        with self._lock:
+            familia = [s for s in self._por_id.values() if s.family_id == family_id]
+        familia.sort(key=lambda s: s.created_at, reverse=True)
+        return [s.id for s in familia[:limit]]
+
     async def revoke_family(
         self, family_id: UUID, *, at: datetime, reason: str
     ) -> int:

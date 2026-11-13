@@ -1006,3 +1006,193 @@ def test_una_app_sin_el_feature_no_resuelve_credenciales(contenedor):
     r = TestClient(app).get("/x")
 
     assert r.json()["hay_contexto"] is False
+
+
+# ── 2c. CSRF y rotación de sesión (HC-01) ─────────────────────────────────────
+#
+# El refresh rota la sesión: crea una con `sid` nuevo, y el token anti-CSRF es `HMAC(sid)`. Una
+# petición firmada **antes** del refresh llega con el token de la sesión anterior y se rechaza
+# con 403. Es un caso distinto de un token inventado, y el cliente lo resuelve pidiendo el token
+# vigente: por eso el 403 lleva un `code` que los distingue.
+CODIGO_SESION_ANTERIOR = "CsrfTokenFromPreviousSession"
+CODIGO_INVALIDO = "CsrfTokenInvalid"
+
+
+def _escribir(client: TestClient, token: str | None):
+    """Una escritura por cookie con el token dado en el header (o sin header si es `None`)."""
+    headers = {"Origin": ORIGEN}
+    if token is not None:
+        headers[CSRF_HEADER] = token
+    return client.post("/auth/sign-out", headers=headers)
+
+
+def test_el_refresh_entrega_siempre_el_token_csrf_de_la_sesion_nueva(client, contenedor):
+    _alta(client)
+    anterior = _sign_in_cookie(client).headers[CSRF_HEADER]
+
+    r = client.post("/auth/refresh", headers=_csrf_headers(client))
+
+    assert r.status_code == 200, r.text
+    sid_nuevo = r.json()["session_id"]
+    assert r.headers[CSRF_HEADER] == derive_csrf_token(sid_nuevo, CLAVE)
+    assert r.headers[CSRF_HEADER] != anterior
+
+
+def test_un_token_de_una_sesion_anterior_de_la_familia_tiene_su_propio_code(client, contenedor):
+    _alta(client)
+    anterior = _sign_in_cookie(client).headers[CSRF_HEADER]
+    r = client.post("/auth/refresh", headers=_csrf_headers(client))
+    assert r.status_code == 200, r.text
+
+    r = _escribir(client, anterior)
+
+    assert r.status_code == 403
+    cuerpo = r.json()
+    assert cuerpo["error"] == "CsrfValidationError"
+    assert cuerpo["code"] == CODIGO_SESION_ANTERIOR
+    assert "sesión anterior" in cuerpo["detail"]
+
+
+def test_tambien_se_reconoce_un_token_de_dos_rotaciones_atras(client, contenedor):
+    _alta(client)
+    primero = _sign_in_cookie(client).headers[CSRF_HEADER]
+    assert client.post("/auth/refresh", headers=_csrf_headers(client)).status_code == 200
+    assert client.post("/auth/refresh", headers=_csrf_headers(client)).status_code == 200
+
+    r = _escribir(client, primero)
+
+    assert r.status_code == 403
+    assert r.json()["code"] == CODIGO_SESION_ANTERIOR
+
+
+def test_un_token_inventado_tiene_el_code_generico(client, contenedor):
+    _alta(client)
+    _sign_in_cookie(client)
+
+    r = _escribir(client, "x" * 43)
+
+    assert r.status_code == 403
+    cuerpo = r.json()
+    assert cuerpo["error"] == "CsrfValidationError"
+    assert cuerpo["code"] == CODIGO_INVALIDO
+    assert "sesión anterior" not in cuerpo["detail"]
+
+
+def test_un_token_inventado_tras_un_refresh_sigue_siendo_generico(client, contenedor):
+    """Que la sesión haya rotado no vuelve «de una sesión anterior» a cualquier valor."""
+    _alta(client)
+    _sign_in_cookie(client)
+    assert client.post("/auth/refresh", headers=_csrf_headers(client)).status_code == 200
+
+    r = _escribir(client, derive_csrf_token("00000000-0000-0000-0000-000000000000", CLAVE))
+
+    assert r.status_code == 403
+    assert r.json()["code"] == CODIGO_INVALIDO
+
+
+def test_el_token_de_otra_cuenta_es_generico_no_de_sesion_anterior(client, contenedor):
+    """Un token **válido** pero de otra familia no se reconoce como «de una sesión anterior»."""
+    ajeno = TestClient(client.app, raise_server_exceptions=False)
+    r = ajeno.post("/auth/sign-up", json={"email": "bea@test.com", "password": PASS})
+    assert r.status_code == 201, r.text
+    r = ajeno.post(
+        "/auth/verify-email",
+        json={"email": "bea@test.com", "code": r.json()["verification_code"]},
+    )
+    assert r.status_code == 200, r.text
+    token_ajeno = ajeno.post(
+        "/auth/sign-in",
+        json={"email": "bea@test.com", "password": PASS},
+        headers={"Origin": ORIGEN},
+    ).headers[CSRF_HEADER]
+
+    # El alta y el sign-in tienen un límite de 5 por IP que comparten las dos cuentas del test.
+    from hexcore.config import LazyConfig
+    from hexcore.infrastructure.cache.cache_backends.memory import MemoryCache
+
+    LazyConfig.get_config().cache_backend = MemoryCache()
+
+    _alta(client)
+    entrada = _sign_in_cookie(client)
+    assert entrada.status_code == 200, entrada.text
+    r = _escribir(client, token_ajeno)
+
+    assert r.status_code == 403
+    assert r.json()["code"] == CODIGO_INVALIDO
+
+
+def test_sin_el_header_el_rechazo_tiene_el_code_generico(client, contenedor):
+    _alta(client)
+    _sign_in_cookie(client)
+
+    r = _escribir(client, None)
+
+    assert r.status_code == 403
+    assert r.json()["code"] == CODIGO_INVALIDO
+
+
+def test_un_origen_ajeno_se_rechaza_sin_code(client, contenedor):
+    """No es un problema del token: no hay nada que recuperar pidiendo otro."""
+    _alta(client)
+    _sign_in_cookie(client)
+
+    r = client.post(
+        "/auth/sign-out",
+        headers={"Origin": "https://evil.test", CSRF_HEADER: client.cookies.get("csrf") or ""},
+    )
+
+    assert r.status_code == 403
+    assert "code" not in r.json()
+
+
+def test_un_repositorio_sin_listado_de_familia_cae_al_code_generico(client, contenedor):
+    """Un backend propio que no implementa el puerto nuevo no pierde el 403, sólo el `code`."""
+    _alta(client)
+    anterior = _sign_in_cookie(client).headers[CSRF_HEADER]
+    assert client.post("/auth/refresh", headers=_csrf_headers(client)).status_code == 200
+
+    from hexcore.darwin.domain.ports import AbstractSessionRepository
+
+    repo = contenedor.sessions_repository()
+    original = type(repo).list_family_session_ids
+    type(repo).list_family_session_ids = AbstractSessionRepository.list_family_session_ids
+    try:
+        r = _escribir(client, anterior)
+    finally:
+        type(repo).list_family_session_ids = original
+
+    assert r.status_code == 403
+    assert r.json()["code"] == CODIGO_INVALIDO
+
+
+def test_si_la_clasificacion_falla_el_rechazo_sigue_siendo_un_403(client, contenedor):
+    """La lectura de la base es accesoria: si revienta nunca se convierte en un 500."""
+    _alta(client)
+    anterior = _sign_in_cookie(client).headers[CSRF_HEADER]
+    assert client.post("/auth/refresh", headers=_csrf_headers(client)).status_code == 200
+
+    repo = contenedor.sessions_repository()
+    original = type(repo).list_family_session_ids
+
+    async def _explota(self, family_id, *, limit=100):
+        raise RuntimeError("la base no responde")
+
+    type(repo).list_family_session_ids = _explota
+    try:
+        r = _escribir(client, anterior)
+    finally:
+        type(repo).list_family_session_ids = original
+
+    assert r.status_code == 403
+    assert r.json()["code"] == CODIGO_INVALIDO
+
+
+def test_el_token_vigente_sigue_pasando_tras_la_rotacion(client, contenedor):
+    """La clasificación sólo corre al rechazar: el camino feliz no cambia."""
+    _alta(client)
+    _sign_in_cookie(client)
+    assert client.post("/auth/refresh", headers=_csrf_headers(client)).status_code == 200
+
+    r = _escribir(client, client.cookies.get("csrf"))
+
+    assert r.status_code == 200, r.text

@@ -25,7 +25,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from hexcore.darwin.domain.context import AUTH_CONTEXT
-from hexcore.darwin.domain.exceptions import CsrfValidationError, IdentityError
+from hexcore.darwin.domain.exceptions import (
+    CSRF_CODE_INVALID,
+    CSRF_CODE_PREVIOUS_SESSION,
+    CsrfValidationError,
+    IdentityError,
+)
 
 if t.TYPE_CHECKING:
     from hexcore.darwin.application.config import IdentityConfig
@@ -224,12 +229,73 @@ class CsrfMiddleware(BaseHTTPMiddleware):
             logger.info(
                 "CSRF rechazado en %s %s: %s", request.method, request.url.path, exc
             )
-            return JSONResponse(
-                status_code=403,
-                content={"detail": str(exc), "error": type(exc).__name__},
-            )
+            if exc.code == CSRF_CODE_INVALID and await self._es_de_sesion_anterior(
+                request, contenedor
+            ):
+                exc = CsrfValidationError(
+                    "El token anti-CSRF del header es de una sesión anterior: el refresh "
+                    "rotó la sesión después de que el cliente lo obtuvo. Pedí el vigente con "
+                    "`GET /auth/csrf` y repetí la petición.",
+                    code=CSRF_CODE_PREVIOUS_SESSION,
+                )
+            content: dict[str, t.Any] = {"detail": str(exc), "error": type(exc).__name__}
+            if exc.code is not None:
+                content["code"] = exc.code
+            return JSONResponse(status_code=403, content=content)
 
         return await call_next(request)
+
+    async def _es_de_sesion_anterior(
+        self, request: Request, contenedor: t.Any
+    ) -> bool:
+        """
+        Si el token del header fue el de una sesión **anterior de la misma familia** que la de
+        la cookie de acceso.
+
+        Sólo corre al rechazar, así que el camino feliz de un request no paga la lectura de la
+        base. Tiene que ser **mejor esfuerzo**: cualquier fallo (credencial que no autentica,
+        base caída, un backend sin `list_family_session_ids`) devuelve `False` y el rechazo
+        sale como token inválido, que es lo que habría salido sin esta clasificación. Nunca
+        convierte un 403 en un 500.
+        """
+        from hexcore.darwin.infrastructure.hashing import compare_hashes, derive_csrf_token
+
+        enviado = request.headers.get(CSRF_HEADER)
+        clave = contenedor.config.secret_key
+        if not enviado or clave is None:
+            return False
+
+        try:
+            auth = auth_from_request(request)
+            if auth is None:
+                from hexcore.darwin.infrastructure.transports import TransportResolver
+
+                transporte = TransportResolver(cookies=contenedor.config.cookies).resolve(
+                    request
+                )
+                token = transporte.extract_access(request)
+                if token is None:
+                    return False
+                auth = await contenedor.session_service().authenticate(
+                    token, transport=transporte.name
+                )
+
+            sid = getattr(auth.actor, "session_id", None)
+            if sid is None or auth.transport != "cookie":
+                return False
+
+            secreto = clave.get_secret_value()
+            previas = await contenedor.session_service().previous_session_ids(sid)
+            # Se recorren **todas** sin cortar en la primera que coincide: el tiempo no tiene
+            # que depender de cuál era (aunque `compare_hashes` ya es en tiempo constante).
+            coincide = False
+            for previa in previas:
+                if compare_hashes(enviado, derive_csrf_token(str(previa), secreto)):
+                    coincide = True
+            return coincide
+        except Exception:
+            logger.debug("No se pudo clasificar el rechazo de CSRF.", exc_info=True)
+            return False
 
     def _exento(self, request: Request) -> bool:
         if request.method.upper() in SAFE_METHODS:
@@ -262,14 +328,16 @@ class CsrfMiddleware(BaseHTTPMiddleware):
         if not enviado or not esperado:
             raise CsrfValidationError(
                 f"Falta el chequeo anti-CSRF: la petición tiene que mandar el header "
-                f"'{CSRF_HEADER}' con el mismo valor que la cookie de CSRF."
+                f"'{CSRF_HEADER}' con el mismo valor que la cookie de CSRF.",
+                code=CSRF_CODE_INVALID,
             )
 
         from hexcore.darwin.infrastructure.hashing import compare_hashes
 
         if not compare_hashes(enviado, esperado):
             raise CsrfValidationError(
-                "El valor anti-CSRF del header no coincide con el de la cookie."
+                "El valor anti-CSRF del header no coincide con el de la cookie.",
+                code=CSRF_CODE_INVALID,
             )
 
     @staticmethod

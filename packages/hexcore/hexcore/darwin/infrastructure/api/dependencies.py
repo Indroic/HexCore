@@ -194,13 +194,17 @@ def identity_exception_payload(exc: Exception) -> t.Mapping[str, t.Any]:
     Darwin) devuelve sólo lo del núcleo en vez de lanzar — mismo trato que `_mapa_de_plugins()`
     en `app.py`.
     """
-    from hexcore.darwin.domain.exceptions import AccessDeniedError
+    from hexcore.darwin.domain.exceptions import AccessDeniedError, CsrfValidationError
 
     base: dict[str, t.Any] = {}
     if isinstance(exc, AccessDeniedError):
         # Sólo `required`: `Decision.reason` es interno y nunca llega al cliente. Ver el
         # docstring de `AccessDeniedError`.
         base["required"] = exc.required
+    elif isinstance(exc, CsrfValidationError) and exc.code is not None:
+        # El mismo `code` que `CsrfMiddleware` pone en su 403, para que un rechazo de CSRF
+        # lanzado desde un handler tenga la misma forma que el del middleware.
+        base["code"] = exc.code
 
     from hexcore.darwin.application.container import get_identity_container
 

@@ -34,6 +34,18 @@ export interface DarwinClientOptions {
 
   /** El `fetch` a usar. Por defecto, el global. Inyectable para tests y para runtimes sin uno propio. */
   fetch?: typeof fetch;
+
+  /**
+   * Si una escritura por cookie rechazada con 403 `CsrfValidationError` se recupera sola:
+   * pide el token vigente (`GET /auth/csrf`) y la reenvía **una sola vez**. Por defecto `true`.
+   *
+   * Es lo que absorbe el caso «firmé antes de que un refresh rotara la sesión» (el servidor lo
+   * marca con `code: "CsrfTokenFromPreviousSession"` en el cuerpo del 403) sin que el usuario
+   * tenga que repetir la acción. Pasá `false` si preferís ver el 403 y decidir vos. No afecta
+   * al reenvío tras un refresh por 401: esa petición **siempre** se vuelve a firmar con el
+   * token vigente, porque mandar el viejo sería reproducir el error a propósito.
+   */
+  csrfRecovery?: boolean;
 }
 
 /**
