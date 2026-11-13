@@ -79,6 +79,7 @@ def _configurar(
     secure_cookies: bool = False,
     verified: bool = False,
     trusted_origin_predicate=None,
+    expose_csrf_header: bool = True,
 ):
     """
     Cablea Darwin contra SQLite en memoria.
@@ -109,6 +110,7 @@ def _configurar(
             cookies=CookieConfig(secure=secure_cookies),
             trusted_origins=(ORIGEN,),
             trusted_origin_predicate=trusted_origin_predicate,
+            expose_csrf_header=expose_csrf_header,
             require_verified_email=not verified,
         ),
         clock=FixedClock(AHORA),
@@ -119,6 +121,13 @@ def _configurar(
 @pytest.fixture
 def contenedor():
     yield _configurar(verified=True)
+    reset_identity()
+    asyncio.run(dispose_engine())
+
+
+@pytest.fixture
+def contenedor_sin_cabecera_csrf():
+    yield _configurar(verified=True, expose_csrf_header=False)
     reset_identity()
     asyncio.run(dispose_engine())
 
@@ -433,6 +442,17 @@ def test_auth_csrf_por_bearer_da_401(client, contenedor):
     assert r.status_code == 401
 
 
+def _app_con_csrf() -> TestClient:
+    """Una app con CSRF y los routers de Darwin, sin CORS: sólo interesa la forma de la respuesta."""
+    return TestClient(
+        create_app(
+            features=AppFeatures(auth_context=True, csrf=True, health=False),
+            routers=[build_identity_router()],
+        ),
+        raise_server_exceptions=False,
+    )
+
+
 def _app_con_cors(monkeypatch, **features):
     config = ServerConfig(allow_origins=[ORIGEN], allow_credentials=True)
     monkeypatch.setattr("hexcore.infrastructure.api.app._config", lambda: config)
@@ -482,6 +502,91 @@ def test_la_cabecera_del_token_no_se_duplica_si_ya_estaba_declarada(contenedor, 
 
     expuestas = [h.strip().lower() for h in r.headers["access-control-expose-headers"].split(",")]
     assert expuestas.count("x-csrf-token") == 1
+
+
+def test_el_sign_out_no_lleva_el_token_csrf(client, contenedor):
+    """El sign-out **borra** la cookie: repetir el valor en la cabecera daría un token de una sesión muerta."""
+    _alta(client)
+    _sign_in_cookie(client)
+
+    r = client.post("/auth/sign-out", headers=_csrf_headers(client))
+
+    assert r.status_code == 200, r.text
+    assert CSRF_HEADER not in r.headers
+
+
+def test_con_expose_csrf_header_apagado_la_cookie_sigue_pero_la_cabecera_no(
+    contenedor_sin_cabecera_csrf,
+):
+    """El flag sólo quita la cabecera: la cookie y el chequeo de double-submit no cambian."""
+    client = _app_con_csrf()
+    _alta(client)
+
+    r = _sign_in_cookie(client)
+
+    assert CSRF_HEADER not in r.headers
+    assert client.cookies.get("csrf") == derive_csrf_token(r.json()["session_id"], CLAVE)
+
+
+def test_con_expose_csrf_header_apagado_el_refresh_tampoco_lleva_la_cabecera(
+    contenedor_sin_cabecera_csrf,
+):
+    client = _app_con_csrf()
+    _alta(client)
+    _sign_in_cookie(client)
+
+    r = client.post("/auth/refresh", headers=_csrf_headers(client))
+
+    assert r.status_code == 200, r.text
+    assert CSRF_HEADER not in r.headers
+
+
+def test_con_expose_csrf_header_apagado_el_cors_no_la_expone(
+    contenedor_sin_cabecera_csrf, monkeypatch
+):
+    """Exponer una cabecera que el servidor no emite sólo ensancharía el CORS sin motivo."""
+    client = _app_con_cors(monkeypatch, csrf=True)
+    _alta(client)
+
+    r = _sign_in_cookie(client)
+
+    assert "access-control-expose-headers" not in r.headers
+
+
+def test_con_expose_csrf_header_apagado_get_auth_csrf_sigue_dando_el_token(
+    contenedor_sin_cabecera_csrf,
+):
+    """Apagar la cabecera no deja sin salida al cliente: `GET /auth/csrf` es el camino de respaldo."""
+    client = _app_con_csrf()
+    _alta(client)
+    sid = _sign_in_cookie(client).json()["session_id"]
+
+    r = client.get("/auth/csrf")
+
+    assert r.status_code == 200, r.text
+    assert r.json() == {"csrf_token": derive_csrf_token(sid, CLAVE)}
+
+
+def test_el_flag_de_server_config_darwin_gana_sobre_el_contenedor(contenedor, monkeypatch):
+    """`create_app` corre antes que `configure_identity`: ahí el flag sale de `ServerConfig.darwin`."""
+    config = ServerConfig(
+        allow_origins=[ORIGEN],
+        allow_credentials=True,
+        darwin=IdentityConfig(secret_key=CLAVE, expose_csrf_header=False),
+    )
+    monkeypatch.setattr("hexcore.infrastructure.api.app._config", lambda: config)
+    client = TestClient(
+        create_app(
+            features=AppFeatures(auth_context=True, csrf=True, health=False),
+            routers=[build_identity_router()],
+        ),
+        raise_server_exceptions=False,
+    )
+    _alta(client)
+
+    r = _sign_in_cookie(client)
+
+    assert "access-control-expose-headers" not in r.headers
 
 
 # ── 3. El token va atado a su transporte ──────────────────────────────────────

@@ -138,6 +138,14 @@ without the session cookie the browser already holds. `@hexcore-js/darwin-client
 memory** (never in `localStorage`) and retries a write once when the server answers 403
 `CsrfValidationError`.
 
+The header is controlled by **`IdentityConfig.expose_csrf_header`** (`True` by default). With
+`False`, no response carries `X-CSRF-Token` and `create_app` stops exposing it in
+`Access-Control-Expose-Headers`; the cookie, the check and `GET /auth/csrf` do not change. Only
+responses that **emit** the cookie carry it: `sign-out`, which clears it, does not. `create_app`
+usually runs before `configure_identity`, so to make the CORS reflect `False` too, declare the
+config in `ServerConfig.darwin`; otherwise the CORS keeps exposing a header that is simply never
+sent.
+
 #### CSRF and rotation
 
 The refresh **rotates the session**: it creates one with a new `sid`, and the anti-CSRF token is

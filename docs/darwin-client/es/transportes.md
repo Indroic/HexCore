@@ -159,6 +159,26 @@ firmar. Del lado del servidor, ver *CSRF y rotación* en la guía de Darwin.
 Cuando la cookie **sí** es legible (mismo origen) manda el jar sobre el token en memoria, porque
 es el valor que el servidor compara.
 
+#### `crossOrigin: true`
+
+```ts
+new CookieTransport({ crossOrigin: true });
+```
+
+Declara que la API está en otro host, así que la cookie nunca se puede leer. El transporte entonces:
+
+- **no mira ninguna cookie**: no hace falta `cookieJar` y se puede construir fuera de un
+  navegador;
+- trabaja sólo con el token **en memoria** (de la cabecera `X-CSRF-Token` o de `GET /auth/csrf`);
+- **pide el token antes de la primera escritura** cuando la página se recargó y no lo tiene, en
+  vez de provocar un 403 para recuperarse después. Un solo `GET /auth/csrf` aunque varias
+  escrituras arranquen a la vez; las lecturas nunca lo piden. Sin sesión (401) la escritura sale
+  sin token y el cliente no vuelve a preguntar hasta que haya un sign-in.
+
+`csrfRecovery` queda como red de seguridad para el resto (sesión rotada por otra pestaña, por
+ejemplo). El servidor necesita `IdentityConfig.expose_csrf_header` activo (el default) para que las
+cabeceras del sign-in y del refresh lleguen a la página.
+
 ⚠️ **Un transporte de cookie en un despliegue cross-site también necesita el servidor
 configurado en consecuencia.** `SameSite`, `Secure` y el header CORS
 `Access-Control-Allow-Credentials` se setean del lado de Darwin; equivocarse aparece como una
