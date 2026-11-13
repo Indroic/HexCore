@@ -9,6 +9,11 @@ export interface FetcherOptions {
   /** Si conviene refrescar antes de este request (el reloj local corrido, o el TTL vencido). */
   shouldRefreshProactively: () => boolean;
   /**
+   * Si un 403 `CsrfValidationError` en una escritura por cookie pide el token vigente y se
+   * reintenta una vez. Por defecto `true`; ver `DarwinClientOptions.csrfRecovery`.
+   */
+  csrfRecovery?: boolean;
+  /**
    * El refresh en sí. Es responsabilidad de quien arma el fetcher que sea single-flight — ver
    * `session/refresh.ts`: sin eso, N requests en paralelo con el token vencido dispararían N
    * refreshes, y el servidor rota el token en el primero y revoca la familia entera con los
@@ -135,6 +140,7 @@ export function createFetcher(options: FetcherOptions): Fetcher {
     // token nuevo es el mismo que ya se mandó, reintentar no lo arreglaría: el rechazo es de otra
     // causa (un origen que el servidor no confía) y se devuelve tal cual.
     if (
+      options.csrfRecovery !== false &&
       options.transport.name === "cookie" &&
       !csrfReintentado &&
       response.status === 403 &&

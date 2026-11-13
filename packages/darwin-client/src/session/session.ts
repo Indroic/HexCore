@@ -129,6 +129,7 @@ export function createSession(options: DarwinClientOptions): Session {
     transport: options.transport,
     fetchImpl,
     shouldRefreshProactively,
+    csrfRecovery: options.csrfRecovery ?? true,
     refresh: () => refreshController.refresh(),
   });
 

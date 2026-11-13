@@ -126,6 +126,36 @@ nada:
 - **nunca toca `localStorage`.** El token es de la sesión; vive en una variable del transporte,
   `clear()` (sign-out) lo olvida, y una recarga lo recupera con `GET /auth/csrf`.
 
+### CSRF y rotación de la sesión
+
+El refresh rota la sesión, y el token CSRF es `HMAC(sid)`: **cambia en cada refresh**. El cliente
+lo maneja así, sin configurar nada:
+
+- **Tras un refresh, la petición reintentada se vuelve a firmar con el token vigente.** Un 401
+  refrescable hace refresh y reenvía; el reenvío lee otra vez el token del transporte, que el
+  refresh acaba de actualizar con la cabecera `X-CSRF-Token` de su respuesta. Nunca se reenvía la
+  firma vieja.
+- **Un 403 `CsrfValidationError` dispara una sola recuperación** (`GET /auth/csrf`) y un solo
+  reintento. Cubre la petición que salió firmada justo antes de que otra pestaña refrescara. Si el
+  reintento también se rechaza, se lanza el error: no hay un tercer intento.
+- **Una ráfaga concurrente con el access vencido hace un solo refresh.** Las demás peticiones
+  esperan ese mismo refresh y se reenvían con el token nuevo (el servidor revoca la familia si ve
+  dos refresh con el mismo token, así que esto no es opcional).
+
+El 403 trae el `code` del servidor en `error.payload.code`: `CsrfTokenFromPreviousSession` (el
+token era de una sesión anterior de la familia) o `CsrfTokenInvalid`. El cliente no decide con él:
+recupera ante cualquier `CsrfValidationError`, y el token vigente que vuelve de `GET /auth/csrf`
+distingue si valía la pena reintentar. Está ahí para que tu app lo registre.
+
+Para desactivar la recuperación del 403 y ver el rechazo tal cual:
+
+```ts
+createDarwinClient({ baseUrl, transport, csrfRecovery: false });
+```
+
+Por defecto es `true`. No afecta al reenvío tras un refresh por 401, que **siempre** se vuelve a
+firmar. Del lado del servidor, ver *CSRF y rotación* en la guía de Darwin.
+
 Cuando la cookie **sí** es legible (mismo origen) manda el jar sobre el token en memoria, porque
 es el valor que el servidor compara.
 
