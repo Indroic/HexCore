@@ -1,3 +1,9 @@
+## hexcore-v11.5.0 (2026-11-13)
+
+### Feat
+
+- **darwin**: los eventos de identidad llevan la IP y el navegador del cliente
+
 ## hexcore-v11.4.0 (2026-11-13)
 
 ### Feat
