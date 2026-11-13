@@ -2207,6 +2207,17 @@
             ],
             "title": "Ip Address"
           },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
           "session_id": {
             "title": "Session Id",
             "type": "string"

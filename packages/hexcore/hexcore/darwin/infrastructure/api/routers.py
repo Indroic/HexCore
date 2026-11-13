@@ -32,6 +32,7 @@ from hexcore.darwin.infrastructure.api.dependencies import (
     require_not_impersonated,
 )
 from hexcore.darwin.infrastructure.api.middlewares import CSRF_HEADER
+from hexcore.darwin.infrastructure.client_info import client_info_of, identity_client_ip_key
 
 if t.TYPE_CHECKING:
     from hexcore.darwin.application.config import IdentityConfig
@@ -195,6 +196,7 @@ class SessionInfo(BaseModel):
     created_at: str
     expires_at: str
     ip_address: str | None
+    last_seen_at: str | None = None
     user_agent: str | None
     impersonated: bool
     current: bool
@@ -388,8 +390,7 @@ def build_identity_router(
             identifier=payload.credential,
             password=payload.password,
             transport=transport.name,
-            ip_address=_ip(request),
-            user_agent=request.headers.get("User-Agent"),
+            **client_info_of(request).as_kwargs(),
         )
 
         respuesta = JSONResponse(
@@ -423,7 +424,7 @@ def build_identity_router(
 
         contenedor = get_identity_container()
         _, tokens = await contenedor.session_service().refresh(
-            token, transport=transport.name
+            token, transport=transport.name, **client_info_of(request).as_kwargs()
         )
 
         respuesta = JSONResponse(
@@ -581,6 +582,7 @@ def build_identity_router(
                 expires_at=s.expires_at.isoformat(),
                 ip_address=s.ip_address,
                 user_agent=s.user_agent,
+                last_seen_at=s.last_seen_at.isoformat() if s.last_seen_at else None,
                 impersonated=s.is_impersonated,
                 current=s.id == getattr(auth.actor, "session_id", None),
             )
@@ -600,7 +602,7 @@ def _rate_limit(spec: tuple[int, int] | None) -> list[t.Any]:
     if spec is None:
         return []
 
-    from hexcore.infrastructure.api.rate_limit import client_ip_key, rate_limit
+    from hexcore.infrastructure.api.rate_limit import rate_limit
 
     intentos, ventana = spec
     return [
@@ -608,22 +610,10 @@ def _rate_limit(spec: tuple[int, int] | None) -> list[t.Any]:
             rate_limit(
                 intentos,
                 ventana,
-                key=client_ip_key,
+                key=identity_client_ip_key,
                 on_backend_error="deny",
                 namespace="hexcore:darwin:auth",
             )
         )
     ]
 
-
-def _ip(request: Request) -> str | None:
-    """
-    La IP del par, para el registro de la sesión.
-
-    Deliberadamente **no** mira `X-Forwarded-For`: el header lo escribe el cliente, y guardar
-    un valor que él eligió en la fila de sesión llenaría de basura la pantalla de "tus
-    dispositivos". Una app detrás de un proxy que quiera la IP real la resuelve con
-    `forwarded_ip_key` y la pasa por su cuenta.
-    """
-    cliente = request.client
-    return cliente.host if cliente else None

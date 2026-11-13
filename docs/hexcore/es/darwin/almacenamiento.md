@@ -207,6 +207,30 @@ columnas a la primera según el orden de importación.
 
 ---
 
+## Migrar: `last_seen_at` en la sesión
+
+La sesión gana **una columna nullable**, `last_seen_at`: cuándo se creó o rotó por última vez. Las
+filas existentes quedan en `NULL` hasta su próximo refresh, así que no hay nada que rellenar.
+
+**SQL.** El próximo `alembic revision --autogenerate` la emite solo:
+
+```python
+op.add_column(
+    "darwin_session",
+    sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True),
+)
+```
+
+Desplegá la migración **antes** que el código nuevo: el `INSERT` de una sesión de esta versión
+nombra la columna, y una base que no la tiene responde con error en cada sign-in.
+
+**Mongo.** No hay nada que hacer: el campo vale `None` en los documentos que no lo tienen.
+
+`ip_address` y `user_agent` ya existían y conservan su nombre. Los eventos llaman a la IP
+`client_ip`; la columna de la sesión sigue siendo `ip_address`.
+
+---
+
 ## Migrar a 10.0
 
 Dos cambios de esquema, y el de Mongo es el que muerde.

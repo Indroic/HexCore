@@ -165,6 +165,43 @@ haya hecho nada mal.
 El cliente (`@hexcore-js/darwin-client`) lo resuelve solo: ver
 [CSRF y rotación en el cliente](../../../darwin-client/es/transportes.md#csrf-y-rotación-de-la-sesión).
 
+#### IP y navegador en los eventos de identidad
+
+`UserSignedInEvent`, `UserSignInFailedEvent`, `SessionCreatedEvent`, `SessionRefreshedEvent`,
+`SessionReuseDetectedEvent` y los eventos de impersonación llevan **`client_ip`** y
+**`user_agent`** (ambos `str | None`), tomados de la petición que los originó. Un handler de
+alertas o de auditoría ya no tiene que reconstruirlos fuera del framework. Valen `None` fuera de
+una petición HTTP (un job, la CLI, un test que llama al servicio directo).
+
+De dónde sale la IP lo decide `IdentityConfig.trusted_proxies`:
+
+| `trusted_proxies` | `client_ip` |
+| :-- | :-- |
+| `()` (default) | `request.client.host`. `X-Forwarded-For` se **ignora**: lo escribe el cliente |
+| `("10.0.0.0/8", "172.18.0.5")` y el par TCP **está** en la lista | la última dirección de `X-Forwarded-For` que **no** sea un proxy de confianza, leyendo de derecha a izquierda |
+| lo mismo, pero el par TCP **no** está en la lista | `request.client.host`: quien llega directo no puede elegir su IP |
+
+Las entradas son IPs o redes CIDR; una mal escrita falla al configurar. Una cabecera ausente, mal
+formada o toda de proxies cae a la IP del par.
+
+La misma IP se usa en la fila de la sesión, en los eventos y como **clave del límite de intentos de
+sign-in**. Detrás de un proxy con `trusted_proxies=()` todos los clientes comparten la IP del proxy
+y, por tanto, un solo cubo; declararlo le da su cubo a cada cliente. Vale también para las rutas de
+`oauth`, `passkey`, `magic_link`, `two_factor` e `impersonate`, que antes usaban la IP del par.
+
+- **En un reuso** (`SessionReuseDetectedEvent`) la IP y el navegador son los de **quien presentó el
+  token ya consumido**, no los del dueño de la sesión: es el dato útil al investigar un robo.
+- **`SessionService.refresh`** acepta `ip_address=` y `user_agent=` (opcionales). La sesión rotada
+  **conserva** el `ip_address` y el `user_agent` de origen y pone `last_seen_at` en el momento de la
+  rotación; los valores de la petición sólo viajan en los eventos.
+- **`GET /auth/sessions`** agrega `last_seen_at`, para una pantalla de «Mis sesiones».
+- **Impersonación.** `ImpersonationService` ahora **publica** `ImpersonationStartedEvent` e
+  `ImpersonationEndedEvent` (`ended_by="manual"`) en el bus de eventos, además de escribir en el
+  sink de auditoría. Hasta ahora los dos estaban declarados pero nunca se publicaban.
+- `IdentitySession.last_seen_at` es nuevo y admite `None`. Migración: ver
+  [Migrar: `last_seen_at`](almacenamiento.md#migrar-last_seen_at-en-la-sesión).
+
+
 ---
 
 ## El actor cruza la cola
@@ -191,6 +228,7 @@ IdentityConfig(
     session_model=None,              # idem para las otras cinco tablas
     storage=None,                    # "sqlalchemy" | "beanie" | None (detecta)
     trusted_origins=(),
+    trusted_proxies=(),
     worker_context_ttl=timedelta(hours=24),
     require_verified_email=True,
     max_verification_attempts=5,
@@ -204,6 +242,7 @@ IdentityConfig(
 | `session_model`, `account_model`, `verification_model`, `audit_model`, `jwks_model` | `None` | Idem para las otras cinco tablas. **Casi nunca hacen falta**: si declarás tus modelos, Darwin los encuentra solo (ver abajo) |
 | `storage` | `None` | `"sqlalchemy"`, `"beanie"`, o detección |
 | `trusted_origins` | `()` | Orígenes válidos para el chequeo anti-CSRF |
+| `trusted_proxies` | `()` | Proxies inversos (IPs o CIDR) cuyo `X-Forwarded-For` se respeta. Vacío: la cabecera se ignora |
 | `worker_context_ttl` | 24 h | Ventana en que el sobre del actor sigue siendo canjeable |
 | `require_verified_email` | `True` | Si el sign-in exige mail verificado. **No aplica a una cuenta sin mail**: exigirlo ahí sería un 403 permanente |
 | `usernames` | `None` | La `UsernamePolicy`, o `None` si esta app no usa nombres de usuario |

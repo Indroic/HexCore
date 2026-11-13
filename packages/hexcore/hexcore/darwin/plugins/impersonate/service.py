@@ -42,6 +42,7 @@ if t.TYPE_CHECKING:
     )
     from hexcore.darwin.domain.value_objects import TokenPair
     from hexcore.darwin.plugins.impersonate.domain import AbstractImpersonationPolicy
+    from hexcore.domain.cqrs.buses import AbstractEventBus as EventBus
 
 __all__ = ["Impersonated", "ImpersonationInfo", "ImpersonationService"]
 
@@ -90,7 +91,9 @@ class ImpersonationService:
         clock: "AbstractClock",
         policy: "AbstractImpersonationPolicy | None" = None,
         audit: "AbstractAuditSink | None" = None,
+        events: "EventBus | None" = None,
     ) -> None:
+        self._events = events
         self._users = users
         self._sessions_repository = sessions_repository
         self._sessions = sessions
@@ -183,10 +186,34 @@ class ImpersonationService:
                 ),
             },
         )
+        from hexcore.darwin.domain.events import ImpersonationStartedEvent
+
+        # `expires_at` sale de la sesión recién creada: `create()` siempre lo fija para una
+        # impersonación, así que nunca es `None` acá.
+        vence = sesion.impersonation_expires_at
+        await self._publicar(
+            ImpersonationStartedEvent(
+                actor_user_id=actor.id,
+                subject_user_id=sujeto.id,
+                impersonated=True,
+                session_id=sesion.id,
+                granted_by=actor.id,
+                reason=reason.strip(),
+                expires_at=vence.isoformat() if vence else "",
+                client_ip=ip_address,
+                user_agent=user_agent,
+            )
+        )
         return Impersonated(subject=sujeto, session=sesion, tokens=par)
 
     # ── Terminar ──────────────────────────────────────────────────────────────
-    async def stop(self, *, context: "AuthContext[t.Any] | None") -> None:
+    async def stop(
+        self,
+        *,
+        context: "AuthContext[t.Any] | None",
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
         """
         Termina la impersonación: revoca **la sesión impersonada** y nada más.
 
@@ -218,6 +245,20 @@ class ImpersonationService:
             actor_id=context.actor_id,
             subject_id=context.subject_id,
             metadata={"session_id": str(sid)},
+        )
+
+        from hexcore.darwin.domain.events import ImpersonationEndedEvent
+
+        await self._publicar(
+            ImpersonationEndedEvent(
+                actor_user_id=_uuid_o_none(context.actor_id),
+                subject_user_id=_uuid_o_none(context.subject_id),
+                impersonated=True,
+                session_id=sid,
+                ended_by="manual",
+                client_ip=ip_address,
+                user_agent=user_agent,
+            )
         )
 
     # ── Describir ─────────────────────────────────────────────────────────────
@@ -275,6 +316,21 @@ class ImpersonationService:
         """
         if self._audit is not None:
             await self._audit.record(impersonated=True, **kwargs)
+
+    async def _publicar(self, evento: t.Any) -> None:
+        """Publica en el bus de eventos si hay uno. Mismo criterio que `SessionService`."""
+        if self._events is not None:
+            await self._events.publish(evento)
+
+
+def _uuid_o_none(valor: UUID | str | None) -> UUID | None:
+    """Un id de principal como `UUID`; un principal de sistema (``"cron:x"``) no es un UUID."""
+    if valor is None or isinstance(valor, UUID):
+        return valor
+    try:
+        return UUID(valor)
+    except ValueError:
+        return None
 
 
 def _session_id_de(context: "AuthContext[t.Any]") -> UUID | None:

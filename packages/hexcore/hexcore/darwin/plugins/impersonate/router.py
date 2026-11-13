@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from hexcore.darwin.infrastructure.api.routers import SessionResponse
+from hexcore.darwin.infrastructure.client_info import client_info_of, identity_client_ip_key
 
 __all__ = [
     "StartImpersonationBody",
@@ -129,6 +130,7 @@ def build_impersonate_router(
     # impersonación. Lo encontró un test, no la revisión.
     @router.post("/stop", response_model=ImpersonationStoppedResponse)
     async def stop(
+        request: Request,
         auth: t.Any = Depends(provide_auth),
         transport: t.Any = Depends(_resolve_transport),
     ) -> Response:
@@ -140,7 +142,9 @@ def build_impersonate_router(
         """
         from hexcore.darwin.plugins.impersonate import get_impersonation_service
 
-        await get_impersonation_service().stop(context=auth)
+        await get_impersonation_service().stop(
+            context=auth, **client_info_of(request).as_kwargs()
+        )
 
         respuesta = JSONResponse({"stopped": True})
         transport.clear(respuesta)
@@ -175,8 +179,7 @@ def build_impersonate_router(
             subject_id=user_id,
             reason=payload.reason,
             transport=transport.name,
-            ip_address=_ip(request),
-            user_agent=request.headers.get("User-Agent"),
+            **client_info_of(request).as_kwargs(),
         )
 
         cuerpo = session_response_body(resultado.tokens, transport).model_dump(
@@ -211,7 +214,7 @@ def _rate_limit(spec: tuple[int, int] | None) -> list[t.Any]:
     if spec is None:
         return []
 
-    from hexcore.infrastructure.api.rate_limit import client_ip_key, rate_limit
+    from hexcore.infrastructure.api.rate_limit import rate_limit
 
     intentos, ventana = spec
     return [
@@ -219,14 +222,10 @@ def _rate_limit(spec: tuple[int, int] | None) -> list[t.Any]:
             rate_limit(
                 intentos,
                 ventana,
-                key=client_ip_key,
+                key=identity_client_ip_key,
                 on_backend_error="deny",
                 namespace="hexcore:darwin:impersonate",
             )
         )
     ]
 
-
-def _ip(request: Request) -> str | None:
-    cliente = request.client
-    return cliente.host if cliente else None

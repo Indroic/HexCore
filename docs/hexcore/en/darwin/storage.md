@@ -224,6 +224,30 @@ the last class declared overwrite the first one's columns depending on import or
 
 ---
 
+## Migrating: `last_seen_at` on the session
+
+The session gains **one nullable column**, `last_seen_at`: when it was created or last rotated.
+Existing rows keep `NULL` until their next refresh, so there is nothing to backfill.
+
+**SQL.** The next `alembic revision --autogenerate` emits it for you:
+
+```python
+op.add_column(
+    "darwin_session",
+    sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=True),
+)
+```
+
+Deploy the migration **before** the new code: an `INSERT` of a session from this version names the
+column, and a database without it answers an error on every sign-in.
+
+**Mongo.** Nothing to do: the field defaults to `None` on documents that lack it.
+
+`ip_address` and `user_agent` already existed and keep their names. The events call the IP
+`client_ip`; the session column is still `ip_address`.
+
+---
+
 ## Migrating to 10.0
 
 Two schema changes, and the Mongo one is the one that bites.

@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from hexcore.darwin.infrastructure.api.routers import SessionResponse
+from hexcore.darwin.infrastructure.client_info import client_info_of, identity_client_ip_key
 
 __all__ = [
     "FinishRegistrationBody",
@@ -217,8 +218,7 @@ def build_passkey_router(
         entrada = await get_passkey_service().finish_authentication(
             credential=payload.credential,
             transport=transport.name,
-            ip_address=_ip(request),
-            user_agent=request.headers.get("User-Agent"),
+            **client_info_of(request).as_kwargs(),
         )
 
         contenedor = get_identity_container()
@@ -293,7 +293,7 @@ def _rate_limit(spec: tuple[int, int] | None) -> list[t.Any]:
     if spec is None:
         return []
 
-    from hexcore.infrastructure.api.rate_limit import client_ip_key, rate_limit
+    from hexcore.infrastructure.api.rate_limit import rate_limit
 
     intentos, ventana = spec
     return [
@@ -301,14 +301,10 @@ def _rate_limit(spec: tuple[int, int] | None) -> list[t.Any]:
             rate_limit(
                 intentos,
                 ventana,
-                key=client_ip_key,
+                key=identity_client_ip_key,
                 on_backend_error="deny",
                 namespace="hexcore:darwin:passkey",
             )
         )
     ]
 
-
-def _ip(request: Request) -> str | None:
-    cliente = request.client
-    return cliente.host if cliente else None

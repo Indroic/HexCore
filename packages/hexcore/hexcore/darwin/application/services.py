@@ -210,6 +210,7 @@ class SessionService:
             expires_at=ahora + self._config.tokens.session_ttl,
             ip_address=ip_address,
             user_agent=user_agent,
+            last_seen_at=ahora,
             impersonation_reason=impersonation_reason,
             impersonation_granted_by=impersonation_granted_by,
             impersonation_expires_at=(
@@ -252,6 +253,8 @@ class SessionService:
                 impersonated=es_impersonacion,
                 session_id=sesion.id,
                 transport=transport,
+                client_ip=ip_address,
+                user_agent=user_agent,
             )
         )
         return sesion, par
@@ -397,7 +400,12 @@ class SessionService:
 
     # ── Rotar ─────────────────────────────────────────────────────────────────
     async def refresh(
-        self, refresh_token: str, *, transport: Transport
+        self,
+        refresh_token: str,
+        *,
+        transport: Transport,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> tuple[IdentitySession, TokenPair]:
         """
         Rota el refresh token. Detecta el reuso.
@@ -417,11 +425,17 @@ class SessionService:
         sólo se paga en el camino de error, que no es el que un cliente sano ejecuta cada
         `access_ttl`.
 
+        `ip_address` y `user_agent` son los de **esta petición** y sólo viajan a los eventos
+        (`SessionRefreshedEvent`, `SessionReuseDetectedEvent`): la sesión rotada conserva los de
+        origen, que es lo que muestra una pantalla de «Mis sesiones». En un reuso son los de quien
+        presentó el token consumido, que es justo el dato útil para investigar un robo.
+
         Raises:
             TokenRevokedError: reuso detectado, o sesión ya revocada.
             TokenMalformedError: token inválido, o el sujeto ya no existe.
             ImpersonationNotPermittedError: la sesión es impersonada.
         """
+        cliente = (ip_address, user_agent)
         claims = await self._verifier.verify(
             refresh_token, transport=transport, expected_typ="rt+jwt"
         )
@@ -429,7 +443,9 @@ class SessionService:
 
         consumida = await self._sessions.consume_for_rotation(claims.sid, at=ahora)
         if consumida is None:
-            return await self._diagnosticar_fallo_de_rotacion(claims.sid, ahora, transport)
+            return await self._diagnosticar_fallo_de_rotacion(
+                claims.sid, ahora, transport, cliente
+            )
 
         if ahora >= consumida.expires_at:
             raise TokenExpiredError(
@@ -464,10 +480,14 @@ class SessionService:
                 "La cuenta está bloqueada. La sesión no se puede renovar."
             )
 
-        return await self._rotar(consumida, actor, ahora, transport)
+        return await self._rotar(consumida, actor, ahora, transport, cliente)
 
     async def _diagnosticar_fallo_de_rotacion(
-        self, session_id: UUID, ahora: datetime, transport: Transport
+        self,
+        session_id: UUID,
+        ahora: datetime,
+        transport: Transport,
+        cliente: tuple[str | None, str | None],
     ) -> tuple[IdentitySession, TokenPair]:
         """
         Por qué `consume_for_rotation` devolvió `None`. Sólo se ejecuta acá, nunca en el
@@ -494,10 +514,14 @@ class SessionService:
                 "cuando vence, hay que volver a pedir la impersonación."
             )
 
-        return await self._manejar_reuso(anterior, ahora, transport)
+        return await self._manejar_reuso(anterior, ahora, transport, cliente)
 
     async def _manejar_reuso(
-        self, sesion: IdentitySession, ahora: datetime, transport: Transport
+        self,
+        sesion: IdentitySession,
+        ahora: datetime,
+        transport: Transport,
+        cliente: tuple[str | None, str | None],
     ) -> tuple[IdentitySession, TokenPair]:
         """
         Un refresh ya consumido. Ventana de gracia, o robo.
@@ -525,6 +549,8 @@ class SessionService:
                 impersonated=sesion.is_impersonated,
                 session_id=sesion.id,
                 family_id=sesion.family_id,
+                client_ip=cliente[0],
+                user_agent=cliente[1],
             )
         )
         await self._auditar(
@@ -544,6 +570,7 @@ class SessionService:
         actor: User,
         ahora: datetime,
         transport: Transport,
+        cliente: tuple[str | None, str | None] = (None, None),
     ) -> tuple[IdentitySession, TokenPair]:
         from hexcore.darwin.domain.context import Impersonation
         from hexcore.darwin.infrastructure.hashing import generate_token, hash_token
@@ -580,6 +607,7 @@ class SessionService:
             expires_at=anterior.expires_at,
             ip_address=anterior.ip_address,
             user_agent=anterior.user_agent,
+            last_seen_at=ahora,
             impersonation_reason=anterior.impersonation_reason,
             impersonation_granted_by=anterior.impersonation_granted_by,
             impersonation_expires_at=anterior.impersonation_expires_at,
@@ -629,6 +657,8 @@ class SessionService:
                 session_id=siguiente.id,
                 previous_session_id=anterior.id,
                 family_id=anterior.family_id,
+                client_ip=cliente[0],
+                user_agent=cliente[1],
             )
         )
         return siguiente, par
@@ -979,6 +1009,8 @@ class IdentityService:
                     subject_user_id=usuario.id if usuario else None,
                     email=None,
                     reason="unknown-account",
+                    client_ip=ip_address,
+                    user_agent=user_agent,
                 )
             )
             raise InvalidCredentialsError()
@@ -989,6 +1021,8 @@ class IdentityService:
                     actor_user_id=usuario.id,
                     subject_user_id=usuario.id,
                     reason="bad-password",
+                    client_ip=ip_address,
+                    user_agent=user_agent,
                 )
             )
             raise InvalidCredentialsError()
@@ -1043,6 +1077,8 @@ class IdentityService:
                 actor_user_id=usuario.id,
                 subject_user_id=usuario.id,
                 transport=transport,
+                client_ip=ip_address,
+                user_agent=user_agent,
             )
         )
         return usuario, sesion, par

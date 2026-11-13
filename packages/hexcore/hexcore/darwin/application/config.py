@@ -427,6 +427,17 @@ class IdentityConfig(BaseModel):
     #: el comodín; la responsabilidad de no hacerlo es de quien lo escribe.
     trusted_origin_predicate: t.Callable[[str], bool] | None = None
 
+    #: Proxies inversos delante de la app: IPs sueltas o redes CIDR (`"10.0.0.0/8"`,
+    #: `"172.18.0.5"`). Determina de dónde sale la IP del cliente que Darwin guarda en la sesión,
+    #: lleva en los eventos de identidad y usa como clave del límite de intentos de sign-in.
+    #:
+    #: **Vacío (el default) = no se confía en nadie**: la IP es `request.client.host` y
+    #: `X-Forwarded-For` se ignora, porque lo escribe el cliente. Detrás de un proxy eso significa
+    #: que todos comparten la IP del proxy (un solo cubo de límite); declarar el proxy acá lo
+    #: arregla. Con el par TCP en la lista se lee la cabecera de derecha a izquierda y se toma la
+    #: primera IP que no sea de confianza. Ver `darwin.infrastructure.client_info`.
+    trusted_proxies: tuple[str, ...] = ()
+
     #: Vida del sobre firmado que cruza la cola. Un payload capturado de una dead-letter queue
     #: no se puede reproducir un mes después.
     worker_context_ttl: timedelta = timedelta(hours=24)
@@ -549,6 +560,14 @@ class IdentityConfig(BaseModel):
                 "Declará la política de nombres de usuario, o dejá require_email=True."
             )
 
+        return self
+
+    @model_validator(mode="after")
+    def _los_proxies_de_confianza_son_ips_o_redes(self) -> "IdentityConfig":
+        """Un proxy mal escrito falla al **arrancar**; no ignora la cabecera en silencio."""
+        from hexcore.darwin.infrastructure.client_info import parse_trusted_proxies
+
+        parse_trusted_proxies(self.trusted_proxies)
         return self
 
     @model_validator(mode="after")

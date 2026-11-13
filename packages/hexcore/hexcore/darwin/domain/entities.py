@@ -147,6 +147,12 @@ class IdentitySession(BaseEntity):
     ip_address: str | None = None
     user_agent: str | None = None
 
+    #: Cuándo se creó la sesión o rotó por última vez. La rotación crea una fila nueva en vez de
+    #: actualizar la vieja, así que cada refresh escribe el valor en la **fila nueva**: la sesión
+    #: viva siempre dice cuándo se usó por última vez. Es lo que muestra una pantalla de «Mis
+    #: sesiones». `None` en las filas anteriores a la columna.
+    last_seen_at: datetime | None = None
+
     #: Datos de la impersonación, si la hay. Redundante con `actor != subject` a propósito:
     #: el motivo y quién autorizó no se pueden deducir de los ids.
     impersonation_reason: str | None = None

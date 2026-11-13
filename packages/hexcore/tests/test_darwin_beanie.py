@@ -586,6 +586,7 @@ class TestMapeo:
                 consumed_at=None,
                 ip_address=None,
                 user_agent=None,
+                last_seen_at=None,
                 impersonation_reason=None,
                 impersonation_granted_by=None,
                 impersonation_expires_at=None,
@@ -596,6 +597,38 @@ class TestMapeo:
 
         assert _a_sesion(_doc(["a", "b"])).scopes == frozenset({"a", "b"})
         assert _a_sesion(_doc(None)).scopes == frozenset()
+
+    def test_la_sesion_mapea_last_seen_at(self):
+        """El campo nuevo viaja del documento a la entidad; una sesión vieja lo trae en `None`."""
+        import types
+
+        from hexcore.darwin.infrastructure.orms.beanie.documents import SessionDocument
+        from hexcore.darwin.infrastructure.orms.beanie.repositories import _a_sesion
+
+        assert "last_seen_at" in SessionDocument.model_fields
+        doc = types.SimpleNamespace(
+            entity_id=uuid4(),
+            actor_user_id=uuid4(),
+            subject_user_id=uuid4(),
+            token_hash="h",
+            family_id=uuid4(),
+            transport="cookie",
+            scopes=[],
+            expires_at=AHORA + timedelta(hours=1),
+            revoked_at=None,
+            consumed_at=None,
+            ip_address=None,
+            user_agent=None,
+            last_seen_at=AHORA,
+            impersonation_reason=None,
+            impersonation_granted_by=None,
+            impersonation_expires_at=None,
+            is_active=True,
+            created_at=AHORA,
+            updated_at=AHORA,
+        )
+
+        assert _a_sesion(doc).last_seen_at == AHORA
 
 
 # ── Con un Mongo real ─────────────────────────────────────────────────────────
