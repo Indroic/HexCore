@@ -15,6 +15,7 @@ from __future__ import annotations
 import typing as t
 from datetime import UTC, datetime
 from uuid import UUID
+from hexcore.domain.identifiers import new_uuid
 
 from sqlalchemy import delete, or_, select, update
 
@@ -336,8 +337,6 @@ class SqlAlchemyRbacPermissionRepository(_Base, AbstractRbacPermissionRepository
         `UNIQUE(key)`, que rechaza el duplicado sin tumbar el proceso porque el `INSERT` va
         fila por fila dentro de la misma sesión.
         """
-        from uuid import uuid4
-
         pedidas = frozenset(keys)
         if not pedidas:
             return
@@ -351,7 +350,7 @@ class SqlAlchemyRbacPermissionRepository(_Base, AbstractRbacPermissionRepository
             for clave in faltantes:
                 session.add(
                     self._model(
-                        id=coerce_id_for_column(self._model, "id", uuid4()),
+                        id=coerce_id_for_column(self._model, "id", new_uuid()),
                         key=clave,
                         description="",
                     )

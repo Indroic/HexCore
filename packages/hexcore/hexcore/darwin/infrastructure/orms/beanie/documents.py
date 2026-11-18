@@ -28,6 +28,7 @@ from __future__ import annotations
 import typing as t
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
+from hexcore.domain.identifiers import uuid_factory
 
 import pymongo
 from beanie import Document
@@ -68,7 +69,7 @@ class _Base(Document):
     copiado de otro documento se vea como el cambio de comportamiento que es.
     """
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     created_at: datetime = Field(default_factory=_ahora)
     updated_at: datetime = Field(default_factory=_ahora)
 

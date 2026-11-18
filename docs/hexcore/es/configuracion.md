@@ -226,7 +226,56 @@ kwargs propios a propósito.
 | `HEXCORE_CONFIG_MODULE` | El módulo de configuración (prioridad máxima) |
 | `HEXCORE_CONFIG_MODULES` | Varios módulos candidatos, separados por comas |
 | `HEXCORE_DARWIN_SECRET_KEY` | La clave de firma de Darwin |
+| `HEXCORE_UUID_VERSION` | La versión de UUID de los ids que genera el framework (`1`, `4`, `6` o `7`; default `4`) |
 | `HEXCORE_TEST_MONGO_URI` | Sólo para el suite del repositorio: el Mongo real de los tests `mongo` |
+
+---
+
+## Versión de UUID de los ids
+
+Por defecto todo id nuevo es UUID **v4**. Para una clave primaria en una tabla grande conviene
+**v7** (RFC 9562): lleva un timestamp en los bits altos, así que los inserts caen siempre al
+final del índice en vez de al azar. Se elige en dos niveles.
+
+**Global**, para todo lo que el framework genera (`BaseEntity.id`, `AggregateRoot.id`,
+`DomainEvent.event_id`, `Command.command_id`, el `id` de `hexcore.sql.BaseModel` y los ids de
+las entidades y tablas de Darwin):
+
+```python
+from hexcore.domain.identifiers import set_default_uuid_version
+
+set_default_uuid_version(7)   # o HEXCORE_UUID_VERSION=7 en el entorno
+```
+
+El código gana sobre la variable de entorno. El global se resuelve **en cada llamada**, así que
+afecta también a las clases ya definidas.
+
+**Por clase**, con un argumento de clase. Gana sobre el global y lo heredan las subclases:
+
+```python
+from hexcore.domain.base import BaseEntity
+from hexcore.sql import BaseModel
+
+class Pedido(BaseEntity, uuid_version=7): ...
+
+class PedidoModel(BaseModel[Pedido], uuid_version=7):
+    __tablename__ = "pedidos"
+```
+
+También lo aceptan `AggregateRoot`. En un modelo SQL se puede declarar en una base
+`__abstract__` para que lo hereden todos sus modelos.
+
+Detalles que conviene saber:
+
+- Se pueden generar las versiones **1, 4, 6 y 7**. La 3 y la 5 son hashes de un nombre y la 8 es
+  de formato libre: no hay un id que producir sin datos extra, y se rechazan con un error.
+- Cambiar la versión **no toca los ids existentes**. La columna y el campo siguen siendo `UUID`,
+  y v4 y v7 conviven en la misma tabla.
+- Siguen siendo v4 a propósito los `jti` y `family_id` de los tokens de Darwin: no son claves
+  de tabla y no hay motivo para que lleven un timestamp.
+- `using_uuid_version(7)` cambia el global dentro de un `with`; es de proceso, para tests.
+- `new_uuid()` y `uuid_factory()` están para tu propio código si quieres que tus ids sigan la
+  misma configuración.
 
 ---
 

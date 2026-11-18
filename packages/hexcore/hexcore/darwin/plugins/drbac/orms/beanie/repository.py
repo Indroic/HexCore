@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import uuid_factory
 
 import pymongo
 from beanie import Document
@@ -55,7 +56,7 @@ class EmbeddedRule(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     position: int = 0
     effect: str
     actions: list[str]
@@ -67,7 +68,7 @@ class EmbeddedRule(BaseModel):
 class DrbacPolicyDocument(Document):
     """Colección `darwin_drbac_policy`, con las reglas embebidas. Ver el docstring del módulo."""
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     scope_key: str = GLOBAL_SCOPE
     name: str
     description: str = ""
@@ -93,7 +94,7 @@ class DrbacPolicyDocument(Document):
 class DrbacRoleBindingDocument(Document):
     """Colección `darwin_drbac_role_binding`."""
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     subject_id: UUID
     role_name: str
     scope_path: str = GLOBAL_SCOPE

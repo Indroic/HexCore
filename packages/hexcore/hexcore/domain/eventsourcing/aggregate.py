@@ -12,13 +12,18 @@ from __future__ import annotations
 
 import re
 import typing as t
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from pydantic import ConfigDict, Field, PrivateAttr
 
 from hexcore.domain.base import EventRecorder
 from hexcore.domain.cqrs.dispatch import matching_types
 from hexcore.domain.events import DomainEvent
+from hexcore.domain.identifiers import (
+    UUIDVersion,
+    apply_uuid_version_to_field,
+    uuid_factory,
+)
 
 from .exceptions import UnhandledEventError
 from .snapshots import Snapshot
@@ -138,7 +143,7 @@ class AggregateRoot(EventRecorder):
     #: Si un evento sin mutador es un error. Ver `UnhandledEventError`.
     __strict_mutators__: t.ClassVar[bool] = True
 
-    id: UUID = Field(default_factory=uuid4)
+    id: UUID = Field(default_factory=uuid_factory())
 
     #: La versión **confirmada en el almacén**, no la actual en memoria.
     #:
@@ -148,7 +153,18 @@ class AggregateRoot(EventRecorder):
     #: almacén rechazó, así que recargar y reaplicar es posible.
     _version: int = PrivateAttr(default=0)
 
-    def __init_subclass__(cls, **kwargs: t.Any) -> None:
+    @classmethod
+    def __pydantic_init_subclass__(
+        cls, uuid_version: UUIDVersion | int | None = None, **kwargs: t.Any
+    ) -> None:
+        super().__pydantic_init_subclass__(**kwargs)
+        apply_uuid_version_to_field(cls, "id", uuid_version)
+
+    def __init_subclass__(
+        cls, uuid_version: UUIDVersion | int | None = None, **kwargs: t.Any
+    ) -> None:
+        # `uuid_version` lo consume `__pydantic_init_subclass__`; acá sólo se evita que
+        # llegue a `object.__init_subclass__`, que no acepta argumentos.
         super().__init_subclass__(**kwargs)
 
         if not cls.__dict__.get("__stream_type__"):

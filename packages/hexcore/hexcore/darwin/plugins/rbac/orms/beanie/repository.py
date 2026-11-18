@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import new_uuid, uuid_factory
 
 import pymongo
 from beanie import Document
@@ -68,7 +69,7 @@ class RbacRoleDocument(Document):
     Mongo terminó viviendo su `_id` interno.
     """
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     scope_key: str = GLOBAL_SCOPE
     name: str
     description: str = ""
@@ -95,7 +96,7 @@ class RbacRoleDocument(Document):
 class RbacPermissionDocument(Document):
     """Colección `darwin_rbac_permission`: el catálogo. Ver el docstring de `RbacPermission`."""
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     key: str
     description: str = ""
 
@@ -111,7 +112,7 @@ class RbacPermissionDocument(Document):
 class RbacUserRoleDocument(Document):
     """Colección `darwin_rbac_user_role`: quién tiene qué rol, en qué scope, hasta cuándo."""
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     user_id: UUID
     role_id: UUID
     scope_key: str = GLOBAL_SCOPE
@@ -287,7 +288,7 @@ class BeanieRbacPermissionRepository(AbstractRbacPermissionRepository):
             return
 
         await self._doc.insert_many(
-            [self._doc(entity_id=uuid4(), key=clave, description="") for clave in faltantes]
+            [self._doc(entity_id=new_uuid(), key=clave, description="") for clave in faltantes]
         )
 
 

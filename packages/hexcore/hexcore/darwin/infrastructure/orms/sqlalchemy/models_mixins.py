@@ -40,6 +40,7 @@ from __future__ import annotations
 import typing as t
 from datetime import UTC, datetime
 from uuid import UUID as PythonUUID, uuid4
+from hexcore.domain.identifiers import uuid_factory
 
 from sqlalchemy import (
     JSON,
@@ -107,7 +108,7 @@ class UserMixin(TimestampMixin):
     #: `ClassVar`, así que no lo interpreta como columna.
     __tablename__: t.ClassVar[str]
 
-    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid_factory())
     #: **Nullable desde 10.0.** No todo padrón tiene mails, y la alternativa era inventar
     #: direcciones falsas. El `UniqueConstraint` se queda: en SQLite y en Postgres dos NULL son
     #: distintos entre sí, así que varias filas sin mail conviven sin chocar.
@@ -171,7 +172,7 @@ class SessionMixin(TimestampMixin):
     #: concreta si renombrás `user`, porque una FK no se puede derivar sola.
     __darwin_user_table__: t.ClassVar[str] = DEFAULT_USER_TABLE
 
-    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid_factory())
 
     @declared_attr
     def actor_user_id(cls) -> Mapped[PythonUUID]:  # noqa: N805
@@ -269,7 +270,7 @@ class AccountMixin(TimestampMixin):
 
     __darwin_user_table__: t.ClassVar[str] = DEFAULT_USER_TABLE
 
-    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid_factory())
 
     @declared_attr
     def user_id(cls) -> Mapped[PythonUUID]:  # noqa: N805
@@ -327,7 +328,7 @@ class VerificationMixin(TimestampMixin):
     #: `ClassVar`, así que no lo interpreta como columna.
     __tablename__: t.ClassVar[str]
 
-    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid_factory())
     identifier: Mapped[str] = mapped_column(String(320), nullable=False)
     value_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     purpose: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -367,7 +368,7 @@ class AuditLogMixin:
     #: `ClassVar`, así que no lo interpreta como columna.
     __tablename__: t.ClassVar[str]
 
-    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid_factory())
     action: Mapped[str] = mapped_column(String(64), nullable=False)
     actor_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     subject_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
