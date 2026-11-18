@@ -19,6 +19,10 @@ class Ticket(BaseEntity):
 `updated_at` (both UTC) and `is_active` (`bool | None`, default `True`). Redeclaring any of
 them shadows the base field — don't.
 
+The `id` is UUID v4 unless you choose otherwise: globally with
+`hexcore.domain.identifiers.set_default_uuid_version(7)` (or `HEXCORE_UUID_VERSION=7`), or per
+class with `class Ticket(BaseEntity, uuid_version=7)`. Only 1, 4, 6 and 7 can be generated.
+
 It is configured `from_attributes=True` (so it builds from an ORM model) and
 `validate_assignment=True` (so an invalid assignment fails where it is assigned, not three
 layers down).
@@ -267,7 +271,8 @@ class TicketModel(BaseModel["Ticket"]):
 
 `BaseModel` ships `id` (UUID), `is_active`, `created_at`, `updated_at`, plus
 `set_domain_entity()` / `get_domain_entity()` — what lets the repository return the domain
-entity without a second query.
+entity without a second query. Its `id` follows the same UUID-version setting as the entity:
+`class TicketModel(BaseModel["Ticket"], uuid_version=7)`.
 
 `Base.metadata` carries an explicit naming convention (`ix_`, `uq_`, `ck_`, `fk_`, `pk_`).
 Without one, Alembic cannot generate `DROP CONSTRAINT` for an anonymous constraint: the

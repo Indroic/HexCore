@@ -158,6 +158,18 @@ class TicketModel(BaseModel["Ticket"]):
 `set_domain_entity()` / `get_domain_entity()` que son lo que permite al repositorio devolver la
 entidad de dominio sin una segunda consulta.
 
+El `id` es UUID **v4** por defecto. Para una PK en una tabla grande suele convenir **v7**, que
+se inserta siempre al final del índice: se elige para todo el proyecto
+(`set_default_uuid_version(7)`) o por modelo:
+
+```python
+class TicketModel(BaseModel["Ticket"], uuid_version=7):
+    __tablename__ = "tickets"
+```
+
+Cambiar la versión no toca las filas existentes. El detalle está en
+[Configuración](./configuracion.md#versión-de-uuid-de-los-ids).
+
 `Base.metadata` lleva una **convención de nombres explícita**:
 
 | Tipo | Patrón |

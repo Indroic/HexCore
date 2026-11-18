@@ -19,7 +19,7 @@ class Ticket(BaseEntity):
 
 | Field | Type | Default |
 | :-- | :-- | :-- |
-| `id` | `UUID` | `uuid4()` |
+| `id` | `UUID` | a new UUID: v4, or the version you choose ([see](./configuration.md#uuid-version-of-the-ids)) |
 | `created_at` | `datetime` | now, in UTC |
 | `updated_at` | `datetime` | now, in UTC |
 | `is_active` | `bool \| None` | `True` |

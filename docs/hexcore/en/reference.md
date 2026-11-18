@@ -258,6 +258,7 @@ on a facade would suggest they are part of the happy path:
 | `hexcore.testing` | The testing doubles and helpers |
 | `hexcore.testing.fixtures` | The pytest fixtures |
 | `hexcore.domain.base` | `BaseEntity` |
+| `hexcore.domain.identifiers` | `set_default_uuid_version`, `get_default_uuid_version`, `using_uuid_version`, `new_uuid`, `uuid_factory` |
 | `hexcore.domain.events` | `DomainEvent`, `EntityCreatedEvent`, `EntityUpdatedEvent`, `EntityDeletedEvent`, `EventBus` |
 | `hexcore.domain.repositories` | `IBaseRepository` |
 | `hexcore.domain.uow` | `IUnitOfWork` |

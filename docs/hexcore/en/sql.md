@@ -159,6 +159,18 @@ class TicketModel(BaseModel["Ticket"]):
 `set_domain_entity()` / `get_domain_entity()`, which are what let the repository return the
 domain entity without a second query.
 
+The `id` is a UUID **v4** by default. For a primary key in a large table **v7** is usually the
+better fit, since it always inserts at the end of the index. Choose it project-wide
+(`set_default_uuid_version(7)`) or per model:
+
+```python
+class TicketModel(BaseModel["Ticket"], uuid_version=7):
+    __tablename__ = "tickets"
+```
+
+Changing the version does not touch existing rows. Details in
+[Configuration](./configuration.md#uuid-version-of-the-ids).
+
 `Base.metadata` carries an **explicit naming convention**:
 
 | Kind | Pattern |
