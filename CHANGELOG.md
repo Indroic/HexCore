@@ -1,3 +1,9 @@
+## hexcore-v11.7.0 (2026-11-18)
+
+### Feat
+
+- **domain**: versión de UUID configurable, global o por entidad y modelo
+
 ## hexcore-v11.6.0 (2026-11-13)
 
 ### Feat
