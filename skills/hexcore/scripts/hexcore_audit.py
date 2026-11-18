@@ -424,8 +424,13 @@ class Auditor:
                         path,
                         statement.lineno,
                         node.name + " redeclares " + str(target) + ", which BaseEntity already provides",
-                        "delete the field",
-                        "references/core.md#entities",
+                        (
+                            "delete the field; to change the UUID version use "
+                            "`uuid_version=` on the class or set_default_uuid_version()"
+                            if target == "id"
+                            else "delete the field"
+                        ),
+                        "references/core.md#uuid-version" if target == "id" else "references/core.md#entities",
                     )
 
         if bases & GENERIC_REPOSITORIES:
