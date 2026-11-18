@@ -34,7 +34,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import datetime
-from uuid import UUID as PythonUUID, uuid4
+from uuid import UUID as PythonUUID
+from hexcore.domain.identifiers import uuid_factory
 
 from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, declared_attr, mapped_column
@@ -69,7 +70,7 @@ class DrbacPolicyMixin(TimestampMixin):
     __tablename__: t.ClassVar[str]
     __darwin_user_table__: t.ClassVar[str] = DEFAULT_USER_TABLE
 
-    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid_factory())
     scope_key: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str] = mapped_column(String(512), nullable=False, default="")
@@ -101,7 +102,7 @@ class DrbacRuleMixin:
     __tablename__: t.ClassVar[str]
     __darwin_drbac_policy_table__: t.ClassVar[str] = DEFAULT_POLICY_TABLE
 
-    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid_factory())
 
     @declared_attr
     def policy_id(cls) -> Mapped[PythonUUID]:  # noqa: N805
@@ -133,7 +134,7 @@ class DrbacRoleBindingMixin:
     __tablename__: t.ClassVar[str]
     __darwin_user_table__: t.ClassVar[str] = DEFAULT_USER_TABLE
 
-    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid_factory())
 
     @declared_attr
     def subject_id(cls) -> Mapped[PythonUUID]:  # noqa: N805

@@ -37,7 +37,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import uuid_factory
 
 import pymongo
 from beanie import Document
@@ -80,7 +81,7 @@ class EmbeddedMember(BaseModel):
     una simplificación del modelo, es otra forma de guardarlo.
     """
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     user_id: UUID
     role: str = "member"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -89,7 +90,7 @@ class EmbeddedMember(BaseModel):
 class OrganizationDocument(Document):
     """Colección `darwin_organization`, con los miembros adentro."""
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     name: str
     slug: str
     org_metadata: dict[str, t.Any] = Field(default_factory=dict)
@@ -126,7 +127,7 @@ class InvitationDocument(Document):
     índice TTL, que es lo que las limpia solas.
     """
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     organization_id: UUID
     email: str
     role: str = "member"

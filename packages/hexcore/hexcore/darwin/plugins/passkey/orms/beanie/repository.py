@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import uuid_factory
 
 import pymongo
 from beanie import Document
@@ -47,7 +48,7 @@ class PasskeyDocument(Document):
     es compartido y por eso va cifrado.
     """
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     user_id: UUID
     credential_id: str
     public_key: str
@@ -84,7 +85,7 @@ class PasskeyChallengeDocument(Document):
     entre un valor y sí mismo.
     """
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     challenge: str
     purpose: str
     #: `None` en el login sin usuario declarado —credenciales descubribles— que es el caso que

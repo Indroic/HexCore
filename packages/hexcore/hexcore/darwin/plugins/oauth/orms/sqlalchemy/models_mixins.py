@@ -27,7 +27,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import datetime
-from uuid import UUID as PythonUUID, uuid4
+from uuid import UUID as PythonUUID
+from hexcore.domain.identifiers import uuid_factory
 
 from sqlalchemy import (
     DateTime,
@@ -64,7 +65,7 @@ class OAuthStateMixin(TimestampMixin):
 
     __darwin_user_table__: t.ClassVar[str] = DEFAULT_USER_TABLE
 
-    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid_factory())
 
     #: A qué proveedor se inició el flujo. Es parte de la clave de canje: un `state` emitido
     #: para Google no se puede canjear en el callback de GitHub.

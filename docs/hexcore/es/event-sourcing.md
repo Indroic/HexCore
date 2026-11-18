@@ -134,7 +134,7 @@ eventos pendientes y su versión, así que se puede recargar y reaplicar.
 
 ### `load_from_history` toma `aggregate_id`
 
-`model_construct()` aplica el `default_factory=uuid4` del campo `id`, así que sin pasarlo dos
+`model_construct()` aplica el `default_factory` del campo `id` (un UUID nuevo), así que sin pasarlo dos
 cargas del mismo historial dan agregados con `stream_id` distinto — y el `save()` siguiente
 escribiría en el lugar equivocado. El repositorio siempre lo pasa.
 

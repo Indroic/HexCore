@@ -1,12 +1,13 @@
 from __future__ import annotations
 import typing as t
-from uuid import uuid4, UUID as PythonUUID
+from uuid import UUID as PythonUUID
 from datetime import datetime, UTC
 from sqlalchemy import UUID, DateTime, Boolean, MetaData
 
-from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase
+from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, declared_attr
 
 from hexcore.domain.base import BaseEntity
+from hexcore.domain.identifiers import UUIDVersion, uuid_factory, validate_uuid_version
 
 
 T = t.TypeVar("T", bound=BaseEntity)
@@ -47,7 +48,27 @@ class BaseModel(Base, t.Generic[T]):
     __abstract__ = True
     __tablename__ = "base_model"
 
-    id: Mapped[PythonUUID] = mapped_column(UUID, primary_key=True, default=uuid4)
+    #: Versión de UUID de las filas de este modelo. `None` = la global
+    #: (`hexcore.domain.identifiers.set_default_uuid_version`), resuelta en cada insert.
+    #: Se fija con ``class PedidoModel(BaseModel[Pedido], uuid_version=7)`` y la heredan las
+    #: subclases.
+    __uuid_version__: t.ClassVar[UUIDVersion | None] = None
+
+    def __init_subclass__(cls, uuid_version: UUIDVersion | int | None = None, **kwargs: t.Any) -> None:
+        # Antes del `super()`: es ahí donde SQLAlchemy mapea la clase y evalúa `id()`.
+        if uuid_version is not None:
+            cls.__uuid_version__ = validate_uuid_version(uuid_version)
+        super().__init_subclass__(**kwargs)
+
+    # `declared_attr` y no una columna fija: el `default` depende de la clase concreta
+    # (`cls.__uuid_version__`), y una columna declarada en una base abstracta se copia
+    # igual a cada subclase, así que acá se evalúa una vez por modelo.
+    @declared_attr
+    def id(cls) -> Mapped[PythonUUID]:
+        return mapped_column(
+            UUID, primary_key=True, default=uuid_factory(cls.__uuid_version__)
+        )
+
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)

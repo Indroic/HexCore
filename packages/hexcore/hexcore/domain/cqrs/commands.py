@@ -4,10 +4,12 @@ Abstracciones base para Commands en el patrón CQRS.
 from __future__ import annotations
 
 import typing as t
-from uuid import UUID, uuid4
+from uuid import UUID
 from datetime import datetime, UTC
 
 from pydantic import BaseModel, Field, ConfigDict
+
+from hexcore.domain.identifiers import uuid_factory
 
 
 class Command(BaseModel):
@@ -17,7 +19,7 @@ class Command(BaseModel):
     Es inmutable y serializable por defecto (Pydantic).
     """
 
-    command_id: UUID = Field(default_factory=uuid4)
+    command_id: UUID = Field(default_factory=uuid_factory())
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     model_config = ConfigDict(

@@ -258,6 +258,7 @@ fachada sugeriría que son parte del camino feliz:
 | `hexcore.testing` | Los dobles y helpers de test |
 | `hexcore.testing.fixtures` | Las fixtures de pytest |
 | `hexcore.domain.base` | `BaseEntity` |
+| `hexcore.domain.identifiers` | `set_default_uuid_version`, `get_default_uuid_version`, `using_uuid_version`, `new_uuid`, `uuid_factory` |
 | `hexcore.domain.events` | `DomainEvent`, `EntityCreatedEvent`, `EntityUpdatedEvent`, `EntityDeletedEvent`, `EventBus` |
 | `hexcore.domain.repositories` | `IBaseRepository` |
 | `hexcore.domain.uow` | `IUnitOfWork` |

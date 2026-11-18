@@ -232,7 +232,56 @@ arguments on purpose.
 | `HEXCORE_CONFIG_MODULE` | The configuration module (highest priority) |
 | `HEXCORE_CONFIG_MODULES` | Several candidate modules, comma-separated |
 | `HEXCORE_DARWIN_SECRET_KEY` | Darwin's signing key |
+| `HEXCORE_UUID_VERSION` | UUID version of the ids the framework generates (`1`, `4`, `6` or `7`; default `4`) |
 | `HEXCORE_TEST_MONGO_URI` | Repository test suite only: the real Mongo for the `mongo` tests |
+
+---
+
+## UUID version of the ids
+
+Every new id is a UUID **v4** by default. For a primary key in a large table **v7** (RFC 9562)
+is usually the better choice: it carries a timestamp in its high bits, so inserts always land at
+the end of the index instead of at random. It is chosen at two levels.
+
+**Globally**, for everything the framework generates (`BaseEntity.id`, `AggregateRoot.id`,
+`DomainEvent.event_id`, `Command.command_id`, the `id` of `hexcore.sql.BaseModel`, and the ids
+of Darwin's entities and tables):
+
+```python
+from hexcore.domain.identifiers import set_default_uuid_version
+
+set_default_uuid_version(7)   # or HEXCORE_UUID_VERSION=7 in the environment
+```
+
+Code wins over the environment variable. The global is resolved **on every call**, so it also
+affects classes that are already defined.
+
+**Per class**, with a class argument. It wins over the global and subclasses inherit it:
+
+```python
+from hexcore.domain.base import BaseEntity
+from hexcore.sql import BaseModel
+
+class Order(BaseEntity, uuid_version=7): ...
+
+class OrderModel(BaseModel[Order], uuid_version=7):
+    __tablename__ = "orders"
+```
+
+`AggregateRoot` accepts it too. On a SQL model it can be declared on an `__abstract__` base so
+all of its models inherit it.
+
+Worth knowing:
+
+- Versions **1, 4, 6 and 7** can be generated. 3 and 5 are hashes of a name and 8 is free-form:
+  there is no id to produce without extra data, and they are rejected with an error.
+- Changing the version **does not touch existing ids**. The column and the field are still
+  `UUID`, and v4 and v7 can live in the same table.
+- Darwin's token `jti` and `family_id` stay v4 on purpose: they are not table keys and have no
+  reason to carry a timestamp.
+- `using_uuid_version(7)` changes the global inside a `with`; it is process-wide, meant for tests.
+- `new_uuid()` and `uuid_factory()` are there for your own code if you want your ids to follow
+  the same setting.
 
 ---
 

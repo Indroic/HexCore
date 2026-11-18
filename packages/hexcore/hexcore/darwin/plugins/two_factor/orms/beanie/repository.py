@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import uuid_factory
 
 import pymongo
 from beanie import Document
@@ -43,7 +44,7 @@ class TwoFactorDocument(Document):
     verificar un código exige **recalcularlo**, así que el secreto tiene que poder recuperarse.
     """
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     user_id: UUID
     secret_encrypted: str
     confirmed_at: datetime | None = None

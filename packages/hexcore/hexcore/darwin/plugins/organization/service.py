@@ -24,7 +24,8 @@ from __future__ import annotations
 import re
 import typing as t
 from datetime import timedelta
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import new_uuid
 
 from hexcore.darwin.domain.value_objects import Email
 from hexcore.darwin.plugins.organization.domain import (
@@ -164,7 +165,7 @@ class OrganizationService:
 
         organizacion = await self._orgs.add(
             Organization(
-                id=uuid4(),
+                id=new_uuid(),
                 name=name,
                 slug=candidato,
                 metadata=dict(metadata or {}),
@@ -172,7 +173,7 @@ class OrganizationService:
         )
         await self._members.add(
             Member(
-                id=uuid4(),
+                id=new_uuid(),
                 organization_id=organizacion.id,
                 user_id=owner_id,
                 role=OrgRole.OWNER,
@@ -313,7 +314,7 @@ class OrganizationService:
         token = generate_token()
         invitacion = await self._invitations.add(
             Invitation(
-                id=uuid4(),
+                id=new_uuid(),
                 organization_id=organization_id,
                 email=normalizado,
                 role=role,
@@ -375,7 +376,7 @@ class OrganizationService:
 
         return await self._members.add(
             Member(
-                id=uuid4(),
+                id=new_uuid(),
                 organization_id=consumida.organization_id,
                 user_id=user_id,
                 role=consumida.role,

@@ -24,7 +24,9 @@ from hexcore.types import FieldResolversType, FieldSerializersType
 class Ticket(BaseEntity):
     """
     `BaseEntity` already provides `id` (UUID), `created_at`, `updated_at` (both UTC) and
-    `is_active`. Redeclaring any of them shadows the base field -- do not.
+    `is_active`. Redeclaring any of them shadows the base field -- do not. The `id` is a UUID v4
+    unless you choose otherwise: `class Ticket(BaseEntity, uuid_version=7)`, or globally with
+    `hexcore.domain.identifiers.set_default_uuid_version(7)`.
     """
 
     title: str

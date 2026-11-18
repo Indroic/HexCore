@@ -21,7 +21,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import datetime
-from uuid import UUID as PythonUUID, uuid4
+from uuid import UUID as PythonUUID
+from hexcore.domain.identifiers import uuid_factory
 
 from sqlalchemy import (
     BigInteger,
@@ -76,7 +77,7 @@ class TwoFactorMixin(TimestampMixin):
     #: renombrás `user`, porque una FK no se puede derivar sola.
     __darwin_user_table__: t.ClassVar[str] = DEFAULT_USER_TABLE
 
-    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid4)
+    id: Mapped[PythonUUID] = mapped_column(primary_key=True, default=uuid_factory())
 
     @declared_attr
     def user_id(cls) -> Mapped[PythonUUID]:  # noqa: N805

@@ -19,6 +19,8 @@ class Ticket(BaseEntity):
 `updated_at` (both UTC) and `is_active` (`bool | None`, default `True`). Redeclaring any of
 them shadows the base field — don't.
 
+The `id` is UUID v4 unless you choose otherwise — see [UUID version](#uuid-version) below.
+
 It is configured `from_attributes=True` (so it builds from an ORM model) and
 `validate_assignment=True` (so an invalid assignment fails where it is assigned, not three
 layers down).
@@ -267,7 +269,40 @@ class TicketModel(BaseModel["Ticket"]):
 
 `BaseModel` ships `id` (UUID), `is_active`, `created_at`, `updated_at`, plus
 `set_domain_entity()` / `get_domain_entity()` — what lets the repository return the domain
-entity without a second query.
+entity without a second query. Its `id` follows the same UUID-version setting as the entity:
+`class TicketModel(BaseModel["Ticket"], uuid_version=7)`.
+
+### UUID version {#uuid-version}
+
+Every id the framework generates is a UUID **v4** by default. v7 (RFC 9562) is usually the better
+primary key on a big table: it carries a timestamp in its high bits, so inserts land at the end
+of the B-tree instead of at random. Two levels, both in `hexcore.domain.identifiers`:
+
+```python
+from hexcore.domain.identifiers import set_default_uuid_version
+
+set_default_uuid_version(7)        # global; or HEXCORE_UUID_VERSION=7 in the environment
+
+class Ticket(BaseEntity, uuid_version=7): ...                 # per entity
+class TicketModel(BaseModel[Ticket], uuid_version=7):         # per SQL model
+    __tablename__ = "tickets"
+```
+
+- **Global** covers `BaseEntity.id`, `AggregateRoot.id`, `DomainEvent.event_id`,
+  `Command.command_id`, `hexcore.sql.BaseModel.id` and the ids of Darwin's entities and tables.
+  It is read **on every call**, so it also applies to classes defined before it was set. Code
+  wins over the environment variable.
+- **Per class** wins over the global, is inherited, and is fixed when the class is defined. On a
+  SQL model it can sit on an `__abstract__` base. `AggregateRoot` accepts it too; events and
+  commands only follow the global.
+- Only **1, 4, 6 and 7** can be generated. 3 and 5 hash a name and 8 is free-form, so they raise
+  `UnsupportedUUIDVersionError` — at class definition when passed as `uuid_version=`.
+- Changing it does **not** touch existing ids: the column and field stay `UUID`, and v4 and v7
+  coexist in one table. No migration is needed.
+- In your own code use `new_uuid()` (or `uuid_factory()` for a `default_factory`) instead of
+  `uuid4()`, so your ids follow the setting. Tests: `with using_uuid_version(7): ...` (process-wide).
+- A v7 id exposes its creation time to anyone who can read it. Darwin's token `jti` and
+  `family_id` stay v4 on purpose; keep v4 for anything that must not reveal when it was made.
 
 `Base.metadata` carries an explicit naming convention (`ix_`, `uq_`, `ck_`, `fk_`, `pk_`).
 Without one, Alembic cannot generate `DROP CONSTRAINT` for an anonymous constraint: the
@@ -409,6 +444,7 @@ symptom would surface much later as "my events never arrive".
 | `HEXCORE_CONFIG_MODULE` | The configuration module (highest priority) |
 | `HEXCORE_CONFIG_MODULES` | Several candidates, comma-separated |
 | `HEXCORE_DARWIN_SECRET_KEY` | Darwin's signing key |
+| `HEXCORE_UUID_VERSION` | UUID version of generated ids: `1`, `4`, `6` or `7` (default `4`) |
 
 ---
 

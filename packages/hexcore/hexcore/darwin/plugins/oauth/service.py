@@ -25,7 +25,8 @@ import enum
 import typing as t
 from datetime import timedelta
 from urllib.parse import urlencode
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import new_uuid
 
 from hexcore.darwin.domain.entities import Account, User
 from hexcore.darwin.domain.value_objects import Email
@@ -211,7 +212,7 @@ class OAuthService:
 
         await self._states.add(
             OAuthState(
-                id=uuid4(),
+                id=new_uuid(),
                 provider_id=provider_id,
                 state_hash=hash_token(estado),
                 code_verifier_encrypted=self._box.encrypt(verificador),

@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import new_uuid
 
 from hexcore.darwin.plugins.rbac.domain import (
     GLOBAL_SCOPE,
@@ -104,7 +105,7 @@ class RbacService:
                 f"Ya existe un rol '{name}' en el scope '{scope_key or '(global)'}'."
             )
         return await self._roles.add(
-            RbacRole(id=uuid4(), scope_key=scope_key, name=name, description=description)
+            RbacRole(id=new_uuid(), scope_key=scope_key, name=name, description=description)
         )
 
     async def get_role(self, role_id: UUID) -> RbacRole:
@@ -385,7 +386,7 @@ class RbacService:
 
         asignacion = await self._user_roles.assign(
             RoleAssignment(
-                id=uuid4(),
+                id=new_uuid(),
                 user_id=user_id,
                 role_id=role_id,
                 scope_key=scope_key,
@@ -432,7 +433,7 @@ class RbacService:
                 continue
             creado = await self._roles.add(
                 RbacRole(
-                    id=uuid4(),
+                    id=new_uuid(),
                     scope_key=scope_key,
                     name=nombre,
                     is_system=True,

@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import uuid_factory
 
 import pymongo
 from beanie import Document
@@ -39,7 +40,7 @@ class OAuthStateDocument(Document):
     **no puede** viajar en la URL — si viajara, PKCE no protegería nada.
     """
 
-    entity_id: UUID = Field(default_factory=uuid4)
+    entity_id: UUID = Field(default_factory=uuid_factory())
     provider_id: str
     state_hash: str
     code_verifier_encrypted: str

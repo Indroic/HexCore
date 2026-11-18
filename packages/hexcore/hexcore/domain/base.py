@@ -2,8 +2,14 @@ from __future__ import annotations
 import typing as t
 import abc
 from pydantic import BaseModel, Field, ConfigDict, PrivateAttr
-from uuid import UUID, uuid4
+from uuid import UUID
 from datetime import datetime, UTC
+
+from hexcore.domain.identifiers import (
+    UUIDVersion,
+    apply_uuid_version_to_field,
+    uuid_factory,
+)
 
 if t.TYPE_CHECKING:
     from hexcore.domain.events import DomainEvent
@@ -80,13 +86,18 @@ class BaseEntity(EventRecorder):
     al comitear.
 
     Atributos:
-        id (UUID): Identificador único universal para la entidad.
+        id (UUID): Identificador único universal para la entidad. Su versión sale del
+            default global (4 si no se cambió) o de `uuid_version=` en la clase:
+            ``class Pedido(BaseEntity, uuid_version=7)``.
         created_at (datetime): Marca de tiempo de la creación de la entidad (UTC).
         updated_at (datetime): Marca de tiempo de la última actualización (UTC).
         is_active (bool): Indicador para borrado lógico (soft delete).
     """
 
-    id: UUID = Field(default_factory=uuid4)
+    # Sin versión propia, `uuid_factory()` consulta el default global en cada llamada
+    # (`hexcore.domain.identifiers.set_default_uuid_version`). Con `uuid_version=` en la
+    # clase, `__pydantic_init_subclass__` lo reemplaza por uno fijo.
+    id: UUID = Field(default_factory=uuid_factory())
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     is_active: t.Optional[bool] = True
@@ -100,6 +111,19 @@ class BaseEntity(EventRecorder):
         # Lo cambiamos a False para un enfoque más pragmático.
         frozen=False,
     )
+
+    def __init_subclass__(cls, uuid_version: UUIDVersion | int | None = None, **kwargs: t.Any) -> None:
+        # Pydantic le reenvía a `__init_subclass__` los argumentos de clase que no son
+        # config; sin consumirlo acá, `object.__init_subclass__` lo rechaza. El valor se
+        # aplica en `__pydantic_init_subclass__`, cuando los campos ya existen.
+        super().__init_subclass__(**kwargs)
+
+    @classmethod
+    def __pydantic_init_subclass__(
+        cls, uuid_version: UUIDVersion | int | None = None, **kwargs: t.Any
+    ) -> None:
+        super().__pydantic_init_subclass__(**kwargs)
+        apply_uuid_version_to_field(cls, "id", uuid_version)
 
     async def deactivate(self) -> None:
         """Desactiva la Entidad(Borrado Logico)"""

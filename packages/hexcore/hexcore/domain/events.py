@@ -1,10 +1,11 @@
 from __future__ import annotations
 import typing as t
 from datetime import datetime, UTC
-from uuid import UUID, uuid4
+from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, computed_field
 
 from .base import BaseEntity
+from .identifiers import uuid_factory
 
 T = t.TypeVar("T", bound=BaseEntity)
 
@@ -16,7 +17,7 @@ class DomainEvent(BaseModel):
     """
 
     # Identificador único del evento
-    event_id: UUID = Field(default_factory=uuid4)
+    event_id: UUID = Field(default_factory=uuid_factory())
     # Marca de tiempo de cuándo ocurrió el evento
     occurred_on: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

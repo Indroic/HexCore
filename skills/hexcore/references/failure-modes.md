@@ -81,6 +81,21 @@ always `True`, so the value was always `["*"]` even with `ServerConfig(debug=Fal
 declaring only `"*"` lowers `allow_credentials` to `False` with a warning — at which point
 cookie auth silently stops working, which is the other half of this symptom.
 
+### I set a UUID version and some ids are still v4 {#uuid-version-ignored}
+
+**Cause.** Almost always one of these, and none of them raises:
+
+- The entity or model **redeclares `id`** with its own `default_factory=uuid4` / `default=uuid4`,
+  shadowing the base field the setting acts on.
+- Your own code calls **`uuid4()`** directly (`Entity(id=uuid4(), ...)`) instead of letting the
+  default fill it or calling `new_uuid()`.
+- A class or an ancestor pinned another version with `uuid_version=`, which wins over the global.
+- The rows already existed: changing the version never rewrites ids.
+- Darwin's token `jti` and `family_id`: v4 on purpose.
+
+**Fix.** Delete the redeclared `id`, replace `uuid4()` with `new_uuid()`, and check the class
+chain for a `uuid_version=`. See `references/core.md#uuid-version`.
+
 ### The cron does not fire, or fires twice
 
 **Cause, before 5.0.** `DynamicScheduler` compared against the current minute: with `tick=60s`

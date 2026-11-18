@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import timedelta
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import new_uuid
 
 from hexcore.darwin.plugins.passkey.domain import (
     Passkey,
@@ -170,7 +171,7 @@ class PasskeyService:
 
         return await self._passkeys.add(
             Passkey(
-                id=uuid4(),
+                id=new_uuid(),
                 user_id=desafio.user_id,
                 credential_id=registrada.credential_id,
                 public_key=registrada.public_key,
@@ -330,7 +331,7 @@ class PasskeyService:
         ahora = self._clock.now()
         await self._challenges.add(
             PasskeyChallenge(
-                id=uuid4(),
+                id=new_uuid(),
                 challenge=b64url_encode(desafio),
                 purpose=purpose,
                 user_id=user_id,

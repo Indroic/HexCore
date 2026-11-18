@@ -32,7 +32,8 @@ from __future__ import annotations
 
 import typing as t
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import UUID
+from hexcore.domain.identifiers import new_uuid
 
 from hexcore.darwin.plugins.drbac.conditions import (
     And,
@@ -133,7 +134,7 @@ class DrbacService:
                 f"Ya existe una política '{name}' en el scope '{scope_key or '(global)'}'."
             )
         politica = Policy(
-            id=uuid4(),
+            id=new_uuid(),
             scope_key=scope_key,
             name=name,
             description=description,
@@ -204,7 +205,7 @@ class DrbacService:
                 # (el `policy_id` de una `Decision`, un log); quien arma el cuerpo de la API no
                 # tiene por qué inventarlo para una regla nueva.
                 datos: dict[str, t.Any] = dict(cruda)
-                datos.setdefault("id", uuid4())
+                datos.setdefault("id", new_uuid())
                 regla = Rule(**datos)
             if regla.condition is not None:
                 enforce_condition_limits(regla.condition)
@@ -235,7 +236,7 @@ class DrbacService:
             enforce_condition_limits(condition)
         return await self._bindings.add(
             RoleBinding(
-                id=uuid4(),
+                id=new_uuid(),
                 subject_id=subject_id,
                 role_name=role_name,
                 scope_path=scope_path,

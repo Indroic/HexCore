@@ -69,7 +69,11 @@ for it deliberately.
 - [ ] Does the repository override base CRUD? Overriding is defensible for eager loading or a
       tenant filter — ask which it is, and say so in the finding rather than asserting it is
       wrong.
-- [ ] Does the entity redeclare `id`, `created_at`, `updated_at` or `is_active`?
+- [ ] Does the entity redeclare `id`, `created_at`, `updated_at` or `is_active`? A redeclared
+      `id` is usually someone trying to change the UUID version — point them to
+      `uuid_version=` / `set_default_uuid_version()` instead.
+- [ ] Is `uuid4()` called by hand to build an id? `new_uuid()` follows the project's UUID
+      version; `uuid4()` silently ignores it.
 - [ ] Is `delete()` being used where a hard delete was intended? It is a **soft** delete.
 - [ ] Does `ServerConfig` list the module this repository lives in, under
       `repository_discovery_paths`?
